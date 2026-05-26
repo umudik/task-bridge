@@ -125,9 +125,6 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
-# pnpm
-.pnpm-store
-
 # yarn v3
 .pnp.*
 .yarn/*
@@ -141,3 +138,25 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Turborepo
+.turbo
+
+# Android
+apps/mobile/.gradle/
+apps/mobile/build/
+apps/mobile/app/build/
+apps/mobile/local.properties
+*.apk
+*.aab
+*.keystore
+!apps/mobile/debug.keystore
+
+# IDE
+.idea/
+*.iml
+
+# Worker runtime
+worker/agent-state.json
+worker/state.json
+worker/bridge-tasks.json

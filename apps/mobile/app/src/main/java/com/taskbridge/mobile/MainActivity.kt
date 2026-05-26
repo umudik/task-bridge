@@ -1,0 +1,277 @@
+package com.taskbridge.mobile
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.taskbridge.mobile.ui.AnswerDetailScreen
+import com.taskbridge.mobile.ui.AnswersListScreen
+import com.taskbridge.mobile.ui.AppViewModel
+import com.taskbridge.mobile.ui.ConnectScreen
+import com.taskbridge.mobile.ui.HomeScreen
+import com.taskbridge.mobile.ui.ProjectSelectScreen
+import com.taskbridge.mobile.ui.SettingsScreen
+import com.taskbridge.mobile.ui.theme.TaskBridgeTheme
+import com.taskbridge.mobile.notifications.NotificationHelper
+
+class MainActivity : ComponentActivity() {
+    private val viewModel: AppViewModel by viewModels()
+    private var pendingMicAction: (() -> Unit)? = null
+    private var pendingNavAfterConnect: (() -> Unit)? = null
+    private val notificationTaskId = mutableIntStateOf(-1)
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) pendingMicAction?.invoke()
+        pendingMicAction = null
+    }
+
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) launchQrScanner()
+    }
+
+    private val qrLauncher = registerForActivityResult(ScanContract()) { result ->
+        val raw = result.contents
+        if (raw.isNullOrBlank()) return@registerForActivityResult
+        if (viewModel.connectFromQr(raw, resetProject = true)) {
+            pendingNavAfterConnect?.invoke()
+            pendingNavAfterConnect = null
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleConnectIntent(intent)
+        requestNotificationPermission()
+        extractTaskId(intent).takeIf { it > 0 }?.let { notificationTaskId.intValue = it }
+
+        setContent {
+            TaskBridgeTheme {
+                val navController = rememberNavController()
+                val state by viewModel.uiState.collectAsStateWithLifecycle()
+                val pendingTaskId = notificationTaskId.intValue
+
+                LaunchedEffect(pendingTaskId, state.isConfigured, state.projectConfirmed) {
+                    if (pendingTaskId > 0 && state.isConfigured && state.projectConfirmed) {
+                        navController.navigate("answer/$pendingTaskId")
+                        notificationTaskId.intValue = -1
+                    }
+                }
+
+                NavHost(
+                    navController = navController,
+                    startDestination = when {
+                        !state.isConfigured -> "connect"
+                        !state.projectConfirmed -> "connect"
+                        else -> "home"
+                    },
+                ) {
+                    composable("connect") {
+                        ConnectScreen(
+                            state = state,
+                            onHostChange = viewModel::updateBackendHost,
+                            onPortChange = { port ->
+                                port.toIntOrNull()?.let { viewModel.updateBackendPort(it) }
+                            },
+                            onApiKeyChange = viewModel::updateApiKey,
+                            onScanQr = {
+                                pendingNavAfterConnect = {
+                                    navController.navigate("projects") {
+                                        popUpTo("connect") { inclusive = true }
+                                    }
+                                }
+                                requestCameraAndScan()
+                            },
+                            onManualConnect = {
+                                viewModel.saveSettings(resetProject = true)
+                                navController.navigate("projects") {
+                                    popUpTo("connect") { inclusive = true }
+                                }
+                            },
+                            onSelectProject = {
+                                viewModel.refreshProjects()
+                                navController.navigate("projects")
+                            },
+                        )
+                    }
+                    composable("settings") {
+                        SettingsScreen(
+                            state = state,
+                            onHostChange = viewModel::updateBackendHost,
+                            onPortChange = { port ->
+                                port.toIntOrNull()?.let { viewModel.updateBackendPort(it) }
+                            },
+                            onApiKeyChange = viewModel::updateApiKey,
+                            onScanQr = {
+                                pendingNavAfterConnect = {
+                                    navController.navigate("projects") {
+                                        popUpTo("settings") { inclusive = true }
+                                    }
+                                }
+                                requestCameraAndScan()
+                            },
+                            onSave = {
+                                viewModel.saveSettings(resetProject = false)
+                                navController.popBackStack()
+                            },
+                            onNavigateProjects = {
+                                viewModel.refreshProjects()
+                                navController.navigate("projects")
+                            },
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable("projects") {
+                        ProjectSelectScreen(
+                            state = state,
+                            onSelect = viewModel::selectProject,
+                            onContinue = {
+                                if (viewModel.confirmProjectSelection()) {
+                                    val hasHome = navController.popBackStack("home", false)
+                                    if (!hasHome) {
+                                        navController.navigate("home") {
+                                            popUpTo("projects") { inclusive = true }
+                                        }
+                                    }
+                                }
+                            },
+                            onRefresh = { viewModel.refreshProjects() },
+                            onNavigateSettings = { navController.navigate("settings") },
+                        )
+                    }
+                    composable("home") {
+                        LaunchedEffect(state.isConfigured, state.projectConfirmed) {
+                            when {
+                                !state.isConfigured || !state.projectConfirmed -> {
+                                    navController.navigate("connect") {
+                                        popUpTo("home") { inclusive = true }
+                                    }
+                                }
+                            }
+                        }
+                        HomeScreen(
+                            state = state,
+                            onPushToTalkStart = { requestMic { viewModel.startPushToTalk() } },
+                            onPushToTalkStop = viewModel::stopPushToTalk,
+                            onSubmitPending = viewModel::submitPendingTranscript,
+                            onDiscardPending = viewModel::discardPendingTranscript,
+                            onTextChange = viewModel::updateTextMessage,
+                            onSubmitText = viewModel::submitTextMessage,
+                            onNavigateAnswers = { navController.navigate("answers") },
+                            onNavigateSettings = { navController.navigate("settings") },
+                            onOpenRecent = { taskId ->
+                                navController.navigate("answer/$taskId")
+                            },
+                        )
+                    }
+                    composable("answers") {
+                        AnswersListScreen(
+                            state = state,
+                            onBack = { navController.popBackStack() },
+                            onPoll = { viewModel.refreshInbox(silent = true) },
+                            onOpenTask = { taskId ->
+                                navController.navigate("answer/$taskId")
+                            },
+                        )
+                    }
+                    composable(
+                        route = "answer/{taskId}",
+                        arguments = listOf(navArgument("taskId") { type = NavType.IntType }),
+                    ) { entry ->
+                        val taskId = entry.arguments?.getInt("taskId") ?: return@composable
+                        AnswerDetailScreen(
+                            taskId = taskId,
+                            state = state,
+                            onBack = {
+                                viewModel.clearActiveDetail()
+                                navController.popBackStack()
+                            },
+                            onLoad = viewModel::loadAnswerDetail,
+                            onPoll = { id -> viewModel.loadAnswerDetail(id, silent = true) },
+                            onToggleSpeech = viewModel::toggleSpeech,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleConnectIntent(intent)
+        extractTaskId(intent).takeIf { it > 0 }?.let { notificationTaskId.intValue = it }
+    }
+
+    private fun extractTaskId(intent: Intent?): Int {
+        return intent?.getIntExtra(NotificationHelper.EXTRA_TASK_ID, -1) ?: -1
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun handleConnectIntent(intent: Intent?) {
+        val uri: Uri = intent?.data ?: return
+        if (uri.scheme == "taskbridge" && uri.host == "connect") {
+            viewModel.connectFromQr(uri.toString(), resetProject = true)
+        }
+    }
+
+    private fun requestCameraAndScan() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED -> launchQrScanner()
+            else -> cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun launchQrScanner() {
+        val options = ScanOptions()
+        options.setPrompt("Scan QR from /setup")
+        options.setBeepEnabled(false)
+        qrLauncher.launch(options)
+    }
+
+    private fun requestMic(action: () -> Unit) {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED -> action()
+            else -> {
+                pendingMicAction = action
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+}

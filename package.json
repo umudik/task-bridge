@@ -1,0 +1,23 @@
+{
+  "name": "task-bridge",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cursor/sdk": "^1.0.13"
+  },
+  "scripts": {
+    "dev": "npm --prefix apps/backend run dev",
+    "build": "npm --prefix apps/backend run build",
+    "docker:up": "node scripts/docker-up.mjs",
+    "docker:up:d": "node scripts/docker-up.mjs --detach",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "worker": "node scripts/vikunja-worker.mjs watch",
+    "worker:once": "node scripts/vikunja-worker.mjs once",
+    "worker:list": "node scripts/vikunja-worker.mjs list",
+    "worker:reply": "node scripts/vikunja-worker.mjs reply",
+    "agent": "node scripts/cursor-agent-runner.mjs watch",
+    "agent:once": "node scripts/cursor-agent-runner.mjs once",
+    "task:add": "node scripts/task-add.mjs"
+  }
+}
