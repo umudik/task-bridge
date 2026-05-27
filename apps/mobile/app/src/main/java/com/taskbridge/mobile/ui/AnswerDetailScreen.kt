@@ -101,9 +101,10 @@ fun AnswerDetailScreen(
                     return@Column
                 }
 
-                if (state.detailError.isNotEmpty() && detail == null) {
+                val detailError = state.detailError
+                if (detailError != null && detail == null) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(state.detailError, color = Error)
+                        Text(detailError, color = Error)
                     }
                     return@Column
                 }

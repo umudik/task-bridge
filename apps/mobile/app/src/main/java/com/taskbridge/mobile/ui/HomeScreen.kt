@@ -1,7 +1,6 @@
 package com.taskbridge.mobile.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -153,18 +152,19 @@ fun HomeScreen(
                 }
             }
 
-            if (state.statusMessage.isNotEmpty() && (
+            val statusMessage = state.statusMessage
+            if (statusMessage != null && (
                     state.isSending || state.isListening ||
-                        state.statusMessage.startsWith("Failed")
+                        statusMessage.startsWith("Failed")
                     )
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
                 StatusChip(
-                    text = state.statusMessage,
+                    text = statusMessage,
                     color = when {
                         state.isSending -> Accent
                         state.isListening -> Primary
-                        state.statusMessage.startsWith("Failed") -> Error
+                        statusMessage.startsWith("Failed") -> Error
                         else -> TextSecondary
                     },
                 )
@@ -190,21 +190,18 @@ fun HomeScreen(
                             .weight(1f)
                             .fillMaxWidth(),
                     ) {
-                        AnimatedVisibility(
-                            visible = state.isListening && state.liveTranscript.isNotEmpty(),
-                            enter = fadeIn(tween(200)) + slideInVertically { -it / 4 },
-                            exit = fadeOut(tween(150)),
-                            modifier = Modifier.align(Alignment.TopStart),
-                        ) {
+                        val liveTranscript = state.liveTranscript
+                        if (state.isListening && !liveTranscript.isNullOrBlank()) {
                             val scrollState = rememberScrollState()
                             Column(
                                 modifier = Modifier
+                                    .align(Alignment.TopStart)
                                     .fillMaxWidth()
                                     .height(120.dp)
                                     .verticalScroll(scrollState),
                             ) {
                                 Text(
-                                    text = state.liveTranscript,
+                                    text = liveTranscript,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = TextPrimary,
                                 )
@@ -245,7 +242,7 @@ fun HomeScreen(
                                 }
                                 RecordMode.Text -> {
                                     TextInputBar(
-                                        text = state.textMessage,
+                                        text = state.textMessage.orEmpty(),
                                         isSending = state.isSending,
                                         onTextChange = onTextChange,
                                         onSubmit = onSubmitText,
@@ -255,11 +252,7 @@ fun HomeScreen(
                         }
                     }
 
-                    AnimatedVisibility(
-                        visible = showModeSwitch,
-                        enter = fadeIn(tween(200)) + slideInVertically { it / 2 },
-                        exit = fadeOut(tween(150)) + slideOutVertically { it / 2 },
-                    ) {
+                    if (showModeSwitch) {
                         ModeSwitchBar(
                             mode = mode,
                             onVoice = { recordMode = RecordMode.Voice.name },
@@ -269,13 +262,10 @@ fun HomeScreen(
                 }
             }
 
-            AnimatedVisibility(
-                visible = state.pendingTranscript.isNotEmpty() && !state.isListening,
-                enter = fadeIn() + slideInVertically { it },
-                exit = fadeOut(),
-            ) {
+            val pendingTranscript = state.pendingTranscript
+            if (!pendingTranscript.isNullOrBlank() && !state.isListening) {
                 PendingTranscriptCard(
-                    transcript = state.pendingTranscript,
+                    transcript = pendingTranscript,
                     onSend = onSubmitPending,
                     onDiscard = onDiscardPending,
                 )

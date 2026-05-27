@@ -4,5 +4,5 @@ data class Project(
     val id: String,
     val name: String,
     val vikunjaProjectId: Int = 0,
-    val repoPath: String = "",
+    val repoPath: String? = null,
 )

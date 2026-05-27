@@ -77,12 +77,38 @@ private fun AnswerEntry.sortKey(
         ?: taskId.toLong()
 }
 
+fun taskBelongsToProject(
+    taskProjectId: String?,
+    selectedProjectId: String,
+    projects: List<Project>,
+): Boolean {
+    if (taskProjectId.isNullOrBlank()) return false
+    if (taskProjectId == selectedProjectId) return true
+    val selected = projects.find { it.id == selectedProjectId } ?: return false
+    if (taskProjectId == selected.vikunjaProjectId.toString()) return true
+    val owner = projects.find { it.id == taskProjectId }
+        ?: projects.find { it.vikunjaProjectId.toString() == taskProjectId }
+    return owner?.id == selectedProjectId
+}
+
 fun buildAnswerEntries(
     recentTasks: List<RecentTask>,
     inboxItems: List<InboxItem>,
+    projectId: String? = null,
+    projects: List<Project> = emptyList(),
 ): List<AnswerEntry> {
-    val inboxById = inboxItems.associateBy { it.taskId }
-    val recentById = recentTasks.associateBy { it.taskId }
+    val filteredRecent = if (projectId.isNullOrBlank()) {
+        recentTasks
+    } else {
+        recentTasks.filter { taskBelongsToProject(it.projectId, projectId, projects) }
+    }
+    val filteredInbox = if (projectId.isNullOrBlank()) {
+        inboxItems
+    } else {
+        inboxItems.filter { taskBelongsToProject(it.projectId, projectId, projects) }
+    }
+    val inboxById = filteredInbox.associateBy { it.taskId }
+    val recentById = filteredRecent.associateBy { it.taskId }
     val taskIds = (inboxById.keys + recentById.keys).toSet()
     val entries = taskIds.map { taskId ->
         val inbox = inboxById[taskId]

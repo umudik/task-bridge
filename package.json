@@ -18,6 +18,10 @@
     "worker:reply": "node scripts/vikunja-worker.mjs reply",
     "agent": "node scripts/cursor-agent-runner.mjs watch",
     "agent:once": "node scripts/cursor-agent-runner.mjs once",
-    "task:add": "node scripts/task-add.mjs"
+    "task:add": "node scripts/task-add.mjs",
+    "tb": "node scripts/tb.mjs",
+    "lint": "npm run lint:backend && npm run lint:mobile",
+    "lint:backend": "npm --prefix apps/backend run lint",
+    "lint:mobile": "cd apps/mobile && gradlew.bat detekt"
   }
 }

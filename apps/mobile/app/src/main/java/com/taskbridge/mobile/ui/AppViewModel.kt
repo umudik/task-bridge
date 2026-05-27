@@ -12,6 +12,7 @@ import com.taskbridge.mobile.domain.models.InboxItem
 import com.taskbridge.mobile.domain.models.Project
 import com.taskbridge.mobile.domain.models.RecentTask
 import com.taskbridge.mobile.domain.models.buildAnswerEntries
+import com.taskbridge.mobile.domain.models.taskBelongsToProject
 import com.taskbridge.mobile.speech.SpeechRecognizerHelper
 import com.taskbridge.mobile.speech.TextToSpeechHelper
 import com.taskbridge.mobile.notifications.InboxPollWorker
@@ -30,7 +31,7 @@ data class AppUiState(
     val projects: List<Project> = emptyList(),
     val selectedProjectId: String? = null,
     val projectConfirmed: Boolean = false,
-    val projectsError: String = "",
+    val projectsError: String? = null,
     val isLoadingProjects: Boolean = false,
     val isListening: Boolean = false,
     val isSending: Boolean = false,
@@ -40,16 +41,16 @@ data class AppUiState(
     val recentTasks: List<RecentTask> = emptyList(),
     val inboxItems: List<InboxItem> = emptyList(),
     val answerEntries: List<AnswerEntry> = emptyList(),
-    val inboxError: String = "",
+    val inboxError: String? = null,
     val readTaskIds: Set<Int> = emptySet(),
     val activeDetail: AnswerDetail? = null,
-    val detailError: String = "",
-    val lastTranscript: String = "",
-    val pendingTranscript: String = "",
-    val liveTranscript: String = "",
-    val statusMessage: String = "",
+    val detailError: String? = null,
+    val lastTranscript: String? = null,
+    val pendingTranscript: String? = null,
+    val liveTranscript: String? = null,
+    val statusMessage: String? = null,
     val showManualSetup: Boolean = false,
-    val textMessage: String = "",
+    val textMessage: String? = null,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -57,24 +58,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val taskRepository = TaskRepository(sessionStore)
     private val speechHelper = SpeechRecognizerHelper(application)
     private val ttsHelper = TextToSpeechHelper(application)
-    private var accumulatedTranscript = ""
+    private var accumulatedTranscript: String? = null
     private var lastInboxRefreshAt = 0L
     private var projectsRequestId = 0
 
     private val _uiState = MutableStateFlow(
         run {
             val recent = sessionStore.recentTasks()
+            val savedProjectId = sessionStore.selectedProjectId
+            val confirmed = sessionStore.projectConfirmed
             AppUiState(
                 backendHost = sessionStore.backendHost,
                 backendPort = sessionStore.backendPort,
                 apiKey = sessionStore.apiKey,
                 useHttps = sessionStore.useHttps,
                 isConfigured = sessionStore.isConfigured,
-                selectedProjectId = sessionStore.selectedProjectId,
-                projectConfirmed = sessionStore.projectConfirmed,
+                selectedProjectId = savedProjectId,
+                projectConfirmed = confirmed,
                 readTaskIds = sessionStore.readTaskIds(),
                 recentTasks = recent,
-                answerEntries = buildAnswerEntries(recent, emptyList()),
+                answerEntries = buildAnswerEntries(
+                    recent,
+                    emptyList(),
+                    savedProjectId?.takeIf { confirmed },
+                    emptyList(),
+                ),
             )
         },
     )
@@ -122,7 +130,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isLoadingProjects = true,
-                        projectsError = if (silent) it.projectsError else "",
+                        projectsError = if (silent) it.projectsError else null,
                     )
                 }
                 val projects = taskRepository.fetchProjects()
@@ -151,10 +159,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         selectedProjectId = selectedId,
                         projectConfirmed = confirmed,
                         isLoadingProjects = false,
+                        answerEntries = answerEntriesFor(
+                            it.recentTasks,
+                            it.inboxItems,
+                            selectedId,
+                            confirmed,
+                            projects,
+                        ),
                         projectsError = if (projects.isEmpty()) {
                             "No projects returned — check backend connection"
                         } else {
-                            ""
+                            null
                         },
                     )
                 }
@@ -174,26 +189,45 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateTextMessage(text: String) {
-        _uiState.update { it.copy(textMessage = text) }
+        _uiState.update { it.copy(textMessage = text.takeIf { it.isNotEmpty() }) }
     }
 
     fun submitTextMessage() {
-        val text = _uiState.value.textMessage.trim()
-        if (text.isBlank()) return
+        val text = _uiState.value.textMessage?.trim()?.takeIf { it.isNotEmpty() } ?: return
         submitTask(text)
-        _uiState.update { it.copy(textMessage = "") }
+        _uiState.update { it.copy(textMessage = null) }
     }
 
     fun selectProject(projectId: String) {
         sessionStore.selectedProjectId = projectId
-        _uiState.update { it.copy(selectedProjectId = projectId) }
+        _uiState.update { state ->
+            state.copy(
+                selectedProjectId = projectId,
+                pendingTranscript = null,
+                textMessage = null,
+                answerEntries = answerEntriesFor(
+                    state.recentTasks,
+                    state.inboxItems,
+                    projectId,
+                    state.projectConfirmed,
+                    state.projects,
+                ),
+            )
+        }
     }
 
     fun confirmProjectSelection(): Boolean {
         val projectId = _uiState.value.selectedProjectId ?: return false
         sessionStore.selectedProjectId = projectId
         sessionStore.projectConfirmed = true
-        _uiState.update { it.copy(projectConfirmed = true) }
+        _uiState.update {
+            it.copy(
+                projectConfirmed = true,
+                pendingTranscript = null,
+                textMessage = null,
+                answerEntries = answerEntriesFor(it.recentTasks, it.inboxItems, projectId, true, it.projects),
+            )
+        }
         InboxPollWorker.start(getApplication())
         refreshInbox(silent = true, force = true)
         return true
@@ -206,11 +240,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun appendSegment(segment: String) {
         if (!_uiState.value.isListening || segment.isBlank()) return
-        accumulatedTranscript = if (accumulatedTranscript.isBlank()) {
-            segment
-        } else {
-            "$accumulatedTranscript $segment"
-        }
+        accumulatedTranscript = accumulatedTranscript?.let { "$it $segment" } ?: segment
         _uiState.update {
             it.copy(
                 liveTranscript = accumulatedTranscript,
@@ -221,22 +251,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun updateLiveTranscript(partial: String) {
         if (!_uiState.value.isListening || partial.isBlank()) return
-        val preview = if (accumulatedTranscript.isBlank()) {
-            partial
-        } else {
-            "$accumulatedTranscript $partial"
-        }
+        val preview = accumulatedTranscript?.let { "$it $partial" } ?: partial
         _uiState.update { it.copy(liveTranscript = preview) }
     }
 
     private fun finalizeRecording() {
-        val transcript = accumulatedTranscript.trim().ifBlank {
-            _uiState.value.liveTranscript.trim()
-        }
-        accumulatedTranscript = ""
-        if (transcript.isBlank()) {
+        val transcript = accumulatedTranscript?.trim()?.takeIf { it.isNotBlank() }
+            ?: _uiState.value.liveTranscript?.trim()?.takeIf { it.isNotBlank() }
+        accumulatedTranscript = null
+        if (transcript == null) {
             _uiState.update {
-                it.copy(isListening = false, liveTranscript = "", statusMessage = "Nothing heard")
+                it.copy(isListening = false, liveTranscript = null, statusMessage = "Nothing heard")
             }
             return
         }
@@ -245,7 +270,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 pendingTranscript = transcript,
                 lastTranscript = transcript,
-                liveTranscript = "",
+                liveTranscript = null,
                 isListening = false,
                 statusMessage = "Review and send",
             )
@@ -260,24 +285,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 if (!silent) {
-                    _uiState.update { it.copy(isLoadingInbox = true, inboxError = "") }
+                    _uiState.update { it.copy(isLoadingInbox = true, inboxError = null) }
                 }
                 val items = taskRepository.fetchInbox()
                 InboxPollWorker.notifyNewAnswers(getApplication(), sessionStore, items)
                 syncRecentTasksFromInbox(items)
                 val recent = sessionStore.recentTasks()
-                val entries = buildAnswerEntries(recent, items)
+                val entries = answerEntriesFor(
+                    recent,
+                    items,
+                    _uiState.value.selectedProjectId,
+                    _uiState.value.projectConfirmed,
+                    _uiState.value.projects,
+                )
                 _uiState.update {
                     it.copy(
                         isLoadingInbox = false,
                         recentTasks = recent,
                         inboxItems = items,
                         answerEntries = entries,
-                        inboxError = "",
+                        inboxError = null,
                         statusMessage = if (!silent && it.projectConfirmed) {
                             when {
                                 entries.any { entry -> entry is AnswerEntry.Pending } -> "Waiting for answer"
-                                else -> "${items.size} answers"
+                                else -> "${entries.size} answers"
                             }
                         } else {
                             it.statusMessage
@@ -289,9 +320,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isLoadingInbox = false,
-                        answerEntries = buildAnswerEntries(it.recentTasks, emptyList()),
                         inboxError = message,
                         statusMessage = if (it.projectConfirmed) "Inbox failed" else it.statusMessage,
+                        answerEntries = answerEntriesFor(it.recentTasks, emptyList(), it.selectedProjectId, it.projectConfirmed, it.projects),
                     )
                 }
             }
@@ -303,7 +334,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 if (!silent) {
                     _uiState.update {
-                        it.copy(isLoadingDetail = true, detailError = "", activeDetail = null)
+                        it.copy(isLoadingDetail = true, detailError = null, activeDetail = null)
                     }
                 }
                 val detail = taskRepository.fetchAnswerDetail(taskId)
@@ -314,10 +345,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         isLoadingDetail = false,
                         activeDetail = detail,
-                        detailError = "",
+                        detailError = null,
                         readTaskIds = sessionStore.readTaskIds(),
                         inboxItems = it.inboxItems,
-                        answerEntries = buildAnswerEntries(it.recentTasks, it.inboxItems),
+                        answerEntries = answerEntriesFor(it.recentTasks, it.inboxItems, it.selectedProjectId, it.projectConfirmed, it.projects),
                     )
                 }
                 if (detail.status == "ready") {
@@ -340,8 +371,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 durationMs = null,
                                 createdBy = "You",
                                 answeredBy = null,
+                                projectId = recent.projectId,
+                                projectName = recent.projectName,
                             ),
-                            detailError = "",
+                            detailError = null,
                         )
                     }
                 } else {
@@ -358,7 +391,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearActiveDetail() {
         stopSpeech()
-        _uiState.update { it.copy(activeDetail = null, detailError = "") }
+        _uiState.update { it.copy(activeDetail = null, detailError = null) }
     }
 
     fun toggleSpeech(text: String) {
@@ -473,12 +506,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startPushToTalk() {
-        accumulatedTranscript = ""
+        accumulatedTranscript = null
         _uiState.update {
             it.copy(
                 isListening = true,
-                pendingTranscript = "",
-                liveTranscript = "",
+                pendingTranscript = null,
+                liveTranscript = null,
                 statusMessage = "Listening — tap stop when done",
             )
         }
@@ -494,14 +527,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun discardPendingTranscript() {
-        _uiState.update { it.copy(pendingTranscript = "", statusMessage = "Discarded") }
+        _uiState.update { it.copy(pendingTranscript = null, statusMessage = "Discarded") }
     }
 
     fun submitPendingTranscript() {
-        val text = _uiState.value.pendingTranscript
-        if (text.isBlank()) return
+        val text = _uiState.value.pendingTranscript?.trim()?.takeIf { it.isNotEmpty() } ?: return
         submitTask(text)
-        _uiState.update { it.copy(pendingTranscript = "") }
+        _uiState.update { it.copy(pendingTranscript = null) }
     }
 
     fun submitTask(text: String) {
@@ -532,9 +564,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         recentTasks = recent,
-                        answerEntries = buildAnswerEntries(recent, it.inboxItems),
+                        answerEntries = answerEntriesFor(recent, it.inboxItems, it.selectedProjectId, it.projectConfirmed, it.projects),
                         lastTranscript = text,
-                        pendingTranscript = "",
+                        pendingTranscript = null,
                         isSending = false,
                         statusMessage = "Sent — waiting for answer",
                     )
@@ -549,8 +581,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun answerEntriesFor(
+        recentTasks: List<RecentTask>,
+        inboxItems: List<InboxItem>,
+        selectedProjectId: String? = _uiState.value.selectedProjectId,
+        projectConfirmed: Boolean = _uiState.value.projectConfirmed,
+        projects: List<Project> = _uiState.value.projects,
+    ): List<AnswerEntry> {
+        val projectId = selectedProjectId?.takeIf { projectConfirmed }
+        return buildAnswerEntries(recentTasks, inboxItems, projectId, projects)
+    }
+
     private fun syncRecentTasksFromInbox(items: List<InboxItem>) {
-        items.asReversed().forEach { item ->
+        val state = _uiState.value
+        val projectId = state.selectedProjectId?.takeIf { state.projectConfirmed }
+        val scopedItems = if (projectId.isNullOrBlank()) {
+            items
+        } else {
+            items.filter { item -> taskBelongsToProject(item.projectId, projectId, state.projects) }
+        }
+        scopedItems.asReversed().forEach { item ->
             sessionStore.addRecentTask(
                 RecentTask(
                     taskId = item.taskId,

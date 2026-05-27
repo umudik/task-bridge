@@ -113,7 +113,7 @@ fun ProjectSelectScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            text = state.projectsError.ifBlank { "No projects found" },
+                            text = state.projectsError ?: "No projects found",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Error,
                             textAlign = TextAlign.Center,
@@ -196,9 +196,10 @@ private fun ProjectCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (project.repoPath.isNotBlank()) {
+            val repoPath = project.repoPath
+            if (!repoPath.isNullOrBlank()) {
                 Text(
-                    text = project.repoPath,
+                    text = repoPath,
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     maxLines = 2,

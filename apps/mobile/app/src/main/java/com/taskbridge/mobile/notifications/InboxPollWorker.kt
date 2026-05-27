@@ -22,11 +22,16 @@ class InboxPollWorker(
         val session = SessionStore(applicationContext)
         if (!session.isConfigured || !session.projectConfirmed) return Result.success()
 
-        var shouldContinue = session.recentTasks().isNotEmpty()
+        val projectId = session.selectedProjectId
+        var shouldContinue = session.recentTasks().any {
+            projectId.isNullOrBlank() || it.projectId == projectId
+        }
         try {
             val items = TaskRepository(session).fetchInbox()
             notifyNewAnswers(applicationContext, session, items)
-            shouldContinue = items.any { it.status == "pending" }
+            shouldContinue = items.any {
+                it.status == "pending" && (projectId.isNullOrBlank() || it.projectId == projectId)
+            }
         } catch (_: Exception) {
         }
 
@@ -76,8 +81,13 @@ class InboxPollWorker(
         ) {
             val notifier = NotificationHelper(context)
             val notified = session.notifiedTaskIds()
-            val recentIds = session.recentTasks().map { it.taskId }.toSet()
+            val projectId = session.selectedProjectId
+            val recentIds = session.recentTasks()
+                .filter { projectId.isNullOrBlank() || it.projectId == projectId }
+                .map { it.taskId }
+                .toSet()
             for (item in items) {
+                if (projectId != null && item.projectId != projectId) continue
                 if (item.isReady && item.taskId in recentIds && item.taskId !in notified) {
                     notifier.showAnswerReady(item)
                     session.markNotified(item.taskId)

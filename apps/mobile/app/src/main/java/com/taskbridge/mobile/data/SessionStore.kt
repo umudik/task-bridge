@@ -91,9 +91,9 @@ class SessionStore(context: Context) {
             listOf(
                 task.taskId.toString(),
                 task.title.replace('|', ' '),
-                task.projectId.orEmpty(),
-                task.projectName.orEmpty(),
-                task.createdAt.orEmpty(),
+                task.projectId?.replace('|', ' ') ?: "",
+                task.projectName?.replace('|', ' ') ?: "",
+                task.createdAt?.replace('|', ' ') ?: "",
             ).joinToString("|")
         }
         prefs.edit().putString(KEY_RECENT_TASKS, encoded).apply()

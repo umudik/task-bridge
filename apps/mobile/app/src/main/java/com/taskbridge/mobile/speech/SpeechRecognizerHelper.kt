@@ -38,7 +38,7 @@ class SpeechRecognizerHelper(context: Context) {
     private var listening = false
     private var endingSession = false
     private var useSegmentedSession = false
-    private var lastPartial = ""
+    private var lastPartial: String? = null
 
     private val restartRunnable = Runnable {
         if (sessionActive && !endingSession) {
@@ -87,12 +87,14 @@ class SpeechRecognizerHelper(context: Context) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val text = matches?.firstOrNull()?.trim()
                 if (!text.isNullOrEmpty()) {
-                    lastPartial = ""
+                    lastPartial = null
                     _segments.tryEmit(text)
-                } else if (endingSession && lastPartial.isNotBlank()) {
+                } else if (endingSession) {
                     val pending = lastPartial
-                    lastPartial = ""
-                    _segments.tryEmit(pending)
+                    lastPartial = null
+                    if (!pending.isNullOrBlank()) {
+                        _segments.tryEmit(pending)
+                    }
                 }
                 if (useSegmentedSession) {
                     if (endingSession) {
@@ -141,10 +143,12 @@ class SpeechRecognizerHelper(context: Context) {
                 if (!useSegmentedSession) return
                 listening = false
                 beepSuppressor.restoreNow()
-                if (endingSession && lastPartial.isNotBlank()) {
+                if (endingSession) {
                     val pending = lastPartial
-                    lastPartial = ""
-                    _segments.tryEmit(pending)
+                    lastPartial = null
+                    if (!pending.isNullOrBlank()) {
+                        _segments.tryEmit(pending)
+                    }
                 }
                 if (endingSession) {
                     endingSession = false
@@ -166,7 +170,7 @@ class SpeechRecognizerHelper(context: Context) {
         endingSession = false
         sessionActive = true
         listening = false
-        lastPartial = ""
+        lastPartial = null
         useSegmentedSession = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
         startListeningInternal()
     }
@@ -181,9 +185,9 @@ class SpeechRecognizerHelper(context: Context) {
         } else {
             endingSession = false
             beepSuppressor.restoreNow()
-            if (lastPartial.isNotBlank()) {
-                val pending = lastPartial
-                lastPartial = ""
+            val pending = lastPartial
+            lastPartial = null
+            if (!pending.isNullOrBlank()) {
                 _segments.tryEmit(pending)
             }
             emitSessionEnded()

@@ -102,9 +102,10 @@ fun AnswersListScreen(
                     }
                 }
 
-                if (state.inboxError.isNotEmpty()) {
+                val inboxError = state.inboxError
+                if (inboxError != null) {
                     Text(
-                        text = state.inboxError,
+                        text = inboxError,
                         style = MaterialTheme.typography.bodyMedium,
                         color = Error,
                         modifier = Modifier.padding(vertical = 8.dp),

@@ -31,7 +31,7 @@ class TaskRepository(
                             id = id,
                             name = name,
                             vikunjaProjectId = item.optInt("vikunjaProjectId", 0),
-                            repoPath = item.optString("repoPath"),
+                            repoPath = item.optString("repoPath").takeIf { it.isNotBlank() },
                         ),
                     )
                 }
@@ -46,7 +46,7 @@ class TaskRepository(
             id = json.optString("id", projectId),
             name = json.optString("name"),
             vikunjaProjectId = json.optInt("vikunjaProjectId", 0),
-            repoPath = json.optString("repoPath", repoPath),
+            repoPath = json.optString("repoPath").takeIf { it.isNotBlank() } ?: repoPath.takeIf { it.isNotBlank() },
         )
     }
 

@@ -55,12 +55,20 @@ export async function vikunjaFetch(config, path, options = {}) {
   return response.json();
 }
 
-export async function listOpenTasks(config, projectId = config.projectIds[0]) {
+export async function listProjectTasks(
+  config,
+  projectId,
+  { filter = "done = false", perPage = 50 } = {},
+) {
   const data = await vikunjaFetch(
     config,
-    `/projects/${projectId}/tasks?filter=done = false&sort_by=id&order_by=desc&per_page=50`,
+    `/projects/${projectId}/tasks?filter=${encodeURIComponent(filter)}&sort_by=id&order_by=desc&per_page=${perPage}`,
   );
   return Array.isArray(data) ? data : [];
+}
+
+export async function listOpenTasks(config, projectId = config.projectIds[0]) {
+  return listProjectTasks(config, projectId, { filter: "done = false" });
 }
 
 export async function listAllOpenTasks(config) {

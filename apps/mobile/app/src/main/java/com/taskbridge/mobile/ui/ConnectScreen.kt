@@ -1,9 +1,5 @@
 package com.taskbridge.mobile.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -147,11 +143,7 @@ fun ConnectScreen(
                 )
             }
 
-            AnimatedVisibility(
-                visible = showManual,
-                enter = fadeIn() + slideInVertically { it / 2 },
-                exit = fadeOut(),
-            ) {
+            if (showManual) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
                     GlassField(
                         value = state.backendHost,
