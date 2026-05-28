@@ -3,7 +3,7 @@ package com.taskbridge.mobile.domain.models
 data class InboxItem(
     val taskId: Int,
     val title: String,
-    val preview: String,
+    val preview: String? = null,
     val status: String = "pending",
     val updatedAt: String?,
     val createdAt: String? = null,
@@ -23,19 +23,36 @@ data class RecentTask(
     val createdAt: String? = null,
 )
 
+data class TaskComment(
+    val id: String,
+    val by: String,
+    val text: String,
+    val at: String,
+    val role: String,
+    val type: String = "note",
+) {
+    val isUser: Boolean
+        get() = role == "user"
+}
+
 data class AnswerDetail(
     val taskId: Int,
     val title: String,
     val request: String,
+    val description: String? = null,
+    val acceptanceCriteria: String? = null,
+    val aiSummary: String? = null,
     val answer: String?,
     val status: String,
     val createdAt: String?,
+    val updatedAt: String? = null,
     val answeredAt: String?,
     val durationMs: Long?,
     val createdBy: String,
     val answeredBy: String?,
     val projectId: String? = null,
     val projectName: String? = null,
+    val comments: List<TaskComment> = emptyList(),
 )
 
 sealed class AnswerEntry {
@@ -80,46 +97,36 @@ private fun AnswerEntry.sortKey(
 fun taskBelongsToProject(
     taskProjectId: String?,
     selectedProjectId: String,
-    projects: List<Project>,
 ): Boolean {
-    if (taskProjectId.isNullOrBlank()) return false
-    if (taskProjectId == selectedProjectId) return true
-    val selected = projects.find { it.id == selectedProjectId } ?: return false
-    if (taskProjectId == selected.vikunjaProjectId.toString()) return true
-    val owner = projects.find { it.id == taskProjectId }
-        ?: projects.find { it.vikunjaProjectId.toString() == taskProjectId }
-    return owner?.id == selectedProjectId
+    if (selectedProjectId.isBlank()) return false
+    return !taskProjectId.isNullOrBlank() && taskProjectId == selectedProjectId
 }
 
 fun buildAnswerEntries(
     recentTasks: List<RecentTask>,
     inboxItems: List<InboxItem>,
     projectId: String? = null,
-    projects: List<Project> = emptyList(),
 ): List<AnswerEntry> {
-    val filteredRecent = if (projectId.isNullOrBlank()) {
-        recentTasks
+    val scopedRecent = if (projectId.isNullOrBlank()) {
+        emptyList()
     } else {
-        recentTasks.filter { taskBelongsToProject(it.projectId, projectId, projects) }
+        recentTasks.filter { taskBelongsToProject(it.projectId, projectId) }
     }
-    val filteredInbox = if (projectId.isNullOrBlank()) {
-        inboxItems
+    val scopedInbox = if (projectId.isNullOrBlank()) {
+        emptyList()
     } else {
-        inboxItems.filter { taskBelongsToProject(it.projectId, projectId, projects) }
+        inboxItems.filter { taskBelongsToProject(it.projectId, projectId) }
     }
-    val inboxById = filteredInbox.associateBy { it.taskId }
-    val recentById = filteredRecent.associateBy { it.taskId }
-    val taskIds = (inboxById.keys + recentById.keys).toSet()
-    val entries = taskIds.map { taskId ->
-        val inbox = inboxById[taskId]
-        val recent = recentById[taskId]
-        when {
-            inbox != null && inbox.isReady -> AnswerEntry.Ready(inbox)
-            inbox != null -> AnswerEntry.Pending(taskId, inbox.title.ifBlank { recent?.title ?: "Task #$taskId" })
-            else -> AnswerEntry.Pending(taskId, recent?.title ?: "Task #$taskId")
-        }
-    }
-    return entries.sortedWith(
+    val inboxById = scopedInbox.associateBy { it.taskId }
+    val recentById = scopedRecent.associateBy { it.taskId }
+
+    val readyEntries = scopedInbox.filter { it.isReady }.map { AnswerEntry.Ready(it) }
+    val readyIds = readyEntries.map { it.taskId }.toSet()
+    val pendingEntries = scopedRecent
+        .filter { it.taskId !in readyIds }
+        .map { AnswerEntry.Pending(it.taskId, it.title) }
+
+    return (readyEntries + pendingEntries).sortedWith(
         compareByDescending<AnswerEntry> { it.sortKey(inboxById, recentById) }
             .thenByDescending { it.taskId },
     )

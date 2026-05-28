@@ -2,8 +2,10 @@ package com.taskbridge.mobile.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,28 +18,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.Numbers
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.taskbridge.mobile.ui.components.AppBackground
-import com.taskbridge.mobile.ui.components.GlassField
 import com.taskbridge.mobile.ui.theme.AccentSoft
 import com.taskbridge.mobile.ui.theme.Primary
 import com.taskbridge.mobile.ui.theme.PrimarySoft
@@ -49,14 +46,11 @@ import com.taskbridge.mobile.ui.theme.TextSecondary
 @Composable
 fun ConnectScreen(
     state: AppUiState,
-    onHostChange: (String) -> Unit,
-    onPortChange: (String) -> Unit,
-    onApiKeyChange: (String) -> Unit,
     onScanQr: () -> Unit,
-    onManualConnect: () -> Unit,
     onSelectProject: () -> Unit,
+    onNavigateSettings: () -> Unit,
 ) {
-    var showManual by rememberSaveable { mutableStateOf(false) }
+    val endpoint = formatBackendEndpoint(state.backendHost, state.backendPort, state.useHttps)
 
     AppBackground {
         Column(
@@ -66,7 +60,14 @@ fun ConnectScreen(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                IconButton(onClick = onNavigateSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = TextSecondary)
+                }
+            }
 
             Box(
                 modifier = Modifier
@@ -90,12 +91,25 @@ fun ConnectScreen(
                 text = if (state.isConfigured) {
                     "Connected — pick a project to continue"
                 } else {
-                    "Scan QR or enter connection manually"
+                    "Scan the QR code from web setup"
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextMuted,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 12.dp),
             )
+
+            if (state.isConfigured) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = endpoint,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextMuted,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
 
             Spacer(modifier = Modifier.height(40.dp))
 
@@ -130,55 +144,13 @@ fun ConnectScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            OutlinedButton(
-                onClick = { showManual = !showManual },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Text(
-                    text = if (showManual) "Hide manual setup" else "Manual setup",
-                    color = TextSecondary,
-                )
-            }
-
-            if (showManual) {
-                Column(modifier = Modifier.padding(top = 16.dp)) {
-                    GlassField(
-                        value = state.backendHost,
-                        onValueChange = onHostChange,
-                        label = "Host",
-                        leadingIcon = Icons.Outlined.Language,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    GlassField(
-                        value = state.backendPort.toString(),
-                        onValueChange = onPortChange,
-                        label = "Port",
-                        leadingIcon = Icons.Outlined.Numbers,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    GlassField(
-                        value = state.apiKey,
-                        onValueChange = onApiKeyChange,
-                        label = "API Key",
-                        leadingIcon = Icons.Outlined.Key,
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = onManualConnect,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Text("Connect")
-                    }
-                }
-            }
-
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+fun formatBackendEndpoint(host: String, port: Int, useHttps: Boolean): String {
+    val scheme = if (useHttps) "https" else "http"
+    val defaultPort = if (useHttps) 443 else 80
+    return if (port == defaultPort) "$scheme://$host" else "$scheme://$host:$port"
 }

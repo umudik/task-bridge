@@ -71,7 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.taskbridge.mobile.domain.models.AnswerEntry
+import com.taskbridge.mobile.domain.models.RecentTask
 import com.taskbridge.mobile.ui.components.AppBackground
 import com.taskbridge.mobile.ui.theme.Accent
 import com.taskbridge.mobile.ui.theme.AccentSoft
@@ -110,7 +110,7 @@ fun HomeScreen(
     val mode = runCatching { RecordMode.valueOf(recordMode) }.getOrDefault(RecordMode.Voice)
 
     val projectName = state.projects.find { it.id == state.selectedProjectId }?.name
-    val recentEntries = state.answerEntries.take(2)
+    val recentTasks = state.recentTasks.take(2)
     val showModeSwitch = !state.isListening && !state.isSending
 
     AppBackground {
@@ -271,7 +271,7 @@ fun HomeScreen(
                 )
             }
 
-            if (recentEntries.isNotEmpty()) {
+            if (recentTasks.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "Recent",
@@ -285,8 +285,8 @@ fun HomeScreen(
                         .height(96.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(recentEntries, key = { it.taskId }) { entry ->
-                        RecentEntryRow(entry = entry, onClick = { onOpenRecent(entry.taskId) })
+                    items(recentTasks, key = { it.taskId }) { task ->
+                        RecentTaskRow(task = task, onClick = { onOpenRecent(task.taskId) })
                     }
                 }
             }
@@ -421,18 +421,10 @@ private fun TextInputBar(
 }
 
 @Composable
-private fun RecentEntryRow(
-    entry: AnswerEntry,
+private fun RecentTaskRow(
+    task: RecentTask,
     onClick: () -> Unit,
 ) {
-    val (status, snippet, statusColor) = when (entry) {
-        is AnswerEntry.Pending -> Triple("Waiting", textSnippet(entry.title), AccentSoft)
-        is AnswerEntry.Ready -> Triple(
-            "Ready",
-            textSnippet(entry.item.preview.ifBlank { entry.item.title }),
-            Success,
-        )
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -440,27 +432,18 @@ private fun RecentEntryRow(
             .background(SurfaceElevated.copy(alpha = 0.65f))
             .border(1.dp, SurfaceBorder, RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(statusColor),
+        Text(
+            text = textSnippet(task.title.ifBlank { "Task #${task.taskId}" }),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = status, style = MaterialTheme.typography.labelMedium, color = statusColor)
-            Text(
-                text = snippet,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(18.dp))
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted)
     }
 }
 

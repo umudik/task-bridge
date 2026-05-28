@@ -6,7 +6,7 @@ import { platform } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
-const SETUP_URL = "http://localhost:3001/setup";
+const SETUP_URL = "http://localhost:3001/app/login";
 const detach = process.argv.includes("--detach");
 
 function loadDotEnv() {
@@ -74,7 +74,16 @@ async function waitAndOpen() {
   }
 }
 
+function stopLegacyWorkerContainer() {
+  const child = spawn("docker", ["stop", "task-bridge-worker-1"], {
+    shell: true,
+    stdio: "ignore",
+  });
+  child.on("exit", () => {});
+}
+
 loadDotEnv();
+stopLegacyWorkerContainer();
 startLocalCursorAgent();
 
 const args = detach ? ["compose", "up", "-d", "--build"] : ["compose", "up", "--build"];

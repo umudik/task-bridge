@@ -1,36 +1,23 @@
 services:
-  vikunja:
-    image: vikunja/vikunja
-    user: "0:0"
-    environment:
-      VIKUNJA_SERVICE_PUBLICURL: http://localhost:3456
-      VIKUNJA_DATABASE_TYPE: sqlite
-      VIKUNJA_DATABASE_PATH: /db/vikunja.db
-      VIKUNJA_SERVICE_SECRET: change-me-in-production
-    ports:
-      - "3456:3456"
-    volumes:
-      - vikunja_db:/db
-    restart: unless-stopped
-
   backend:
-    build: ./apps/backend
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
     environment:
       PORT: "3000"
-      VIKUNJA_BASE_URL: http://vikunja:3456
-      VIKUNJA_API_TOKEN: ${VIKUNJA_API_TOKEN:-}
-      VIKUNJA_PROJECT_ID: ${VIKUNJA_PROJECT_ID:-}
       BACKEND_API_KEY: ${BACKEND_API_KEY:-dev-key}
       NGROK_INSPECTOR_URL: http://ngrok:4040
+      DATABASE_PATH: /app/data/bridge.db
       BRIDGE_PROJECTS_PATH: /app/projects.json
       BRIDGE_TASKS_PATH: /app/worker/bridge-tasks.json
+      CURSOR_INBOX_PATH: /app/worker/cursor-inbox.json
+      WORKER_REPO_PATH: ${WORKER_REPO_PATH:-}
     volumes:
-      - ./projects.json:/app/projects.json
+      - bridge_data:/app/data
+      - ./projects.json:/app/projects.json:ro
       - ./worker:/app/worker
     ports:
       - "3001:3000"
-    depends_on:
-      - vikunja
     restart: unless-stopped
 
   ngrok:
@@ -50,26 +37,5 @@ services:
       - backend
     restart: unless-stopped
 
-  worker:
-    build:
-      context: .
-      dockerfile: worker/Dockerfile
-    environment:
-      VIKUNJA_BASE_URL: http://vikunja:3456
-      VIKUNJA_API_TOKEN: ${VIKUNJA_API_TOKEN:-}
-      VIKUNJA_PROJECT_ID: ${VIKUNJA_PROJECT_ID:-}
-      WORKER_POLL_MS: "15000"
-      WORKER_REPO_PATH: ${WORKER_REPO_PATH:-}
-      BRIDGE_PROJECTS_PATH: /app/projects.json
-    volumes:
-      - ./worker:/app/worker
-      - ./projects.json:/app/projects.json:ro
-      - ./scripts/vikunja-api.mjs:/app/scripts/vikunja-api.mjs:ro
-      - ./scripts/vikunja-worker.mjs:/app/scripts/vikunja-worker.mjs:ro
-      - ./scripts/projects.mjs:/app/scripts/projects.mjs:ro
-    depends_on:
-      - vikunja
-    restart: unless-stopped
-
 volumes:
-  vikunja_db:
+  bridge_data:

@@ -1,18 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  getProjectById,
-  loadProjects,
-  refreshProjects,
-  stripProjectTag,
-} from "./projects.mjs";
-import {
-  getTask,
-  listProjectTasks,
-  loadConfigAsync,
-  updateTask,
-} from "./vikunja-api.mjs";
+import { loadProjects } from "./projects.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -51,7 +40,9 @@ async function backendFetch(path, options = {}) {
   });
   const raw = await response.text();
   if (!response.ok) {
-    throw new Error(`Backend ${response.status} ${path}: ${raw}`);
+    const error = new Error(`Backend ${response.status} ${path}: ${raw}`);
+    error.status = response.status;
+    throw error;
   }
   return raw ? JSON.parse(raw) : null;
 }
@@ -90,30 +81,17 @@ function resolveProjectId(flags) {
   );
 }
 
-function flattenTask(task, project) {
-  return {
-    id: task.id,
-    title: task.title,
-    description: stripProjectTag(task.description ?? ""),
-    done: task.done ?? false,
-    percentDone: task.percent_done ?? 0,
-    projectId: project?.id ?? null,
-    projectName: project?.name ?? null,
-    vikunjaProjectId: task.project_id ?? project?.vikunjaProjectId ?? null,
-    createdAt: task.created ?? null,
-    updatedAt: task.updated ?? null,
-  };
-}
-
 function usage() {
   console.error(`Usage:
   npm run tb -- projects list
-  npm run tb -- tasks list [--project <id>] [--filter "done = false"]
+  npm run tb -- tasks list
   npm run tb -- tasks get <id>
+  npm run tb -- tasks claim [--by <name>] [--project <id>]
+  npm run tb -- tasks claim <id> [--by <name>]
   npm run tb -- tasks create "<text>" [--project <id>] [--title <title>] [--description <text>]
-  npm run tb -- tasks update <id> [--title <title>] [--description <text>] [--done true|false]
   npm run tb -- inbox list
-  npm run tb -- inbox show <id>`);
+  npm run tb -- inbox show <id>
+  npm run tb -- tasks comment <id> "<text>"`);
 }
 
 async function cmdProjectsList() {
@@ -121,52 +99,22 @@ async function cmdProjectsList() {
   printJson(data.projects ?? data);
 }
 
-async function cmdTasksList(flags) {
-  await refreshProjects(true);
-  const config = await loadConfigAsync();
-  const projectId = resolveProjectId(flags);
-  const filter = flags.filter ?? "done = false";
-  const perPage = Number(flags["per-page"] ?? flags.perPage ?? 50);
-
-  if (projectId) {
-    const project = getProjectById(projectId);
-    if (!project) throw new Error(`Unknown project: ${projectId}`);
-    const tasks = await listProjectTasks(config, project.vikunjaProjectId, {
-      filter,
-      perPage,
-    });
-    printJson(tasks.map((task) => flattenTask(task, project)));
-    return;
-  }
-
-  const items = [];
-  for (const project of loadProjects()) {
-    const tasks = await listProjectTasks(config, project.vikunjaProjectId, {
-      filter,
-      perPage,
-    });
-    for (const task of tasks) items.push(flattenTask(task, project));
-  }
-  items.sort((a, b) => b.id - a.id);
-  printJson(items);
+async function cmdTasksList() {
+  const data = await backendFetch("/tasks");
+  printJson(data.items ?? data);
 }
 
 async function cmdTasksGet(taskId) {
   if (!taskId) throw new Error("Usage: tb tasks get <id>");
-  const config = await loadConfigAsync();
-  await refreshProjects(true);
-  const task = await getTask(config, Number(taskId));
-  const project =
-    loadProjects().find((item) => item.vikunjaProjectId === Number(task.project_id)) ??
-    null;
-  printJson(flattenTask(task, project));
+  const data = await backendFetch(`/answers/${taskId}`);
+  printJson(data);
 }
 
 async function cmdTasksCreate(flags, positional) {
   const text = positional.join(" ").trim();
   if (!text) throw new Error('Usage: tb tasks create "<text>" [--project <id>]');
   const projectId = resolveProjectId(flags);
-  if (!projectId) throw new Error("No project. Set BRIDGE_PROJECT_ID or use --project.");
+  if (!projectId) throw new Error("No project. Set projects.json or BRIDGE_PROJECT_ID.");
 
   const body = { text, projectId };
   if (flags.title) body.title = flags.title;
@@ -179,28 +127,6 @@ async function cmdTasksCreate(flags, positional) {
   printJson(task);
 }
 
-async function cmdTasksUpdate(taskId, flags) {
-  if (!taskId) throw new Error("Usage: tb tasks update <id> [--title ...] [--description ...] [--done true|false]");
-  const config = await loadConfigAsync();
-  const patch = {};
-  if (flags.title !== undefined) patch.title = flags.title;
-  if (flags.description !== undefined) patch.description = flags.description;
-  if (flags.done !== undefined) {
-    const done = flags.done === "true" || flags.done === "1";
-    patch.done = done;
-    patch.percent_done = done ? 1 : 0;
-  }
-  if (Object.keys(patch).length === 0) {
-    throw new Error("Provide at least one of --title, --description, --done");
-  }
-  const task = await updateTask(config, Number(taskId), patch);
-  await refreshProjects(true);
-  const project =
-    loadProjects().find((item) => item.vikunjaProjectId === Number(task.project_id)) ??
-    null;
-  printJson(flattenTask(task, project));
-}
-
 async function cmdInboxList() {
   const data = await backendFetch("/inbox");
   printJson(data.items ?? data);
@@ -209,6 +135,49 @@ async function cmdInboxList() {
 async function cmdInboxShow(taskId) {
   if (!taskId) throw new Error("Usage: tb inbox show <id>");
   const data = await backendFetch(`/answers/${taskId}`);
+  printJson(data);
+}
+
+async function cmdTasksClaim(flags, positional) {
+  const claimedBy = flags.by?.trim() || "cli";
+  const taskId = positional[0]?.trim();
+
+  if (taskId) {
+    const task = await backendFetch(`/tasks/${taskId}/claim`, {
+      method: "POST",
+      body: JSON.stringify({ claimedBy }),
+    });
+    printJson(task);
+    return;
+  }
+
+  const projectId = resolveProjectId(flags);
+  const body = { claimedBy };
+  if (projectId) body.projectId = projectId;
+
+  try {
+    const task = await backendFetch("/worker/claim-next", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    printJson(task);
+  } catch (error) {
+    if (error.status === 404) {
+      console.log("No tasks available");
+      return;
+    }
+    throw error;
+  }
+}
+
+async function cmdTasksComment(taskId, positional) {
+  if (!taskId) throw new Error("Usage: tb tasks comment <id> \"<text>\"");
+  const text = positional.join(" ").trim();
+  if (!text) throw new Error("Comment text is required");
+  const data = await backendFetch(`/tasks/${taskId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ text, by: "cli" }),
+  });
   printJson(data);
 }
 
@@ -227,16 +196,19 @@ async function main() {
       await cmdProjectsList();
       break;
     case "tasks:list":
-      await cmdTasksList(flags);
+      await cmdTasksList();
       break;
     case "tasks:get":
       await cmdTasksGet(positional[0]);
       break;
+    case "tasks:claim":
+      await cmdTasksClaim(flags, positional);
+      break;
     case "tasks:create":
       await cmdTasksCreate(flags, positional);
       break;
-    case "tasks:update":
-      await cmdTasksUpdate(positional[0], flags);
+    case "tasks:comment":
+      await cmdTasksComment(positional[0], positional.slice(1));
       break;
     case "inbox:list":
       await cmdInboxList();

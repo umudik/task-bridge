@@ -35,6 +35,7 @@ data class AppUiState(
     val isLoadingProjects: Boolean = false,
     val isListening: Boolean = false,
     val isSending: Boolean = false,
+    val isSendingComment: Boolean = false,
     val isLoadingInbox: Boolean = false,
     val isLoadingDetail: Boolean = false,
     val isSpeaking: Boolean = false,
@@ -64,9 +65,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(
         run {
-            val recent = sessionStore.recentTasks()
             val savedProjectId = sessionStore.selectedProjectId
-            val confirmed = sessionStore.projectConfirmed
+            var confirmed = sessionStore.projectConfirmed
+            if (confirmed && savedProjectId.isNullOrBlank()) {
+                sessionStore.projectConfirmed = false
+                confirmed = false
+            }
+            val scopedProjectId = savedProjectId?.takeIf { confirmed }
+            val recent = if (scopedProjectId.isNullOrBlank()) {
+                sessionStore.recentTasks()
+            } else {
+                sessionStore.recentTasks().filter { taskBelongsToProject(it.projectId, scopedProjectId) }
+            }
             AppUiState(
                 backendHost = sessionStore.backendHost,
                 backendPort = sessionStore.backendPort,
@@ -77,12 +87,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 projectConfirmed = confirmed,
                 readTaskIds = sessionStore.readTaskIds(),
                 recentTasks = recent,
-                answerEntries = buildAnswerEntries(
-                    recent,
-                    emptyList(),
-                    savedProjectId?.takeIf { confirmed },
-                    emptyList(),
-                ),
+                answerEntries = buildAnswerEntries(recent, emptyList(), scopedProjectId),
             )
         },
     )
@@ -144,11 +149,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (selectedId != null) {
                     sessionStore.selectedProjectId = selectedId
                 }
-                val confirmed = if (autoConfirm && selectedId != null && !sessionStore.projectConfirmed) {
+                var confirmed = if (autoConfirm && selectedId != null && !sessionStore.projectConfirmed) {
                     sessionStore.projectConfirmed = true
                     true
                 } else {
                     sessionStore.projectConfirmed
+                }
+                if (confirmed && selectedId == null) {
+                    sessionStore.projectConfirmed = false
+                    confirmed = false
                 }
                 if (confirmed && selectedId != null) {
                     InboxPollWorker.start(getApplication())
@@ -164,7 +173,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             it.inboxItems,
                             selectedId,
                             confirmed,
-                            projects,
                         ),
                         projectsError = if (projects.isEmpty()) {
                             "No projects returned — check backend connection"
@@ -199,18 +207,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectProject(projectId: String) {
-        sessionStore.selectedProjectId = projectId
+        val savedProjectId = sessionStore.selectedProjectId
+        val inboxForEntries = if (projectId == savedProjectId && _uiState.value.projectConfirmed) {
+            scopedInboxItems(_uiState.value.inboxItems, projectId)
+        } else {
+            emptyList()
+        }
         _uiState.update { state ->
             state.copy(
                 selectedProjectId = projectId,
                 pendingTranscript = null,
                 textMessage = null,
+                inboxItems = inboxForEntries,
                 answerEntries = answerEntriesFor(
                     state.recentTasks,
-                    state.inboxItems,
+                    inboxForEntries,
                     projectId,
                     state.projectConfirmed,
-                    state.projects,
                 ),
             )
         }
@@ -220,12 +233,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val projectId = _uiState.value.selectedProjectId ?: return false
         sessionStore.selectedProjectId = projectId
         sessionStore.projectConfirmed = true
+        sessionStore.retainRecentTasksForProject(projectId)
+        val recent = scopedRecentTasks(sessionStore.recentTasks(), projectId)
         _uiState.update {
             it.copy(
                 projectConfirmed = true,
+                selectedProjectId = projectId,
                 pendingTranscript = null,
                 textMessage = null,
-                answerEntries = answerEntriesFor(it.recentTasks, it.inboxItems, projectId, true, it.projects),
+                recentTasks = recent,
+                inboxItems = emptyList(),
+                answerEntries = answerEntriesFor(recent, emptyList(), projectId, true),
             )
         }
         InboxPollWorker.start(getApplication())
@@ -236,6 +254,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun resetProjectSelection() {
         sessionStore.projectConfirmed = false
         _uiState.update { it.copy(projectConfirmed = false) }
+    }
+
+    fun revertProjectSelectionIfUnconfirmed() {
+        val savedProjectId = sessionStore.selectedProjectId
+        if (_uiState.value.selectedProjectId == savedProjectId) return
+        _uiState.update { state ->
+            state.copy(
+                selectedProjectId = savedProjectId,
+                answerEntries = answerEntriesFor(
+                    state.recentTasks,
+                    scopedInboxItems(state.inboxItems, savedProjectId),
+                    savedProjectId,
+                    state.projectConfirmed,
+                ),
+            )
+        }
+        if (sessionStore.projectConfirmed && !savedProjectId.isNullOrBlank()) {
+            refreshInbox(silent = true, force = true)
+        }
     }
 
     private fun appendSegment(segment: String) {
@@ -278,7 +315,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshInbox(silent: Boolean = false, force: Boolean = false) {
-        if (!_uiState.value.projectConfirmed) return
+        if (!sessionStore.projectConfirmed) return
         val now = System.currentTimeMillis()
         if (silent && !force && now - lastInboxRefreshAt < 30_000) return
         lastInboxRefreshAt = now
@@ -287,31 +324,44 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (!silent) {
                     _uiState.update { it.copy(isLoadingInbox = true, inboxError = null) }
                 }
-                val items = taskRepository.fetchInbox()
+                val scopedProjectId = sessionStore.selectedProjectId?.takeIf { sessionStore.projectConfirmed }
+                val items = scopedInboxItems(
+                    taskRepository.fetchInbox(scopedProjectId),
+                    scopedProjectId,
+                )
                 InboxPollWorker.notifyNewAnswers(getApplication(), sessionStore, items)
-                syncRecentTasksFromInbox(items)
-                val recent = sessionStore.recentTasks()
+                val recent = scopedRecentTasks(
+                    sessionStore.recentTasks(),
+                    scopedProjectId,
+                )
                 val entries = answerEntriesFor(
                     recent,
                     items,
-                    _uiState.value.selectedProjectId,
-                    _uiState.value.projectConfirmed,
-                    _uiState.value.projects,
+                    scopedProjectId,
+                    sessionStore.projectConfirmed,
                 )
-                _uiState.update {
-                    it.copy(
+                _uiState.update { state ->
+                    val applySessionInbox = state.selectedProjectId == scopedProjectId
+                    state.copy(
                         isLoadingInbox = false,
                         recentTasks = recent,
-                        inboxItems = items,
-                        answerEntries = entries,
-                        inboxError = null,
-                        statusMessage = if (!silent && it.projectConfirmed) {
-                            when {
-                                entries.any { entry -> entry is AnswerEntry.Pending } -> "Waiting for answer"
-                                else -> "${entries.size} answers"
-                            }
+                        inboxItems = if (applySessionInbox) items else state.inboxItems,
+                        answerEntries = if (applySessionInbox) {
+                            entries
                         } else {
-                            it.statusMessage
+                            answerEntriesFor(
+                                scopedRecentTasks(state.recentTasks, state.selectedProjectId),
+                                emptyList(),
+                                state.selectedProjectId,
+                                state.projectConfirmed,
+                            )
+                        },
+                        inboxError = null,
+                        statusMessage = if (!silent && state.projectConfirmed && applySessionInbox) {
+                            val readyCount = entries.count { entry -> entry is AnswerEntry.Ready }
+                            if (readyCount > 0) "$readyCount new" else state.statusMessage
+                        } else {
+                            state.statusMessage
                         },
                     )
                 }
@@ -322,7 +372,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         isLoadingInbox = false,
                         inboxError = message,
                         statusMessage = if (it.projectConfirmed) "Inbox failed" else it.statusMessage,
-                        answerEntries = answerEntriesFor(it.recentTasks, emptyList(), it.selectedProjectId, it.projectConfirmed, it.projects),
+                        answerEntries = answerEntriesFor(it.recentTasks, emptyList(), it.selectedProjectId, it.projectConfirmed),
                     )
                 }
             }
@@ -348,7 +398,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         detailError = null,
                         readTaskIds = sessionStore.readTaskIds(),
                         inboxItems = it.inboxItems,
-                        answerEntries = answerEntriesFor(it.recentTasks, it.inboxItems, it.selectedProjectId, it.projectConfirmed, it.projects),
+                        answerEntries = answerEntriesFor(it.recentTasks, it.inboxItems, it.selectedProjectId, it.projectConfirmed),
                     )
                 }
                 if (detail.status == "ready") {
@@ -365,7 +415,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 title = recent.title,
                                 request = recent.title,
                                 answer = null,
-                                status = "pending",
+                                status = "sent",
                                 createdAt = null,
                                 answeredAt = null,
                                 durationMs = null,
@@ -392,6 +442,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun clearActiveDetail() {
         stopSpeech()
         _uiState.update { it.copy(activeDetail = null, detailError = null) }
+    }
+
+    fun sendTaskComment(taskId: Int, text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isSendingComment = true, statusMessage = "Sending comment...") }
+                taskRepository.postTaskComment(taskId, trimmed)
+                loadAnswerDetail(taskId, silent = true)
+                _uiState.update {
+                    it.copy(
+                        isSendingComment = false,
+                        statusMessage = "Comment sent",
+                    )
+                }
+                refreshInbox(silent = true)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSendingComment = false,
+                        statusMessage = "Comment failed: ${e.message}",
+                    )
+                }
+            }
+        }
     }
 
     fun toggleSpeech(text: String) {
@@ -444,38 +520,50 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun connectFromQr(raw: String, resetProject: Boolean = true): Boolean {
-        val config = ConnectConfigParser.parse(raw) ?: run {
-            _uiState.update { it.copy(statusMessage = "Invalid QR") }
-            return false
-        }
-        sessionStore.backendHost = config.host
-        sessionStore.backendPort = config.port
-        sessionStore.apiKey = config.apiKey
-        sessionStore.useHttps = config.secure
-        sessionStore.isConfigured = true
-        if (resetProject) {
-            sessionStore.projectConfirmed = false
-            sessionStore.selectedProjectId = null
-        }
-        _uiState.update {
-            val projectUpdate = if (resetProject) {
-                it.copy(projectConfirmed = false, selectedProjectId = null)
-            } else {
-                it
+    fun setStatusMessage(message: String) {
+        _uiState.update { it.copy(statusMessage = message) }
+    }
+
+    fun connectFromQr(
+        raw: String,
+        resetProject: Boolean = true,
+        onDone: (Boolean) -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(statusMessage = "Reading QR…") }
+            val config = ConnectConfigParser.resolve(raw) ?: run {
+                _uiState.update { it.copy(statusMessage = "Invalid QR") }
+                onDone(false)
+                return@launch
             }
-            projectUpdate.copy(
-                backendHost = config.host,
-                backendPort = config.port,
-                apiKey = config.apiKey,
-                useHttps = config.secure,
-                isConfigured = true,
-                showManualSetup = false,
-                statusMessage = if (resetProject) "Connected" else "Connection updated",
-            )
+            sessionStore.backendHost = config.host
+            sessionStore.backendPort = config.port
+            sessionStore.apiKey = config.apiKey
+            sessionStore.useHttps = config.secure
+            sessionStore.isConfigured = true
+            if (resetProject) {
+                sessionStore.projectConfirmed = false
+                sessionStore.selectedProjectId = null
+            }
+            _uiState.update {
+                val projectUpdate = if (resetProject) {
+                    it.copy(projectConfirmed = false, selectedProjectId = null)
+                } else {
+                    it
+                }
+                projectUpdate.copy(
+                    backendHost = config.host,
+                    backendPort = config.port,
+                    apiKey = config.apiKey,
+                    useHttps = config.secure,
+                    isConfigured = true,
+                    showManualSetup = false,
+                    statusMessage = if (resetProject) "Connected" else "Connection updated",
+                )
+            }
+            refreshProjects(silent = true, autoConfirm = false)
+            onDone(true)
         }
-        refreshProjects(silent = true, autoConfirm = false)
-        return true
     }
 
     fun saveSettings(resetProject: Boolean = true) {
@@ -560,15 +648,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         ),
                     )
                 }
-                val recent = sessionStore.recentTasks()
+                val recent = scopedRecentTasks(sessionStore.recentTasks(), projectId)
                 _uiState.update {
                     it.copy(
                         recentTasks = recent,
-                        answerEntries = answerEntriesFor(recent, it.inboxItems, it.selectedProjectId, it.projectConfirmed, it.projects),
+                        answerEntries = answerEntriesFor(recent, it.inboxItems, projectId, true),
                         lastTranscript = text,
                         pendingTranscript = null,
                         isSending = false,
-                        statusMessage = "Sent — waiting for answer",
+                        statusMessage = "Task created",
                     )
                 }
                 refreshInbox(silent = true, force = true)
@@ -586,31 +674,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         inboxItems: List<InboxItem>,
         selectedProjectId: String? = _uiState.value.selectedProjectId,
         projectConfirmed: Boolean = _uiState.value.projectConfirmed,
-        projects: List<Project> = _uiState.value.projects,
     ): List<AnswerEntry> {
-        val projectId = selectedProjectId?.takeIf { projectConfirmed }
-        return buildAnswerEntries(recentTasks, inboxItems, projectId, projects)
+        if (!projectConfirmed) return emptyList()
+        val projectId = selectedProjectId?.takeIf { it.isNotBlank() } ?: return emptyList()
+        return buildAnswerEntries(recentTasks, inboxItems, projectId)
     }
 
-    private fun syncRecentTasksFromInbox(items: List<InboxItem>) {
-        val state = _uiState.value
-        val projectId = state.selectedProjectId?.takeIf { state.projectConfirmed }
-        val scopedItems = if (projectId.isNullOrBlank()) {
-            items
-        } else {
-            items.filter { item -> taskBelongsToProject(item.projectId, projectId, state.projects) }
-        }
-        scopedItems.asReversed().forEach { item ->
-            sessionStore.addRecentTask(
-                RecentTask(
-                    taskId = item.taskId,
-                    title = item.title,
-                    projectId = item.projectId,
-                    projectName = item.projectName,
-                    createdAt = item.createdAt,
-                ),
-            )
-        }
+    private fun scopedRecentTasks(
+        recentTasks: List<RecentTask>,
+        projectId: String?,
+    ): List<RecentTask> {
+        if (projectId.isNullOrBlank()) return emptyList()
+        return recentTasks.filter { taskBelongsToProject(it.projectId, projectId) }
+    }
+
+    private fun scopedInboxItems(
+        inboxItems: List<InboxItem>,
+        projectId: String?,
+    ): List<InboxItem> {
+        if (projectId.isNullOrBlank()) return emptyList()
+        return inboxItems.filter { taskBelongsToProject(it.projectId, projectId) }
     }
 
     override fun onCleared() {

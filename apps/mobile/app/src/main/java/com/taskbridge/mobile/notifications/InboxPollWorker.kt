@@ -27,10 +27,11 @@ class InboxPollWorker(
             projectId.isNullOrBlank() || it.projectId == projectId
         }
         try {
-            val items = TaskRepository(session).fetchInbox()
+            val items = TaskRepository(session).fetchInbox(projectId)
             notifyNewAnswers(applicationContext, session, items)
             shouldContinue = items.any {
-                it.status == "pending" && (projectId.isNullOrBlank() || it.projectId == projectId)
+                (it.status == "sent" || it.status == "pending") &&
+                    (projectId.isNullOrBlank() || it.projectId == projectId)
             }
         } catch (_: Exception) {
         }

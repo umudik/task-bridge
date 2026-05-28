@@ -1,6 +1,7 @@
 package com.taskbridge.mobile.data
 
 import com.taskbridge.mobile.domain.models.AnswerDetail
+import com.taskbridge.mobile.domain.models.TaskComment
 import com.taskbridge.mobile.domain.models.Project
 import com.taskbridge.mobile.domain.models.InboxItem
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +31,6 @@ class TaskRepository(
                         Project(
                             id = id,
                             name = name,
-                            vikunjaProjectId = item.optInt("vikunjaProjectId", 0),
                             repoPath = item.optString("repoPath").takeIf { it.isNotBlank() },
                         ),
                     )
@@ -45,7 +45,6 @@ class TaskRepository(
         Project(
             id = json.optString("id", projectId),
             name = json.optString("name"),
-            vikunjaProjectId = json.optInt("vikunjaProjectId", 0),
             repoPath = json.optString("repoPath").takeIf { it.isNotBlank() } ?: repoPath.takeIf { it.isNotBlank() },
         )
     }
@@ -79,8 +78,13 @@ class TaskRepository(
         )
     }
 
-    suspend fun fetchInbox(): List<InboxItem> = withContext(Dispatchers.IO) {
-        val json = getJson("/inbox")
+    suspend fun fetchInbox(projectId: String? = null): List<InboxItem> = withContext(Dispatchers.IO) {
+        val path = if (projectId.isNullOrBlank()) {
+            "/inbox"
+        } else {
+            "/inbox?projectId=${java.net.URLEncoder.encode(projectId, Charsets.UTF_8.name())}"
+        }
+        val json = getJson(path)
         val items = json.optJSONArray("items") ?: JSONArray()
         buildList {
             for (index in 0 until items.length()) {
@@ -93,7 +97,7 @@ class TaskRepository(
                     InboxItem(
                         taskId = taskId,
                         title = item.optString("title"),
-                        preview = item.optString("preview"),
+                        preview = item.optString("preview").ifBlank { null },
                         status = item.optString("status", "pending"),
                         updatedAt = item.optString("updatedAt").ifBlank { null },
                         createdAt = item.optString("createdAt").ifBlank { null },
@@ -112,16 +116,56 @@ class TaskRepository(
             taskId = json.optInt("taskId", taskId),
             title = json.optString("title"),
             request = json.optString("request"),
-            answer = json.optString("answer").ifBlank { null },
+            description = json.optString("description").ifBlank { null },
+            acceptanceCriteria = json.optString("acceptanceCriteria").ifBlank { null },
+            aiSummary = json.optString("aiSummary").ifBlank { null },
+            answer = json.optString("aiSummary").ifBlank { json.optString("answer").ifBlank { null } },
             status = json.optString("status", "pending"),
             createdAt = json.optString("createdAt").ifBlank { null },
+            updatedAt = json.optString("updatedAt").ifBlank { null },
             answeredAt = json.optString("answeredAt").ifBlank { null },
             durationMs = if (json.has("durationMs") && !json.isNull("durationMs")) json.getLong("durationMs") else null,
             createdBy = json.optString("createdBy", "You"),
             answeredBy = json.optString("answeredBy").ifBlank { null },
             projectId = json.optString("projectId").ifBlank { null },
             projectName = json.optString("projectName").ifBlank { null },
+            comments = parseComments(json.optJSONArray("comments")),
         )
+    }
+
+    suspend fun postTaskComment(taskId: Int, text: String): Unit = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("text", text)
+            .put("by", "mobile")
+        postJson("/tasks/$taskId/comments", body)
+    }
+
+    private fun parseComments(array: JSONArray?): List<TaskComment> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                val id = item.optString("id")
+                val body = item.optString("body").ifBlank { item.optString("text") }
+                if (id.isBlank() || body.isBlank()) continue
+                val authorType = item.optString("authorType")
+                val role = when {
+                    authorType == "human" -> "user"
+                    authorType == "ai" -> "assistant"
+                    else -> item.optString("role", "user")
+                }
+                add(
+                    TaskComment(
+                        id = id,
+                        by = item.optString("authorId").ifBlank { item.optString("by", "You") },
+                        text = body,
+                        at = item.optString("at"),
+                        role = role,
+                        type = item.optString("type").ifBlank { "note" },
+                    ),
+                )
+            }
+        }
     }
 
     private fun authRequest(path: String): Request.Builder {

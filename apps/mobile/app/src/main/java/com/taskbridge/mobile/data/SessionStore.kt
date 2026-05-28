@@ -3,6 +3,7 @@ package com.taskbridge.mobile.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.taskbridge.mobile.domain.models.RecentTask
+import com.taskbridge.mobile.domain.models.taskBelongsToProject
 
 class SessionStore(context: Context) {
     private val prefs: SharedPreferences =
@@ -88,6 +89,24 @@ class SessionStore(context: Context) {
     fun addRecentTask(task: RecentTask) {
         val updated = (listOf(task) + recentTasks().filter { it.taskId != task.taskId }).take(10)
         val encoded = updated.joinToString("\n") { task ->
+            listOf(
+                task.taskId.toString(),
+                task.title.replace('|', ' '),
+                task.projectId?.replace('|', ' ') ?: "",
+                task.projectName?.replace('|', ' ') ?: "",
+                task.createdAt?.replace('|', ' ') ?: "",
+            ).joinToString("|")
+        }
+        prefs.edit().putString(KEY_RECENT_TASKS, encoded).apply()
+    }
+
+    fun retainRecentTasksForProject(projectId: String) {
+        val existing = recentTasks()
+        val kept = existing.filter { task ->
+            taskBelongsToProject(task.projectId, projectId)
+        }
+        if (kept.size == existing.size) return
+        val encoded = kept.joinToString("\n") { task ->
             listOf(
                 task.taskId.toString(),
                 task.title.replace('|', ' '),

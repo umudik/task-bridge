@@ -94,11 +94,6 @@ fun AnswersListScreen(
                             style = MaterialTheme.typography.headlineMedium,
                             color = TextPrimary,
                         )
-                        Text(
-                            text = "${state.answerEntries.size} tasks",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted,
-                        )
                     }
                 }
 
@@ -121,9 +116,9 @@ fun AnswersListScreen(
                     return@Column
                 }
 
-                if (state.answerEntries.isEmpty()) {
+                if (state.answerEntries.none { it is AnswerEntry.Ready }) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No tasks yet", color = TextMuted, style = MaterialTheme.typography.bodyLarge)
+                        Text("No comments yet", color = TextMuted, style = MaterialTheme.typography.bodyLarge)
                     }
                     return@Column
                 }
@@ -132,24 +127,18 @@ fun AnswersListScreen(
                     state = listState,
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(state.answerEntries, key = { "${it::class.simpleName}-${it.taskId}" }) { entry ->
-                        when (entry) {
-                            is AnswerEntry.Pending -> ListRow(
-                                title = textSnippet(entry.title),
-                                subtitle = "Waiting",
-                                subtitleColor = AccentSoft,
-                                onClick = { onOpenTask(entry.taskId) },
-                            )
-                            is AnswerEntry.Ready -> ListRow(
+                    items(
+                        state.answerEntries.filterIsInstance<AnswerEntry.Ready>(),
+                        key = { "ready-${it.taskId}" },
+                    ) { entry ->
+                            ListRow(
                                 title = textSnippet(entry.item.title),
-                                subtitle = textSnippet(
-                                    if (entry.item.preview.isNotBlank()) entry.item.preview else entry.item.title,
-                                ),
-                                subtitleColor = TextSecondary,
+                                preview = entry.item.preview?.takeIf { preview ->
+                                    preview.isNotBlank() && preview != entry.item.title
+                                }?.let { textSnippet(it) },
                                 isRead = entry.taskId in state.readTaskIds,
                                 onClick = { onOpenTask(entry.taskId) },
                             )
-                        }
                     }
                 }
             }
@@ -169,8 +158,7 @@ fun AnswersListScreen(
 @Composable
 private fun ListRow(
     title: String,
-    subtitle: String,
-    subtitleColor: androidx.compose.ui.graphics.Color,
+    preview: String?,
     isRead: Boolean = false,
     onClick: () -> Unit,
 ) {
@@ -189,17 +177,19 @@ private fun ListRow(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 color = TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = subtitleColor,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (preview != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = preview,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (isRead) {
             Text(

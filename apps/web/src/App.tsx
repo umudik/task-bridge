@@ -1,0 +1,58 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+import { ProjectLayout } from "@/components/layout/ProjectLayout";
+import { BoardPage } from "@/pages/BoardPage";
+import { InboxPage } from "@/pages/InboxPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { MobilePage } from "@/pages/MobilePage";
+import { ProjectsPage } from "@/pages/ProjectsPage";
+import { TasksPage } from "@/pages/TasksPage";
+import { TaskPage } from "@/pages/TaskPage";
+import { loadSession } from "@/lib/session";
+
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const session = loadSession();
+  if (!session) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/projects"
+        element={
+          <RequireAuth>
+            <ProjectsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/projects/:projectId"
+        element={
+          <RequireAuth>
+            <ProjectLayout />
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Navigate to="board" replace />} />
+        <Route path="board" element={<BoardPage />} />
+        <Route path="tasks" element={<TasksPage />} />
+        <Route path="tasks/:taskId" element={<TaskPage />} />
+        <Route path="inbox" element={<InboxPage />} />
+        <Route path="mobile" element={<MobilePage />} />
+      </Route>
+      <Route path="/" element={<RootRedirect />} />
+      <Route path="*" element={<RootRedirect />} />
+    </Routes>
+  );
+}
+
+function RootRedirect() {
+  const session = loadSession();
+  if (!session) return <Navigate to="/login" replace />;
+  if (session.projectId) {
+    return <Navigate to={`/projects/${session.projectId}/board`} replace />;
+  }
+  return <Navigate to="/projects" replace />;
+}

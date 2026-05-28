@@ -6,7 +6,6 @@ import {
   refreshProjectRegistry,
   updateProjectRepoPath,
 } from "../services/project-registry.js";
-import type { VikunjaClient } from "../services/vikunja-client.js";
 
 function assertBackendAuth(request: FastifyRequest) {
   const apiKey = request.headers["x-api-key"];
@@ -23,10 +22,10 @@ const projectIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
-export async function projectRoutes(app: FastifyInstance, vikunja: VikunjaClient) {
+export async function projectRoutes(app: FastifyInstance) {
   app.get("/projects", async (request) => {
     assertBackendAuth(request);
-    await refreshProjectRegistry(vikunja);
+    await refreshProjectRegistry();
     return { projects: listPublicProjects() };
   });
 
@@ -34,14 +33,13 @@ export async function projectRoutes(app: FastifyInstance, vikunja: VikunjaClient
     assertBackendAuth(request);
     const { id } = projectIdParamsSchema.parse(request.params);
     const body = updateRepoPathSchema.parse(request.body);
-    const updated = await updateProjectRepoPath(id, body.repoPath, vikunja);
+    const updated = await updateProjectRepoPath(id, body.repoPath);
     if (!updated) {
       return reply.status(404).send({ error: "Project not found" });
     }
     return {
       id: updated.id,
       name: updated.name,
-      vikunjaProjectId: updated.vikunjaProjectId,
       repoPath: updated.repoPath,
     };
   });

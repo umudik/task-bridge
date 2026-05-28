@@ -11,7 +11,8 @@ export function extractProjectId(description?: string | null): string | null {
   return match?.[1]?.trim() || null;
 }
 
-export function stripProjectMarker(description?: string | null): string {
-  if (!description) return "";
-  return description.replace(PROJECT_TAG_PATTERN, "").trim();
+export function stripProjectMarker(description?: string | null): string | null {
+  if (!description) return null;
+  const stripped = description.replace(PROJECT_TAG_PATTERN, "").trim();
+  return stripped || null;
 }

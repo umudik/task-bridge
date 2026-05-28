@@ -3,13 +3,11 @@
     {
       "id": "task-bridge",
       "name": "Task Bridge",
-      "vikunjaProjectId": 1,
       "repoPath": "C:\\Users\\seyit\\OneDrive\\Documents\\GitHub\\task-bridge"
     },
     {
       "id": "fookie",
       "name": "fookie",
-      "vikunjaProjectId": 3,
       "repoPath": "C:\\Users\\seyit\\OneDrive\\Documents\\GitHub\\fookie"
     }
   ]

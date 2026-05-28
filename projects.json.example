@@ -1,8 +1,9 @@
 {
   "projects": [
     {
-      "vikunjaProjectId": 2,
-      "repoPath": "C:\\Users\\you\\Documents\\GitHub\\other-repo"
+      "id": "task-bridge",
+      "name": "Task Bridge",
+      "repoPath": "C:\\Users\\seyit\\OneDrive\\Documents\\GitHub\\task-bridge"
     }
   ]
 }

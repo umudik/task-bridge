@@ -33,7 +33,7 @@ class NotificationHelper(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val preview = item.preview.take(120).ifBlank { "Tap to read" }
+        val preview = item.preview?.take(120)?.takeIf { it.isNotBlank() } ?: "Tap to read"
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Answer ready")

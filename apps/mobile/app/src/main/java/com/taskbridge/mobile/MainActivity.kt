@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,10 +58,15 @@ class MainActivity : ComponentActivity() {
 
     private val qrLauncher = registerForActivityResult(ScanContract()) { result ->
         val raw = result.contents
-        if (raw.isNullOrBlank()) return@registerForActivityResult
-        if (viewModel.connectFromQr(raw, resetProject = true)) {
-            pendingNavAfterConnect?.invoke()
-            pendingNavAfterConnect = null
+        if (raw.isNullOrBlank()) {
+            viewModel.setStatusMessage("QR scan cancelled")
+            return@registerForActivityResult
+        }
+        viewModel.connectFromQr(raw, resetProject = true) { success ->
+            if (success) {
+                pendingNavAfterConnect?.invoke()
+                pendingNavAfterConnect = null
+            }
         }
     }
 
@@ -94,11 +100,6 @@ class MainActivity : ComponentActivity() {
                     composable("connect") {
                         ConnectScreen(
                             state = state,
-                            onHostChange = viewModel::updateBackendHost,
-                            onPortChange = { port ->
-                                port.toIntOrNull()?.let { viewModel.updateBackendPort(it) }
-                            },
-                            onApiKeyChange = viewModel::updateApiKey,
                             onScanQr = {
                                 pendingNavAfterConnect = {
                                     navController.navigate("projects") {
@@ -107,16 +108,11 @@ class MainActivity : ComponentActivity() {
                                 }
                                 requestCameraAndScan()
                             },
-                            onManualConnect = {
-                                viewModel.saveSettings(resetProject = true)
-                                navController.navigate("projects") {
-                                    popUpTo("connect") { inclusive = true }
-                                }
-                            },
                             onSelectProject = {
                                 viewModel.refreshProjects()
                                 navController.navigate("projects")
                             },
+                            onNavigateSettings = { navController.navigate("settings") },
                         )
                     }
                     composable("settings") {
@@ -147,6 +143,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("projects") {
+                        DisposableEffect(Unit) {
+                            onDispose {
+                                viewModel.revertProjectSelectionIfUnconfirmed()
+                            }
+                        }
                         ProjectSelectScreen(
                             state = state,
                             onSelect = viewModel::selectProject,
@@ -212,8 +213,7 @@ class MainActivity : ComponentActivity() {
                                 navController.popBackStack()
                             },
                             onLoad = viewModel::loadAnswerDetail,
-                            onPoll = { id -> viewModel.loadAnswerDetail(id, silent = true) },
-                            onToggleSpeech = viewModel::toggleSpeech,
+                            onSendComment = viewModel::sendTaskComment,
                         )
                     }
                 }
@@ -259,8 +259,10 @@ class MainActivity : ComponentActivity() {
 
     private fun launchQrScanner() {
         val options = ScanOptions()
-        options.setPrompt("Scan QR from /setup")
+        options.setPrompt("Scan QR from web Mobile page")
         options.setBeepEnabled(false)
+        options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+        options.setOrientationLocked(false)
         qrLauncher.launch(options)
     }
 
