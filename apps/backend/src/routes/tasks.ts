@@ -15,11 +15,10 @@ import {
   type TaskComment,
 } from "../services/bridge-task-store.js";
 import {
-  claimNextAgentTask,
-  enqueueCursorInbox,
-  listPendingAgentItems,
+  claimNextTask,
+  listPendingTasks,
   turnIdForTask,
-} from "../services/inbox-sync.js";
+} from "../services/task-queue.js";
 import { getProjectById, refreshProjectRegistry } from "../services/project-registry.js";
 import { config } from "../config.js";
 
@@ -265,8 +264,6 @@ export async function taskRoutes(app: FastifyInstance) {
       createdBy: "mobile",
     });
 
-    await enqueueCursorInbox(task);
-
     return reply.status(201).send({
       id: task.id,
       title: task.title,
@@ -324,7 +321,7 @@ export async function taskRoutes(app: FastifyInstance) {
   app.post("/worker/claim-next", async (request, reply) => {
     assertBackendAuth(request);
     const body = claimNextBodySchema.parse(request.body ?? {});
-    const claimed = await claimNextAgentTask(body.claimedBy, {
+    const claimed = await claimNextTask(body.claimedBy, {
       projectId: body.projectId,
     });
     if (!claimed) {
@@ -371,7 +368,6 @@ export async function taskRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Task not found" });
     }
     const turnId = turnIdForTask(task);
-    await enqueueCursorInbox(task, turnId);
     return reply.status(201).send({
       taskId: task.id,
       status: consumerStatus(task),
@@ -383,7 +379,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.get("/worker/pending", async (request) => {
     assertBackendAuth(request);
-    const items = await listPendingAgentItems();
+    const items = await listPendingTasks();
     return { items };
   });
 

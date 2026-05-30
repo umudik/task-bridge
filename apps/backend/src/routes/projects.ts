@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { config } from "../config.js";
 import {
+  createProject,
   listPublicProjects,
   refreshProjectRegistry,
   updateProjectRepoPath,
@@ -13,6 +14,17 @@ function assertBackendAuth(request: FastifyRequest) {
     throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
   }
 }
+
+const createProjectSchema = z.object({
+  name: z.string().trim().min(1),
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .optional(),
+  repoPath: z.string().trim().min(1),
+});
 
 const updateRepoPathSchema = z.object({
   repoPath: z.string().min(1),
@@ -27,6 +39,19 @@ export async function projectRoutes(app: FastifyInstance) {
     assertBackendAuth(request);
     await refreshProjectRegistry();
     return { projects: listPublicProjects() };
+  });
+
+  app.post("/projects", async (request, reply) => {
+    assertBackendAuth(request);
+    const body = createProjectSchema.parse(request.body ?? {});
+    const created = await createProject(body);
+    if (created === "duplicate") {
+      return reply.status(409).send({ error: "Project id already exists" });
+    }
+    if (!created) {
+      return reply.status(400).send({ error: "Invalid project" });
+    }
+    return reply.status(201).send(created);
   });
 
   app.put("/projects/:id/repo-path", async (request, reply) => {

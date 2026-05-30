@@ -32,6 +32,10 @@
     @apply border-border;
   }
 
+  html {
+    overflow-y: scroll;
+  }
+
   html,
   body,
   #root {

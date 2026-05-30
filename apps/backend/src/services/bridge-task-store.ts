@@ -71,7 +71,7 @@ type StoreFile = {
 
 const storePath =
   process.env.BRIDGE_TASKS_PATH?.trim() ||
-  path.resolve(process.cwd(), "../../worker/bridge-tasks.json");
+  path.resolve(process.cwd(), "../../data/bridge-tasks.json");
 
 function normalizeStatus(status: string): TaskStatus {
   if (status === "claimed" || status === "in_progress") return "in_progress";

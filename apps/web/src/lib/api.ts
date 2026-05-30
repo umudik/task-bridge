@@ -148,6 +148,24 @@ export async function fetchProjects(session: Session) {
   return data.projects ?? [];
 }
 
+export type CreateProjectInput = {
+  name: string;
+  id?: string;
+  repoPath: string;
+};
+
+export async function createProject(session: Session, input: CreateProjectInput) {
+  return request<Project>(session, "/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: input.name,
+      id: input.id?.trim() || undefined,
+      repoPath: input.repoPath,
+    }),
+  });
+}
+
 export type CreateTaskInput = {
   projectId: string;
   title: string;

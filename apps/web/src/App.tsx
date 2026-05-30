@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ProjectLayout } from "@/components/layout/ProjectLayout";
-import { BoardPage } from "@/pages/BoardPage";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { MobilePage } from "@/pages/MobilePage";
@@ -35,8 +34,8 @@ export function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="board" replace />} />
-        <Route path="board" element={<BoardPage />} />
+        <Route index element={<Navigate to="tasks" replace />} />
+        <Route path="board" element={<Navigate to="tasks" replace />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="tasks/:taskId" element={<TaskPage />} />
         <Route path="inbox" element={<InboxPage />} />
@@ -52,7 +51,7 @@ function RootRedirect() {
   const session = loadSession();
   if (!session) return <Navigate to="/login" replace />;
   if (session.projectId) {
-    return <Navigate to={`/projects/${session.projectId}/board`} replace />;
+    return <Navigate to={`/projects/${session.projectId}/tasks`} replace />;
   }
   return <Navigate to="/projects" replace />;
 }

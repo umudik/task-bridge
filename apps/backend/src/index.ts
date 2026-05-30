@@ -10,7 +10,6 @@ import { taskRoutes } from "./routes/tasks.js";
 import { webRoutes } from "./routes/web.js";
 import { refreshProjectRegistry, initProjectRegistry } from "./services/project-registry.js";
 import { resolveConnectTarget } from "./services/connect-target.js";
-import { reconcileCursorInbox } from "./services/inbox-sync.js";
 
 const logger = createLogger("backend");
 
@@ -33,10 +32,6 @@ async function main() {
 
   await initProjectRegistry();
   await refreshProjectRegistry();
-  const pendingCount = await reconcileCursorInbox();
-  if (pendingCount > 0) {
-    logger.info(`Agent queue: ${pendingCount} pending task(s)`);
-  }
 
   await healthRoutes(app);
   await connectRoutes(app);

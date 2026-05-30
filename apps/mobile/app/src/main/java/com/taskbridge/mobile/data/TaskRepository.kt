@@ -18,6 +18,7 @@ class TaskRepository(
     private val sessionStore: SessionStore,
     private val http: OkHttpClient = defaultClient(),
 ) {
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     suspend fun fetchProjects(): List<Project> = withContext(Dispatchers.IO) {
         val json = getJson("/projects")
         val items = json.optJSONArray("projects") ?: JSONArray()
@@ -51,7 +52,7 @@ class TaskRepository(
 
     private fun putJson(path: String, body: JSONObject): JSONObject {
         val request = authRequest(path)
-            .put(body.toString().toRequestBody("application/json".toMediaType()))
+            .put(body.toString().toRequestBody(jsonMediaType))
             .build()
         val response = http.newCall(request).execute()
         val raw = response.body?.string() ?: "{}"
@@ -195,7 +196,7 @@ class TaskRepository(
 
     private fun postJson(path: String, body: JSONObject): JSONObject {
         val request = authRequest(path)
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .post(body.toString().toRequestBody(jsonMediaType))
             .build()
         val response = http.newCall(request).execute()
         val raw = response.body?.string() ?: "{}"

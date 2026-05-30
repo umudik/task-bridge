@@ -10,7 +10,6 @@ lerna-debug.log*
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Runtime data
-data/
 pids
 *.pid
 *.seed
@@ -157,7 +156,10 @@ apps/mobile/local.properties
 .idea/
 *.iml
 
-# Worker runtime
-worker/agent-state.json
-worker/state.json
-worker/bridge-tasks.json
+# Backend runtime
+.state/
+data/bridge-tasks.json
+data/bridge.db
+data/bridge.db-*
+data/bridge-test.db
+worker/

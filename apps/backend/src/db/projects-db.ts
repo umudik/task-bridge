@@ -73,6 +73,20 @@ export function upsertProjectRow(id: string, name: string, repoPath: string) {
     .run(id.trim(), name.trim() || id.trim(), repoPath.trim());
 }
 
+export function insertProjectRow(id: string, name: string, repoPath: string): boolean {
+  try {
+    getProjectsDb()
+      .prepare(
+        `INSERT INTO projects (id, name, repo_path, updated_at)
+         VALUES (?, ?, ?, datetime('now'))`,
+      )
+      .run(id.trim(), name.trim() || id.trim(), repoPath.trim());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function updateProjectRepoPathRow(id: string, repoPath: string): boolean {
   const result = getProjectsDb()
     .prepare(

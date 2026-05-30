@@ -8,14 +8,10 @@ services:
       BACKEND_API_KEY: ${BACKEND_API_KEY:-dev-key}
       NGROK_INSPECTOR_URL: http://ngrok:4040
       DATABASE_PATH: /app/data/bridge.db
-      BRIDGE_PROJECTS_PATH: /app/projects.json
-      BRIDGE_TASKS_PATH: /app/worker/bridge-tasks.json
-      CURSOR_INBOX_PATH: /app/worker/cursor-inbox.json
-      WORKER_REPO_PATH: ${WORKER_REPO_PATH:-}
+      BRIDGE_TASKS_PATH: /app/data/bridge-tasks.json
     volumes:
       - bridge_data:/app/data
-      - ./projects.json:/app/projects.json:ro
-      - ./worker:/app/worker
+      - ./data:/app/data
     ports:
       - "3001:3000"
     restart: unless-stopped

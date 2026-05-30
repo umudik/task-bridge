@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { ExpandableMarkdown } from "@/components/ExpandableMarkdown";
 import { MarkdownView } from "@/components/MarkdownView";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -112,7 +113,7 @@ export function TaskPage() {
             </CardHeader>
             <CardContent className="pt-0">
               {description?.trim() ? (
-                <MarkdownView content={description} />
+                <ExpandableMarkdown content={description} />
               ) : (
                 <p className="text-sm text-muted-foreground">No description yet.</p>
               )}
@@ -124,7 +125,17 @@ export function TaskPage() {
               <CardTitle className="text-base font-semibold">Comments</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
-              <div>
+              {comments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No comments yet.</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {comments.map((comment) => (
+                    <CommentRow key={comment.id} comment={comment} />
+                  ))}
+                </div>
+              )}
+
+              <div className="border-t border-border pt-4">
                 <Textarea
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
@@ -152,16 +163,6 @@ export function TaskPage() {
                   </Button>
                 </div>
               </div>
-
-              {comments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No comments yet.</p>
-              ) : (
-                <div className="divide-y divide-border border-t border-border pt-4">
-                  {comments.map((comment) => (
-                    <CommentRow key={comment.id} comment={comment} />
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
         </>

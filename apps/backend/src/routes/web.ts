@@ -40,7 +40,6 @@ export async function webRoutes(app: FastifyInstance) {
   app.get("/app", async (_request, reply) => reply.redirect("/app/login"));
   app.get("/app/login", spa);
   app.get("/app/projects", spa);
-  app.get("/app/projects/:projectId/board", spa);
   app.get("/app/projects/:projectId/tasks", spa);
   app.get("/app/projects/:projectId/inbox", spa);
   app.get("/app/projects/:projectId/tasks/:taskId", spa);

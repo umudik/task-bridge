@@ -6,8 +6,4 @@ export const config = {
     process.env.DATABASE_PATH?.trim() ||
     process.env.BRIDGE_DB_PATH?.trim() ||
     "",
-  projectsPath:
-    process.env.BRIDGE_PROJECTS_PATH?.trim() ||
-    process.env.PROJECTS_PATH?.trim() ||
-    "",
 };

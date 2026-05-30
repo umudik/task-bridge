@@ -1,21 +1,13 @@
 {
   "name": "task-bridge",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "@cursor/sdk": "^1.0.13"
-  },
   "scripts": {
     "dev": "npm --prefix apps/backend run dev",
     "build": "npm --prefix apps/backend run build",
-    "docker:up": "node scripts/docker-up.mjs",
-    "docker:up:d": "node scripts/docker-up.mjs --detach",
+    "docker:up": "docker compose up --build",
+    "docker:up:d": "docker compose up --build -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "agent": "node scripts/cursor-agent-runner.mjs watch",
-    "agent:once": "node scripts/cursor-agent-runner.mjs once",
-    "task:add": "node scripts/task-add.mjs",
-    "tb": "node scripts/tb.mjs",
     "lint": "npm run lint:backend && npm run lint:mobile",
     "lint:backend": "npm --prefix apps/backend run lint",
     "lint:mobile": "cd apps/mobile && gradlew.bat detekt"

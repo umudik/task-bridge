@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { NavLink, Navigate, Outlet, useNavigate, useParams } from "react-router-dom";
-import { Inbox, LayoutGrid, ListTodo, LogOut, Smartphone } from "lucide-react";
+import { Inbox, ListTodo, LogOut, Smartphone } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -41,7 +41,6 @@ export function ProjectLayout() {
   if (!session) return <Navigate to="/login" replace />;
   if (!projectId) return <Navigate to="/projects" replace />;
 
-  const boardPath = `/projects/${projectId}/board`;
   const tasksPath = `/projects/${projectId}/tasks`;
   const inboxPath = `/projects/${projectId}/inbox`;
   const mobilePath = `/projects/${projectId}/mobile`;
@@ -53,19 +52,18 @@ export function ProjectLayout() {
 
   return (
     <div className="surface-grid min-h-full">
-      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-6 px-4 py-6 md:flex-row md:py-8">
-        <aside className="md:w-64 md:shrink-0">
-          <div className="sticky top-6 space-y-6 rounded-2xl border bg-card/80 p-5 backdrop-blur">
+      <div className="mx-auto grid min-h-full w-full max-w-5xl grid-cols-1 gap-6 px-4 py-6 md:grid-cols-[15rem_minmax(0,1fr)] md:py-8">
+        <aside className="md:sticky md:top-8 md:self-start">
+          <div className="w-full space-y-6 rounded-2xl border bg-card/80 p-5 backdrop-blur">
             <BrandMark />
             <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
               <p className="truncate text-sm font-medium">{session.projectName ?? projectId}</p>
             </div>
             <nav className="space-y-1">
-              <NavItem to={boardPath} label="Board" icon={LayoutGrid} />
               <NavItem to={tasksPath} label="Tasks" icon={ListTodo} />
-              <NavItem to={inboxPath} label="Inbox" icon={Inbox} badge={unread > 0 ? unread : undefined} />
-              <NavItem to={mobilePath} label="Mobile app" icon={Smartphone} />
+              <NavItem to={inboxPath} label="Inbox" icon={Inbox} badge={unread} />
+              <NavItem to={mobilePath} label="Mobile" icon={Smartphone} />
             </nav>
             <Separator />
             <Button
@@ -84,7 +82,7 @@ export function ProjectLayout() {
             </Button>
           </div>
         </aside>
-        <main className="min-w-0 flex-1">
+        <main className="min-w-0 pb-8">
           <Outlet />
         </main>
       </div>
@@ -96,11 +94,11 @@ function NavItem({
   to,
   label,
   icon: Icon,
-  badge,
+  badge = 0,
 }: {
   to: string;
   label: string;
-  icon: typeof LayoutGrid;
+  icon: typeof ListTodo;
   badge?: number;
 }) {
   return (
@@ -108,20 +106,24 @@ function NavItem({
       to={to}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+          "flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
           isActive
             ? "bg-primary/15 text-primary"
             : "text-muted-foreground hover:bg-accent hover:text-foreground",
         )
       }
     >
-      <Icon className="h-4 w-4" />
-      <span className="flex-1">{label}</span>
-      {badge ? (
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
-          {badge}
-        </span>
-      ) : null}
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="flex-1 truncate">{label}</span>
+      <span
+        className={cn(
+          "flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-medium",
+          badge > 0 ? "bg-primary text-primary-foreground" : "invisible",
+        )}
+        aria-hidden={badge <= 0}
+      >
+        {badge > 0 ? badge : 0}
+      </span>
     </NavLink>
   );
 }
