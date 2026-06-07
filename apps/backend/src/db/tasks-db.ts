@@ -67,6 +67,28 @@ function migrate(database: Database.Database) {
     database.exec(`UPDATE tasks SET work_status = 'done' WHERE parent_id IS NOT NULL AND stage_id = 'done'`);
     database.exec(`UPDATE tasks SET work_status = 'todo' WHERE parent_id IS NOT NULL AND (work_status IS NULL OR work_status = '')`);
   }
+  if (!columnExists(database, "tasks", "template_id")) {
+    database.exec(`ALTER TABLE tasks ADD COLUMN template_id TEXT`);
+  }
+  if (!columnExists(database, "tasks", "epic_id")) {
+    database.exec(`ALTER TABLE tasks ADD COLUMN epic_id INTEGER`);
+    database.exec(`
+      UPDATE tasks
+      SET epic_id = parent_id
+      WHERE parent_id IS NOT NULL
+        AND parent_id IN (SELECT id FROM tasks WHERE parent_id IS NULL)
+    `);
+    database.exec(`
+      UPDATE tasks
+      SET epic_id = (
+        SELECT parent.parent_id
+        FROM tasks parent
+        WHERE parent.id = tasks.parent_id
+          AND parent.parent_id IN (SELECT id FROM tasks WHERE parent_id IS NULL)
+      )
+      WHERE epic_id IS NULL AND parent_id IS NOT NULL
+    `);
+  }
 }
 
 function rowToTask(row: Record<string, unknown>): BridgeTask {
@@ -75,6 +97,9 @@ function rowToTask(row: Record<string, unknown>): BridgeTask {
     projectId: String(row.project_id),
     projectName: String(row.project_name),
     parentId: row.parent_id === null || row.parent_id === undefined ? null : Number(row.parent_id),
+    epicId: row.epic_id === null || row.epic_id === undefined ? null : Number(row.epic_id),
+    templateId:
+      row.template_id === null || row.template_id === undefined ? null : String(row.template_id),
     title: String(row.title),
     description: String(row.description),
     acceptanceCriteria: null,
@@ -107,6 +132,8 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
     project_id: task.projectId,
     project_name: task.projectName,
     parent_id: task.parentId,
+    epic_id: task.epicId,
+    template_id: task.templateId,
     title: task.title,
     description: task.description,
     priority: task.priority,
@@ -146,11 +173,11 @@ function importLegacyJson(database: Database.Database) {
 
   const insert = database.prepare(`
     INSERT INTO tasks (
-      id, project_id, project_name, parent_id, title, description, priority, labels_json,
+      id, project_id, project_name, parent_id, epic_id, template_id, title, description, priority, labels_json,
       assignee, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
       claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
     ) VALUES (
-      @id, @project_id, @project_name, @parent_id, @title, @description, @priority, @labels_json,
+      @id, @project_id, @project_name, @parent_id, @epic_id, @template_id, @title, @description, @priority, @labels_json,
       @assignee, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
       @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
     )
@@ -214,11 +241,11 @@ export function upsertTaskRow(task: BridgeTask): void {
     .prepare(
       `
       INSERT INTO tasks (
-        id, project_id, project_name, parent_id, title, description, priority, labels_json,
+        id, project_id, project_name, parent_id, epic_id, template_id, title, description, priority, labels_json,
         assignee, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
         claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
       ) VALUES (
-        @id, @project_id, @project_name, @parent_id, @title, @description, @priority, @labels_json,
+        @id, @project_id, @project_name, @parent_id, @epic_id, @template_id, @title, @description, @priority, @labels_json,
         @assignee, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
         @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
       )
@@ -226,6 +253,8 @@ export function upsertTaskRow(task: BridgeTask): void {
         project_id = excluded.project_id,
         project_name = excluded.project_name,
         parent_id = excluded.parent_id,
+        epic_id = excluded.epic_id,
+        template_id = excluded.template_id,
         title = excluded.title,
         description = excluded.description,
         priority = excluded.priority,

@@ -6,6 +6,13 @@ import { StageInspectorPanel } from "@/components/workflow/StageInspectorPanel";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 import { WorkflowInspectorSidebar } from "@/components/workflow/WorkflowInspectorSidebar";
 import {
+  addChildTemplate,
+  createStageTaskTemplate,
+  createSubtaskTemplate,
+  findTemplateInTree,
+  moveTemplateAmongSiblings,
+} from "@/components/workflow/template-graph-utils";
+import {
   createEmptyStage,
   insertStageAt,
   moveStageBy,
@@ -13,7 +20,7 @@ import {
 } from "@/components/workflow/workflow-utils";
 import { Button } from "@/components/ui/button";
 import { TeamPanel } from "@/components/workflow/TeamPanel";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession } from "@/hooks/useSession";
 import {
   createMember,
@@ -38,6 +45,7 @@ export function WorkflowPage() {
   const [selectedTaskTemplateId, setSelectedTaskTemplateId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarPulse, setSidebarPulse] = useState(0);
+  const [activeTab, setActiveTab] = useState("stages");
   const sidebarPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reload = useCallback(async () => {
     if (!session || !projectId) return;
@@ -64,6 +72,12 @@ export function WorkflowPage() {
       if (sidebarPulseTimerRef.current) clearTimeout(sidebarPulseTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "stages") {
+      setSidebarOpen(false);
+    }
+  }, [activeTab]);
 
   function revealSidebar() {
     if (sidebarPulseTimerRef.current) clearTimeout(sidebarPulseTimerRef.current);
@@ -179,6 +193,64 @@ export function WorkflowPage() {
     setSidebarOpen(false);
   }
 
+  function stageAtSortedIndex(sortedIndex: number) {
+    const sorted = [...stages].sort((a, b) => a.position - b.position);
+    const stage = sorted[sortedIndex];
+    if (!stage) return null;
+    const index = stages.findIndex((item) => item.id === stage.id);
+    if (index < 0) return null;
+    return { stage, index };
+  }
+
+  function addStageTask(sortedIndex: number) {
+    const entry = stageAtSortedIndex(sortedIndex);
+    if (!entry) return;
+    const templates = entry.stage.taskTemplates ?? [];
+    const created = createStageTaskTemplate(entry.stage.title, templates.length);
+    const next = stages.map((item, idx) =>
+      idx === entry.index
+        ? syncStageTemplates({ ...item, taskTemplates: [...templates, created] })
+        : item,
+    );
+    selectNewStage(next, entry.index, created.id);
+  }
+
+  function moveTaskTemplate(sortedIndex: number, templateId: string, delta: -1 | 1) {
+    const entry = stageAtSortedIndex(sortedIndex);
+    if (!entry) return;
+    const templates = entry.stage.taskTemplates ?? [];
+    const next = stages.map((item, idx) =>
+      idx === entry.index
+        ? syncStageTemplates({
+            ...item,
+            taskTemplates: moveTemplateAmongSiblings(templates, templateId, delta),
+          })
+        : item,
+    );
+    markDirty(next);
+  }
+
+  function addSubtask(sortedIndex: number, parentTemplateId: string) {
+    const entry = stageAtSortedIndex(sortedIndex);
+    if (!entry) return;
+    const templates = entry.stage.taskTemplates ?? [];
+    const parent = findTemplateInTree(templates, parentTemplateId);
+    if (!parent) return;
+    const created = createSubtaskTemplate(
+      parent.template.title,
+      parent.template.children?.length ?? 0,
+    );
+    const next = stages.map((item, idx) =>
+      idx === entry.index
+        ? syncStageTemplates({
+            ...item,
+            taskTemplates: addChildTemplate(templates, parentTemplateId, created),
+          })
+        : item,
+    );
+    selectNewStage(next, entry.index, created.id);
+  }
+
   if (!session) return null;
 
   if (loading) {
@@ -209,7 +281,7 @@ export function WorkflowPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="stages" className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 border-b border-white/[0.06] px-5">
           <TabsList className="h-10 bg-transparent p-0">
             <TabsTrigger value="stages" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">
@@ -221,7 +293,7 @@ export function WorkflowPage() {
           </TabsList>
         </div>
 
-        <TabsContent value="stages" className="mt-0 flex min-h-0 flex-1 data-[state=active]:flex">
+        {activeTab === "stages" ? (
           <div className="flex min-h-0 flex-1">
             <WorkflowCanvas
               className="min-h-0 flex-1"
@@ -233,9 +305,14 @@ export function WorkflowPage() {
               onMoveStage={moveStage}
               onSelectStage={(flowIndex) => selectFromCanvas(flowIndex, null)}
               onSelectTaskTemplate={(flowIndex, templateId) => selectFromCanvas(flowIndex, templateId)}
+              onAddStageTask={(flowIndex) => addStageTask(flowIndex)}
+              onAddSubtask={(flowIndex, parentId) => addSubtask(flowIndex, parentId)}
+              onMoveTaskTemplate={(flowIndex, templateId, delta) =>
+                moveTaskTemplate(flowIndex, templateId, delta)
+              }
             />
             <WorkflowInspectorSidebar
-              open={sidebarOpen && editingStage !== null}
+              open={sidebarOpen && (editingStage !== null || selectedTaskTemplateId !== null)}
               pulseKey={sidebarPulse}
               onOpenChange={(next) => {
                 if (!next) closeInspector();
@@ -262,74 +339,74 @@ export function WorkflowPage() {
               ) : null}
             </WorkflowInspectorSidebar>
           </div>
-        </TabsContent>
-
-        <TabsContent value="members" className="mt-0 flex-1 overflow-y-auto">
-          <TeamPanel
-            roles={roles}
-            members={members}
-            onRolesChange={(nextRoles) => {
-              const removed = roles.filter((role) => !nextRoles.includes(role));
-              if (removed.length > 0) {
-                setStages((current) =>
-                  current.map((stage) => ({
-                    ...stage,
-                    autoAssignRole: removed.includes(stage.autoAssignRole ?? "")
-                      ? undefined
-                      : stage.autoAssignRole,
-                    taskTemplates: (stage.taskTemplates ?? []).map((template) => ({
-                      ...template,
-                      assigneeRole: removed.includes(template.assigneeRole ?? "")
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <TeamPanel
+              roles={roles}
+              members={members}
+              onRolesChange={(nextRoles) => {
+                const removed = roles.filter((role) => !nextRoles.includes(role));
+                if (removed.length > 0) {
+                  setStages((current) =>
+                    current.map((stage) => ({
+                      ...stage,
+                      autoAssignRole: removed.includes(stage.autoAssignRole ?? "")
                         ? undefined
-                        : template.assigneeRole,
+                        : stage.autoAssignRole,
+                      taskTemplates: (stage.taskTemplates ?? []).map((template) => ({
+                        ...template,
+                        assigneeRole: removed.includes(template.assigneeRole ?? "")
+                          ? undefined
+                          : template.assigneeRole,
+                      })),
                     })),
-                  })),
-                );
-                void Promise.all(
-                  members
-                    .filter((member) => member.role && removed.includes(member.role))
-                    .map((member) => updateMember(session, projectId, member.id, { role: "" })),
-                ).then((updated) => {
-                  if (updated.length === 0) return;
-                  setMembers((current) =>
-                    current.map((member) => {
-                      const patch = updated.find((item) => item?.id === member.id);
-                      return patch ?? member;
-                    }),
                   );
-                });
-              }
-              setRoles(nextRoles);
-              setDirty(true);
-            }}
-            onCreateMember={async (name) => {
-              try {
-                await handleCreateMember(name);
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Failed to add member");
-              }
-            }}
-            onUpdateMember={async (memberId, patch) => {
-              if (!session) return;
-              try {
-                const updated = await updateMember(session, projectId, memberId, patch);
-                setMembers((current) => current.map((item) => (item.id === memberId ? updated : item)));
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Failed to update member");
-              }
-            }}
-            onDeleteMember={async (id, name) => {
-              if (!session) return;
-              try {
-                await deleteMember(session, projectId, id);
-                setMembers((current) => current.filter((item) => item.id !== id));
-                toast.success(`Deleted "${name}"`);
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Failed to delete member");
-              }
-            }}
-          />
-        </TabsContent>
+                  void Promise.all(
+                    members
+                      .filter((member) => member.role && removed.includes(member.role))
+                      .map((member) => updateMember(session, projectId, member.id, { role: "" })),
+                  ).then((updated) => {
+                    if (updated.length === 0) return;
+                    setMembers((current) =>
+                      current.map((member) => {
+                        const patch = updated.find((item) => item?.id === member.id);
+                        return patch ?? member;
+                      }),
+                    );
+                  });
+                }
+                setRoles(nextRoles);
+                setDirty(true);
+              }}
+              onCreateMember={async (name) => {
+                try {
+                  await handleCreateMember(name);
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Failed to add member");
+                }
+              }}
+              onUpdateMember={async (memberId, patch) => {
+                if (!session) return;
+                try {
+                  const updated = await updateMember(session, projectId, memberId, patch);
+                  setMembers((current) => current.map((item) => (item.id === memberId ? updated : item)));
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Failed to update member");
+                }
+              }}
+              onDeleteMember={async (id, name) => {
+                if (!session) return;
+                try {
+                  await deleteMember(session, projectId, id);
+                  setMembers((current) => current.filter((item) => item.id !== id));
+                  toast.success(`Deleted "${name}"`);
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Failed to delete member");
+                }
+              }}
+            />
+          </div>
+        )}
       </Tabs>
     </div>
   );

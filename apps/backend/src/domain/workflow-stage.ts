@@ -1,8 +1,14 @@
+export type TemplateExecution = "parallel" | "sequential";
+
 export type StageTaskTemplate = {
   id: string;
   title: string;
   description: string;
   assigneeRole?: string;
+  kind?: "task" | "group";
+  execution?: TemplateExecution;
+  dependsOn?: string[];
+  children?: StageTaskTemplate[];
 };
 
 export const SUBTASK_SPAWN_STAGE_ID = "in-progress";
@@ -63,43 +69,80 @@ function resolveTaskDescription(row: Record<string, unknown>): string {
   return "";
 }
 
+function parseTemplateNode(item: unknown, index: number, fallbackTitle: string): StageTaskTemplate | null {
+  if (!item || typeof item !== "object") return null;
+  const row = item as Record<string, unknown>;
+  const id = typeof row.id === "string" && row.id.trim() ? row.id.trim() : `tpl-${index}`;
+  const kind = row.kind === "group" ? "group" : "task";
+  const title = typeof row.title === "string" ? row.title.trim() : "";
+  if (!title && kind === "task") return null;
+  if (!title && kind === "group") {
+    return {
+      id,
+      kind: "group",
+      title: fallbackTitle || "Group",
+      description: "",
+      execution: row.execution === "sequential" ? "sequential" : "parallel",
+      children: parseTaskTemplateNodes(row.children, "Task"),
+    };
+  }
+  const template: StageTaskTemplate = {
+    id,
+    kind,
+    title: title || fallbackTitle,
+    description: resolveTaskDescription(row),
+    execution: row.execution === "sequential" ? "sequential" : "parallel",
+  };
+  if (typeof row.assigneeRole === "string" && row.assigneeRole.trim()) {
+    template.assigneeRole = row.assigneeRole.trim();
+  }
+  if (Array.isArray(row.dependsOn)) {
+    template.dependsOn = row.dependsOn
+      .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      .map((entry) => entry.trim());
+  }
+  if (Array.isArray(row.children)) {
+    template.children = parseTaskTemplateNodes(row.children, "Task");
+  }
+  return template;
+}
+
+function parseTaskTemplateNodes(raw: unknown, fallbackTitle: string): StageTaskTemplate[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => parseTemplateNode(item, index, fallbackTitle))
+    .filter((item): item is StageTaskTemplate => item !== null);
+}
+
 export function parseTaskTemplatesJson(raw: string | null | undefined): StageTaskTemplate[] {
   if (!raw?.trim()) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item, index) => {
-        if (!item || typeof item !== "object") return null;
-        const row = item as Record<string, unknown>;
-        const id = typeof row.id === "string" && row.id.trim() ? row.id.trim() : `tpl-${index}`;
-        const title = typeof row.title === "string" ? row.title.trim() : "";
-        if (!title) return null;
-        const template: StageTaskTemplate = {
-          id,
-          title,
-          description: resolveTaskDescription(row),
-        };
-        if (typeof row.assigneeRole === "string" && row.assigneeRole.trim()) {
-          template.assigneeRole = row.assigneeRole.trim();
-        }
-        return template;
-      })
-      .filter((item): item is StageTaskTemplate => item !== null);
+    return parseTaskTemplateNodes(parsed, "Task");
   } catch {
     return [];
   }
 }
 
+function serializeTemplateNode(template: StageTaskTemplate): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    id: template.id,
+    title: template.title,
+    description: template.description ?? "",
+    assigneeRole: template.assigneeRole ?? "",
+    kind: template.kind ?? "task",
+    execution: template.execution ?? "parallel",
+    dependsOn: template.dependsOn ?? [],
+  };
+  if (template.children?.length) {
+    payload.children = template.children.map((child) => serializeTemplateNode(child));
+  }
+  return payload;
+}
+
 export function serializeTaskTemplates(templates: StageTaskTemplate[]): string {
-  return JSON.stringify(
-    templates.map((template) => ({
-      id: template.id,
-      title: template.title,
-      description: template.description ?? "",
-      assigneeRole: template.assigneeRole ?? "",
-    })),
-  );
+  return JSON.stringify(templates.map((template) => serializeTemplateNode(template)));
 }
 
 export function legacyTemplatesFromCount(stageId: string, stageTitle: string, count: number): StageTaskTemplate[] {
@@ -121,4 +164,13 @@ export function resolveStageTaskTemplates(input: {
   const parsed = parseTaskTemplatesJson(input.taskTemplatesJson);
   if (parsed.length > 0) return parsed;
   return legacyTemplatesFromCount(input.stageId, input.stageTitle, input.spawnTaskCount ?? 0);
+}
+
+export function resolveStageTaskTemplateRoots(input: {
+  taskTemplatesJson: string | null | undefined;
+  spawnTaskCount: number;
+  stageId: string;
+  stageTitle: string;
+}): StageTaskTemplate[] {
+  return resolveStageTaskTemplates(input);
 }

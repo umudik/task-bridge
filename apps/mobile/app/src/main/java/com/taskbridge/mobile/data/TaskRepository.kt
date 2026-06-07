@@ -65,6 +65,21 @@ class TaskRepository(
         return JSONObject(raw)
     }
 
+    private fun patchJson(path: String, body: JSONObject): JSONObject {
+        val request = authRequest(path)
+            .patch(body.toString().toRequestBody(jsonMediaType))
+            .build()
+        val response = http.newCall(request).execute()
+        val raw = response.body?.string() ?: "{}"
+        if (!response.isSuccessful) {
+            throw IllegalStateException(parseError(raw, response.code))
+        }
+        if (!raw.trimStart().startsWith("{")) {
+            throw IllegalStateException("Invalid backend response. Rescan QR from /setup")
+        }
+        return JSONObject(raw)
+    }
+
     suspend fun createTask(text: String, projectId: String): CreateTaskResult = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("text", text)
@@ -114,7 +129,7 @@ class TaskRepository(
     }
 
     suspend fun fetchAnswerDetail(taskId: Int): AnswerDetail = withContext(Dispatchers.IO) {
-        val json = getJson("/answers/$taskId")
+        val json = getJson("/tasks/$taskId")
         AnswerDetail(
             taskId = json.optInt("taskId", taskId),
             title = json.optString("title"),
@@ -135,15 +150,20 @@ class TaskRepository(
             stageTitle = json.optJSONObject("stage")?.optString("title")?.ifBlank { null }
                 ?: json.optString("stageId").ifBlank { null },
             assignee = json.optString("assignee").ifBlank { null },
+            isEpic = json.optBoolean("isEpic", false),
             comments = parseComments(json.optJSONArray("comments")),
         )
     }
 
     suspend fun postTaskComment(taskId: Int, text: String): Unit = withContext(Dispatchers.IO) {
         val body = JSONObject()
-            .put("text", text)
-            .put("by", "mobile")
-        postJson("/tasks/$taskId/comments", body)
+            .put(
+                "comment",
+                JSONObject()
+                    .put("text", text)
+                    .put("by", "mobile"),
+            )
+        patchJson("/tasks/$taskId", body)
     }
 
     private fun parseComments(array: JSONArray?): List<TaskComment> {

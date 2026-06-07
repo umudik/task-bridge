@@ -12,12 +12,18 @@ const templateIdParamsSchema = z.object({
   templateId: z.string().min(1),
 });
 
-const taskTemplateSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
-  description: z.string().optional().default(""),
-  assigneeRole: z.string().optional().default(""),
-});
+const taskTemplateSchema: z.ZodTypeAny = z.lazy(() =>
+  z.object({
+    id: z.string().min(1),
+    title: z.string().min(1),
+    description: z.string().optional().default(""),
+    assigneeRole: z.string().optional().default(""),
+    kind: z.enum(["task", "group"]).optional().default("task"),
+    execution: z.enum(["parallel", "sequential"]).optional().default("parallel"),
+    dependsOn: z.array(z.string()).optional().default([]),
+    children: z.array(taskTemplateSchema).optional().default([]),
+  }),
+);
 
 const stageSchema = z.object({
   id: z.string().min(1),

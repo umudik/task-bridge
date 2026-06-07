@@ -2,21 +2,17 @@ import {
   getWorkflowStageRow,
   listWorkflowStageRows,
 } from "../db/workflow-db.js";
-import {
-  resolveStageTaskTemplates,
-} from "../domain/workflow-stage.js";
 import { isWorkDone, type WorkStatus } from "../domain/work-status.js";
-import { listSubtasks, type BridgeTask } from "../domain/task.js";
 import {
-  allocateTaskId,
-  getBridgeTask,
-  listBridgeTasks,
-  transitionBridgeTask,
-  upsertBridgeTask,
-} from "./task-service.js";
+  listEpicWorkflowTasks,
+  listSubtasks,
+  resolveEpicId,
+  type BridgeTask,
+} from "../domain/task.js";
+import { getBridgeTask, listBridgeTasks, transitionBridgeTask } from "./task-service.js";
 import { mutateTaskRow } from "../db/tasks-db.js";
 import { touchTask } from "../domain/task.js";
-import { pickMemberByProjectRole } from "./workflow-service.js";
+import { spawnEpicWorkflowGraph, spawnUnlockedWorkflowTasks } from "./workflow-spawn-service.js";
 
 export function isEpic(task: BridgeTask): boolean {
   return task.parentId === null;
@@ -46,68 +42,21 @@ export async function syncEpicStage(epicId: number): Promise<BridgeTask | null> 
   const rows = listWorkflowStageRows(epic.projectId).sort((a, b) => a.position - b.position);
   const stages = rows.map((row) => ({ id: row.id, position: row.position }));
   const allTasks = await listBridgeTasks();
-  const subtasks = listSubtasks(allTasks, epic.id);
+  const subtasks = listEpicWorkflowTasks(allTasks, epic.id);
   const nextStageId = computeEpicStageId(stages, subtasks);
   if (!nextStageId || nextStageId === epic.stageId) return epic;
 
-  return (
+  const transitioned =
     (await transitionBridgeTask(epicId, {
       stageId: nextStageId,
       by: "workflow",
-    })) ?? epic
-  );
+    })) ?? epic;
+  await spawnUnlockedWorkflowTasks(transitioned);
+  return transitioned;
 }
 
 export async function spawnEpicWorkflow(epic: BridgeTask): Promise<BridgeTask[]> {
-  if (epic.parentId !== null) return [];
-
-  const rows = listWorkflowStageRows(epic.projectId).sort((a, b) => a.position - b.position);
-  const allTasks = await listBridgeTasks();
-  const existing = listSubtasks(allTasks, epic.id);
-  const created: BridgeTask[] = [];
-
-  for (const row of rows) {
-    const templates = resolveStageTaskTemplates({
-      taskTemplatesJson: row.task_templates_json,
-      spawnTaskCount: row.spawn_task_count ?? 0,
-      stageId: row.id,
-      stageTitle: row.title,
-    });
-    if (templates.length === 0) continue;
-
-    const existingForStage = existing.filter((task) => task.stageId === row.id);
-    for (let index = existingForStage.length; index < templates.length; index += 1) {
-      const template = templates[index];
-      if (!template) continue;
-
-      let assignee: string | null = null;
-      if (template.assigneeRole?.trim()) {
-        assignee = await pickMemberByProjectRole(epic.projectId, template.assigneeRole);
-      } else {
-        const autoAssignRole = row.auto_assign_role?.trim() ?? "";
-        if (autoAssignRole) {
-          assignee = await pickMemberByProjectRole(epic.projectId, autoAssignRole);
-        }
-      }
-
-      const id = await allocateTaskId();
-      const task = await upsertBridgeTask({
-        id,
-        projectId: epic.projectId,
-        projectName: epic.projectName,
-        title: template.title,
-        description: template.description ?? "",
-        createdBy: "workflow",
-        parentId: epic.id,
-        stageId: row.id,
-        assignee,
-        workStatus: "todo",
-      });
-      created.push(task);
-    }
-  }
-
-  return created;
+  return spawnEpicWorkflowGraph(epic);
 }
 
 export async function updateTaskWorkStatus(
@@ -127,9 +76,16 @@ export async function updateTaskWorkStatus(
     });
     touchTask(task);
   });
-  if (updated?.parentId) {
-    await syncEpicStage(updated.parentId);
+  if (!updated || updated.parentId === null) {
+    return updated;
   }
+  const allTasks = await listBridgeTasks();
+  const epicId = updated.epicId ?? resolveEpicId(allTasks, updated);
+  if (!epicId) return updated;
+  const epic = await getBridgeTask(epicId);
+  if (!epic) return updated;
+  await spawnUnlockedWorkflowTasks(epic);
+  await syncEpicStage(epicId);
   return updated;
 }
 

@@ -56,6 +56,7 @@ data class AnswerDetail(
     val projectName: String? = null,
     val stageTitle: String? = null,
     val assignee: String? = null,
+    val isEpic: Boolean = false,
     val comments: List<TaskComment> = emptyList(),
 )
 

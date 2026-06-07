@@ -1,11 +1,16 @@
-import { Layers, Plus, Trash2, X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { DescriptionEditor } from "@/components/DescriptionEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { StageTaskTemplate, WorkflowStage } from "@/lib/api";
+import type { WorkflowStage } from "@/lib/api";
 import { useConfirm } from "@/lib/confirm";
-import { createTaskTemplate, syncStageTemplates } from "./workflow-utils";
+import {
+  findTemplateInTree,
+  patchTemplateInTree,
+  removeTemplateFromTree,
+} from "./template-graph-utils";
+import { syncStageTemplates } from "./workflow-utils";
 import { ProjectRoleSelect } from "./ProjectRoleSelect";
 
 type StageInspectorPanelProps = {
@@ -19,12 +24,9 @@ type StageInspectorPanelProps = {
   onClose: () => void;
 };
 
-function patchTemplate(
-  templates: StageTaskTemplate[],
-  templateId: string,
-  patch: Partial<StageTaskTemplate>,
-): StageTaskTemplate[] {
-  return templates.map((item) => (item.id === templateId ? { ...item, ...patch } : item));
+function nodeKindLabel(depth: number) {
+  if (depth <= 0) return "Task";
+  return "Subtask";
 }
 
 export function StageInspectorPanel({
@@ -41,15 +43,22 @@ export function StageInspectorPanel({
   const activeTasks = stage.activeTaskCount ?? 0;
   const canDeleteStage = stageCount > 1 && activeTasks === 0;
   const templates = stage.taskTemplates ?? [];
-  const activeTemplate = templates.find((item) => item.id === selectedTaskTemplateId) ?? null;
-  const editingTask = Boolean(activeTemplate);
+  const selected = selectedTaskTemplateId
+    ? findTemplateInTree(templates, selectedTaskTemplateId)
+    : null;
+  const activeTemplate = selected?.template ?? null;
+  const nodeDepth = selected?.depth ?? 0;
 
   function updateStage(patch: Partial<WorkflowStage>) {
     onChange(syncStageTemplates({ ...stage, ...patch }));
   }
 
-  function updateTemplates(next: StageTaskTemplate[]) {
+  function updateTemplates(next: typeof templates) {
     onChange(syncStageTemplates({ ...stage, taskTemplates: next }));
+  }
+
+  function patchTemplate(templateId: string, patch: Parameters<typeof patchTemplateInTree>[2]) {
+    updateTemplates(patchTemplateInTree(templates, templateId, patch));
   }
 
   return (
@@ -57,15 +66,18 @@ export function StageInspectorPanel({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
-            {editingTask ? "Task template" : "Pipeline step"}
+            {activeTemplate ? nodeKindLabel(nodeDepth) : "Pipeline step"}
           </p>
           <p className="mt-1 truncate text-sm font-semibold text-white">
-            {editingTask ? activeTemplate?.title : stage.title || "Untitled"}
+            {activeTemplate ? activeTemplate.title : stage.title || "Untitled"}
           </p>
-          {editingTask ? (
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">Step: {stage.title || "Untitled"}</p>
+          {activeTemplate ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              Step: {stage.title || "Untitled"}
+              {nodeDepth > 0 ? ` · nested level ${nodeDepth}` : ""}
+            </p>
           ) : (
-            <p className="mt-0.5 text-xs text-muted-foreground">Workflow step · not an epic</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Use + on the canvas to add tasks</p>
           )}
         </div>
         <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
@@ -73,60 +85,46 @@ export function StageInspectorPanel({
         </Button>
       </div>
 
-      {editingTask && activeTemplate ? (
+      {activeTemplate ? (
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="task-title">Title</Label>
             <Input
               id="task-title"
               value={activeTemplate.title}
-              onChange={(event) =>
-                updateTemplates(patchTemplate(templates, activeTemplate.id, { title: event.target.value }))
-              }
+              onChange={(event) => patchTemplate(activeTemplate.id, { title: event.target.value })}
             />
           </div>
           <div className="space-y-2">
             <Label>Description</Label>
             <DescriptionEditor
               value={activeTemplate.description}
-              onChange={(next) =>
-                updateTemplates(patchTemplate(templates, activeTemplate.id, { description: next }))
-              }
-              placeholder="What should happen in this subtask?"
+              onChange={(next) => patchTemplate(activeTemplate.id, { description: next })}
+              placeholder="What should happen in this task?"
             />
           </div>
           <ProjectRoleSelect
             label="Assignee role"
             value={activeTemplate.assigneeRole ?? ""}
             roles={projectRoles}
-            onChange={(next) =>
-              updateTemplates(
-                patchTemplate(templates, activeTemplate.id, {
-                  assigneeRole: next || undefined,
-                }),
-              )
-            }
+            onChange={(next) => patchTemplate(activeTemplate.id, { assigneeRole: next || undefined })}
           />
-          <p className="text-xs text-muted-foreground">
-            Templates spawn when an epic is created. Subtasks use Todo / In progress / Done.
-          </p>
           <Button
             type="button"
             variant="ghost"
             className="w-full justify-start text-destructive hover:text-destructive"
             onClick={() => {
               void (async () => {
-                if (!(await confirmDestructive(`Delete task "${activeTemplate.title}"?`))) {
+                if (!(await confirmDestructive(`Delete "${activeTemplate.title}"?`))) {
                   return;
                 }
-                const next = templates.filter((item) => item.id !== activeTemplate.id);
-                updateTemplates(next);
+                updateTemplates(removeTemplateFromTree(templates, activeTemplate.id));
                 onSelectTaskTemplate(null);
               })();
             }}
           >
             <Trash2 className="mr-2 h-4 w-4" />
-            Delete task template
+            Delete node
           </Button>
         </div>
       ) : (
@@ -155,32 +153,6 @@ export function StageInspectorPanel({
             emptyLabel="Off"
             onChange={(next) => updateStage({ autoAssignRole: next || undefined })}
           />
-          <div className="rounded-lg border border-white/[0.08] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-                <p className="text-sm font-medium text-white">Task templates</p>
-                <span className="text-xs text-muted-foreground">({templates.length})</span>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  const next = [...templates, createTaskTemplate(stage.title, templates.length)];
-                  updateTemplates(next);
-                  const created = next[next.length - 1];
-                  if (created) onSelectTaskTemplate(created.id);
-                }}
-              >
-                <Plus className="h-4 w-4" />
-                Add
-              </Button>
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Click a task card on the canvas to edit. Title shows on canvas; description stays here.
-            </p>
-          </div>
           {stageCount <= 1 ? (
             <p className="text-xs text-muted-foreground">At least one pipeline step is required.</p>
           ) : activeTasks > 0 ? (

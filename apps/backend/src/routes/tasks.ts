@@ -3,7 +3,6 @@ import { z } from "zod";
 import { assertBackendAuth } from "../middleware/auth.js";
 import {
   buildInboxItems,
-  consumerStatus,
   mapComments,
   mapTaskDetail,
 } from "../mappers/task-response.js";
@@ -31,7 +30,7 @@ import { isWorkStatus } from "../domain/work-status.js";
 import {
   claimNextTask,
   listPendingTasks,
-  turnIdForTask,
+  validateTaskClaim,
 } from "../services/task-queue.js";
 
 const createEpicBodySchema = z
@@ -109,7 +108,7 @@ function createdItemResponse(task: {
   };
 }
 
-const answerIdParamsSchema = z.object({
+const taskIdParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
@@ -127,9 +126,11 @@ const answeredTaskBodySchema = z.object({
   answer: z.string().optional(),
 });
 
-const commentTaskBodySchema = z.object({
-  text: z.string().min(1),
-  by: z.string().min(1).default("mobile"),
+const patchTaskBodySchema = z.object({
+  comment: z.object({
+    text: z.string().min(1),
+    by: z.string().min(1).default("web"),
+  }),
 });
 
 const workStatusBodySchema = z.object({
@@ -227,6 +228,7 @@ export async function taskRoutes(app: FastifyInstance) {
       stageId,
       assignee: null,
       parentId: epic.id,
+      epicId: epic.id,
       workStatus: "todo",
     });
 
@@ -259,14 +261,18 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.post("/tasks/:id/claim", async (request, reply) => {
     assertBackendAuth(request);
-    const { id } = answerIdParamsSchema.parse(request.params);
+    const { id } = taskIdParamsSchema.parse(request.params);
     const body = claimTaskBodySchema.parse(request.body ?? {});
-    const task = await claimBridgeTask(id, body.claimedBy);
-    if (!task) {
+    const blockReason = await validateTaskClaim(id);
+    if (blockReason) {
       const existing = await getBridgeTask(id);
       if (!existing) {
         return reply.status(404).send({ error: "Task not found" });
       }
+      return reply.status(409).send({ error: blockReason });
+    }
+    const task = await claimBridgeTask(id, body.claimedBy);
+    if (!task) {
       return reply.status(409).send({ error: "Task is not available to claim" });
     }
     return task;
@@ -274,7 +280,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.post("/tasks/:id/unclaim", async (request, reply) => {
     assertBackendAuth(request);
-    const { id } = answerIdParamsSchema.parse(request.params);
+    const { id } = taskIdParamsSchema.parse(request.params);
     const task = await releaseBridgeTask(id);
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
@@ -303,7 +309,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.post("/tasks/:id/answered", async (request, reply) => {
     assertBackendAuth(request);
-    const { id } = answerIdParamsSchema.parse(request.params);
+    const { id } = taskIdParamsSchema.parse(request.params);
     const body = answeredTaskBodySchema.parse(request.body ?? {});
     const task = await markBridgeTaskAnswered(id, body.answeredBy, body.answer);
     if (!task) {
@@ -314,7 +320,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.post("/tasks/:id/agent-result", async (request, reply) => {
     assertBackendAuth(request);
-    const { id } = answerIdParamsSchema.parse(request.params);
+    const { id } = taskIdParamsSchema.parse(request.params);
     const body = agentResultBodySchema.parse(request.body ?? {});
     const task = await applyAgentWorkResult(id, body);
     if (!task) {
@@ -325,7 +331,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.patch("/tasks/:id/work-status", async (request, reply) => {
     assertBackendAuth(request);
-    const { id } = answerIdParamsSchema.parse(request.params);
+    const { id } = taskIdParamsSchema.parse(request.params);
     const body = workStatusBodySchema.parse(request.body ?? {});
     if (!isWorkStatus(body.workStatus)) {
       return reply.status(400).send({ error: "Invalid work status" });
@@ -374,27 +380,38 @@ export async function taskRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post("/tasks/:id/comments", async (request, reply) => {
+  app.get("/tasks/:id", async (request, reply) => {
     assertBackendAuth(request);
-    const { id } = answerIdParamsSchema.parse(request.params);
-    const body = commentTaskBodySchema.parse(request.body ?? {});
-    const task = await addBridgeTaskUserComment(id, body.by, body.text);
+    const { id } = taskIdParamsSchema.parse(request.params);
+    const task = await getBridgeTask(id);
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    const turnId = turnIdForTask(task);
-    return reply.status(201).send({
-      taskId: task.id,
-      status: consumerStatus(task),
-      stageId: task.stageId,
-      comments: mapComments(task),
-      turnId,
-    });
+    return await mapTaskDetail(task);
+  });
+
+  app.patch("/tasks/:id", async (request, reply) => {
+    assertBackendAuth(request);
+    const { id } = taskIdParamsSchema.parse(request.params);
+    const body = patchTaskBodySchema.parse(request.body ?? {});
+    const existing = await getBridgeTask(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    if (existing.parentId === null) {
+      return reply.status(400).send({ error: "Comments only supported on tasks" });
+    }
+    const task = await addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
+    if (!task) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    return await mapTaskDetail(task);
   });
 
   app.get("/worker/pending", async (request) => {
     assertBackendAuth(request);
-    const items = await listPendingTasks();
+    const query = z.object({ projectId: z.string().min(1).optional() }).parse(request.query);
+    const items = await listPendingTasks(query.projectId);
     return { items };
   });
 
@@ -404,13 +421,4 @@ export async function taskRoutes(app: FastifyInstance) {
     return buildInboxItems(query);
   });
 
-  app.get("/answers/:id", async (request, reply) => {
-    assertBackendAuth(request);
-    const { id } = answerIdParamsSchema.parse(request.params);
-    const task = await getBridgeTask(id);
-    if (!task) {
-      return reply.status(404).send({ error: "Task not found" });
-    }
-    return await mapTaskDetail(task);
-  });
 }

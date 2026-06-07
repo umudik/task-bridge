@@ -45,7 +45,7 @@ export function TeamPanel({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 p-6">
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-8 py-5">
       <section className="space-y-4">
         <div>
           <h2 className="text-base font-semibold text-white">Project roles</h2>

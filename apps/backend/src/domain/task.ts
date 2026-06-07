@@ -37,6 +37,8 @@ export type BridgeTask = {
   projectId: string;
   projectName: string;
   parentId: number | null;
+  epicId: number | null;
+  templateId: string | null;
   title: string;
   description: string;
   acceptanceCriteria: string | null;
@@ -86,6 +88,19 @@ export function sortTasks(tasks: BridgeTask[]): BridgeTask[] {
 
 export function listSubtasks(tasks: BridgeTask[], parentId: number): BridgeTask[] {
   return sortTasks(tasks.filter((task) => task.parentId === parentId));
+}
+
+export function listEpicWorkflowTasks(tasks: BridgeTask[], epicId: number): BridgeTask[] {
+  return sortTasks(tasks.filter((task) => task.epicId === epicId));
+}
+
+export function resolveEpicId(tasks: BridgeTask[], task: BridgeTask): number | null {
+  if (task.epicId !== null && task.epicId !== undefined) return task.epicId;
+  if (task.parentId === null) return null;
+  const parent = tasks.find((entry) => entry.id === task.parentId);
+  if (!parent) return task.parentId;
+  if (parent.parentId === null) return parent.id;
+  return resolveEpicId(tasks, parent);
 }
 
 export function incompleteSubtasks(tasks: BridgeTask[], parentId: number): BridgeTask[] {
@@ -173,6 +188,8 @@ function applyLegacyStage(task: RawTask): void {
 export function normalizeTask(task: RawTask): BridgeTask {
   applyLegacyStage(task);
   task.parentId = task.parentId ?? null;
+  task.epicId = task.epicId ?? null;
+  task.templateId = task.templateId ?? null;
   task.labels = Array.isArray(task.labels) ? task.labels : [];
   task.priority = emptyToNull(task.priority);
   task.assignee = emptyToNull(task.assignee);

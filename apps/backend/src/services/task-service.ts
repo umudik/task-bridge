@@ -15,7 +15,7 @@ import {
   type AuthorType,
   type BridgeTask,
 } from "../domain/task.js";
-import type { WorkStatus } from "../domain/work-status.js";
+import { isWorkDone, type WorkStatus } from "../domain/work-status.js";
 import { syncEpicStage } from "./epic-service.js";
 import { emptyToNull } from "../lib/strings.js";
 
@@ -57,6 +57,8 @@ export async function upsertBridgeTask(input: {
   stageId?: string | null;
   assignee?: string | null;
   parentId?: number | null;
+  epicId?: number | null;
+  templateId?: string | null;
   workStatus?: WorkStatus | null;
 }): Promise<BridgeTask> {
   const existing = getTaskRow(input.id);
@@ -77,6 +79,8 @@ export async function upsertBridgeTask(input: {
     projectId: input.projectId,
     projectName: input.projectName,
     parentId: input.parentId ?? null,
+    epicId: input.epicId ?? (input.parentId ?? null),
+    templateId: input.templateId ?? null,
     title: input.title,
     description: input.description,
     acceptanceCriteria: null,
@@ -138,7 +142,9 @@ export async function claimBridgeTask(
   claimedBy: string,
 ): Promise<BridgeTask | null> {
   const existing = getTaskRow(id);
-  if (!existing || existing.claimedBy || isDoneStage(existing.stageId)) return null;
+  if (!existing || existing.claimedBy) return null;
+  if (existing.parentId === null) return null;
+  if (isWorkDone(existing)) return null;
 
   return mutateTaskRow(id, (task) => {
     const claimedAt = new Date().toISOString();

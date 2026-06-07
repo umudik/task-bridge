@@ -10,12 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/hooks/useSession";
 import {
+  addTaskComment,
   createTask,
-  fetchAnswer,
-  postTaskComment,
+  fetchTask,
   updateTaskWorkStatus,
-  type AnswerDetail,
   type TaskComment,
+  type TaskDetail,
   type WorkStatus,
 } from "@/lib/api";
 import { markTaskRead } from "@/lib/read-tasks";
@@ -41,7 +41,7 @@ export function TaskPage() {
   const { projectId, taskId: taskIdParam } = useParams();
   const taskId = Number(taskIdParam);
   const session = useSession();
-  const [detail, setDetail] = useState<AnswerDetail | null>(null);
+  const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
@@ -57,7 +57,7 @@ export function TaskPage() {
     async function load() {
       setLoading(true);
       try {
-        const data = await fetchAnswer(activeSession, taskId);
+        const data = await fetchTask(activeSession, taskId);
         if (!active) return;
         if (data.answer?.trim() || data.status === "ready") {
           markTaskRead(taskId);
@@ -107,7 +107,7 @@ export function TaskPage() {
         title,
         stageId: detail?.stageId ?? undefined,
       });
-      const data = await fetchAnswer(session, taskId);
+      const data = await fetchTask(session, taskId);
       setDetail(data);
       setSubtaskTitle("");
       toast.success("Subtask created");
@@ -125,8 +125,7 @@ export function TaskPage() {
 
     setSending(true);
     try {
-      await postTaskComment(session, taskId, text);
-      const data = await fetchAnswer(session, taskId);
+      const data = await addTaskComment(session, taskId, text);
       setDetail(data);
       setCommentText("");
       toast.success("Comment added");
@@ -274,51 +273,53 @@ export function TaskPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Comments</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0">
-              {comments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No comments yet.</p>
-              ) : (
-                <div className="divide-y divide-border">
-                  {comments.map((comment) => (
-                    <CommentRow key={comment.id} comment={comment} />
-                  ))}
-                </div>
-              )}
+          {!detail.isEpic ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Comments</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                {comments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No comments yet.</p>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {comments.map((comment) => (
+                      <CommentRow key={comment.id} comment={comment} />
+                    ))}
+                  </div>
+                )}
 
-              <div className="border-t border-border pt-4">
-                <Textarea
-                  value={commentText}
-                  onChange={(event) => setCommentText(event.target.value)}
-                  placeholder="Add a comment…"
-                  rows={2}
-                  disabled={sending}
-                  className="min-h-[56px] resize-y"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                      event.preventDefault();
-                      void handleSendComment();
-                    }
-                  }}
-                />
-                <div className="mt-2 flex justify-end">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void handleSendComment()}
-                    disabled={sending || !commentText.trim()}
-                  >
-                    {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    {sending ? "Saving…" : "Comment"}
-                  </Button>
+                <div className="border-t border-border pt-4">
+                  <Textarea
+                    value={commentText}
+                    onChange={(event) => setCommentText(event.target.value)}
+                    placeholder="Add a comment…"
+                    rows={2}
+                    disabled={sending}
+                    className="min-h-[56px] resize-y"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                        event.preventDefault();
+                        void handleSendComment();
+                      }
+                    }}
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleSendComment()}
+                      disabled={sending || !commentText.trim()}
+                    >
+                      {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {sending ? "Saving…" : "Comment"}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : null}
         </>
       ) : (
         <p className="text-sm text-muted-foreground">Task not found.</p>

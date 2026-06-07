@@ -131,29 +131,31 @@ fun AnswerDetailScreen(
                             )
                         }
 
-                        DetailSection(title = "Comments") {
-                            if (detail.comments.isEmpty()) {
-                                Text(
-                                    text = "No comments yet.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextMuted,
-                                )
-                            } else {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    detail.comments
-                                        .sortedBy { parseCommentTime(it.at) }
-                                        .forEachIndexed { index, comment ->
-                                            if (index > 0) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(vertical = 8.dp)
-                                                        .height(1.dp)
-                                                        .background(SurfaceBorder),
-                                                )
+                        if (!detail.isEpic) {
+                            DetailSection(title = "Comments") {
+                                if (detail.comments.isEmpty()) {
+                                    Text(
+                                        text = "No comments yet.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextMuted,
+                                    )
+                                } else {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        detail.comments
+                                            .sortedBy { parseCommentTime(it.at) }
+                                            .forEachIndexed { index, comment ->
+                                                if (index > 0) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 8.dp)
+                                                            .height(1.dp)
+                                                            .background(SurfaceBorder),
+                                                    )
+                                                }
+                                                FlatCommentRow(comment)
                                             }
-                                            FlatCommentRow(comment)
-                                        }
+                                    }
                                 }
                             }
                         }
@@ -170,38 +172,40 @@ fun AnswerDetailScreen(
                     )
                 }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                        .background(SurfaceElevated.copy(alpha = 0.95f))
-                        .border(1.dp, SurfaceBorder, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedTextField(
-                        value = commentText,
-                        onValueChange = { commentText = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Add a comment…") },
-                        enabled = !state.isSendingComment,
-                        minLines = 2,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                if (!detail.isEpic) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                            .background(SurfaceElevated.copy(alpha = 0.95f))
+                            .border(1.dp, SurfaceBorder, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        TextButton(
-                            onClick = {
-                                val text = commentText.trim()
-                                if (text.isNotBlank()) {
-                                    onSendComment(taskId, text)
-                                    commentText = ""
-                                }
-                            },
-                            enabled = !state.isSendingComment && commentText.isNotBlank(),
+                        OutlinedTextField(
+                            value = commentText,
+                            onValueChange = { commentText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Add a comment…") },
+                            enabled = !state.isSendingComment,
+                            minLines = 2,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
                         ) {
-                            Text(if (state.isSendingComment) "Saving…" else "Comment")
+                            TextButton(
+                                onClick = {
+                                    val text = commentText.trim()
+                                    if (text.isNotBlank()) {
+                                        onSendComment(taskId, text)
+                                        commentText = ""
+                                    }
+                                },
+                                enabled = !state.isSendingComment && commentText.isNotBlank(),
+                            ) {
+                                Text(if (state.isSendingComment) "Saving…" else "Comment")
+                            }
                         }
                     }
                 }

@@ -21,6 +21,8 @@ function makeTask(overrides: Partial<BridgeTask> & Pick<BridgeTask, "id" | "titl
     projectId: overrides.projectId ?? "demo",
     projectName: overrides.projectName ?? "Demo",
     parentId: overrides.parentId ?? null,
+    epicId: overrides.epicId ?? null,
+    templateId: overrides.templateId ?? null,
     description: overrides.description ?? "",
     acceptanceCriteria: null,
     priority: null,

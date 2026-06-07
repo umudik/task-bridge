@@ -23,11 +23,17 @@ export type InboxItem = {
   stageTitle?: string | null;
 };
 
+export type TemplateExecution = "parallel" | "sequential";
+
 export type StageTaskTemplate = {
   id: string;
   title: string;
   description: string;
   assigneeRole?: string;
+  kind?: "task" | "group";
+  execution?: TemplateExecution;
+  dependsOn?: string[];
+  children?: StageTaskTemplate[];
 };
 
 export type WorkflowStage = {
@@ -106,7 +112,7 @@ export type TaskComment = {
   role?: "user" | "assistant";
 };
 
-export type AnswerDetail = {
+export type TaskDetail = {
   taskId: number;
   title: string;
   request: string;
@@ -343,15 +349,15 @@ export async function fetchInbox(session: Session, query: InboxQuery = {}) {
   return request<InboxResult>(session, `/inbox${suffix}`);
 }
 
-export async function fetchAnswer(session: Session, taskId: number) {
-  return request<AnswerDetail>(session, `/answers/${taskId}`);
+export async function fetchTask(session: Session, taskId: number) {
+  return request<TaskDetail>(session, `/tasks/${taskId}`);
 }
 
-export async function postTaskComment(session: Session, taskId: number, text: string) {
-  return request<{ taskId: number; status: string; turnId: string }>(session, `/tasks/${taskId}/comments`, {
-    method: "POST",
+export async function addTaskComment(session: Session, taskId: number, text: string) {
+  return request<TaskDetail>(session, `/tasks/${taskId}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, by: "web" }),
+    body: JSON.stringify({ comment: { text, by: "web" } }),
   });
 }
 
@@ -410,7 +416,7 @@ export async function updateTaskWorkStatus(
   workStatus: WorkStatus,
   by = "web",
 ) {
-  return request<AnswerDetail>(session, `/tasks/${taskId}/work-status`, {
+  return request<TaskDetail>(session, `/tasks/${taskId}/work-status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ workStatus, by }),

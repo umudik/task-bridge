@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Layers,
   Maximize2,
   Plus,
@@ -13,13 +15,21 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StageTaskTemplate, WorkflowStage } from "@/lib/api";
 import {
+  canMoveTemplateAmongSiblings,
+  NODE_ADD_BTN_SIZE,
+  sanitizeStageTemplates,
+} from "./template-graph-utils";
+import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   STAGE_CARD_HEIGHT,
   STAGE_CARD_WIDTH,
   STEP_TASK_GAP,
+  TASK_DEPTH_INDENT,
+  TASK_NODE_WIDTH,
   TASK_TEMPLATE_HEIGHT,
   type DisplayStage,
+  stageLayoutKey,
   stageStackHeight,
   stagesForDisplay,
 } from "./workflow-utils";
@@ -33,6 +43,9 @@ type WorkflowCanvasProps = {
   onMoveStage: (index: number, delta: -1 | 1) => void;
   onSelectStage?: (flowIndex: number) => void;
   onSelectTaskTemplate?: (flowIndex: number, templateId: string) => void;
+  onAddStageTask?: (flowIndex: number) => void;
+  onAddSubtask?: (flowIndex: number, parentTemplateId: string) => void;
+  onMoveTaskTemplate?: (flowIndex: number, templateId: string, delta: -1 | 1) => void;
   className?: string;
 };
 
@@ -52,16 +65,25 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function stageConnectorPoints(from: DisplayStage, to: DisplayStage) {
+  const start = {
+    x: from.displayX + STAGE_CARD_WIDTH,
+    y: from.displayY + STAGE_CARD_HEIGHT / 2,
+  };
+  const end = {
+    x: to.displayX,
+    y: to.displayY + STAGE_CARD_HEIGHT / 2,
+  };
+  return { start, end };
+}
+
 function connectorPath(from: DisplayStage, to: DisplayStage) {
-  const start = { x: from.displayX + STAGE_CARD_WIDTH, y: from.displayY + STAGE_CARD_HEIGHT / 2 };
-  const end = { x: to.displayX, y: to.displayY + STAGE_CARD_HEIGHT / 2 };
-  const dx = Math.max(80, Math.abs(end.x - start.x) * 0.45);
-  return `M ${start.x} ${start.y} C ${start.x + dx} ${start.y}, ${end.x - dx} ${end.y}, ${end.x} ${end.y}`;
+  const { start, end } = stageConnectorPoints(from, to);
+  return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
 }
 
 function connectorMidpoint(from: DisplayStage, to: DisplayStage) {
-  const start = { x: from.displayX + STAGE_CARD_WIDTH, y: from.displayY + STAGE_CARD_HEIGHT / 2 };
-  const end = { x: to.displayX, y: to.displayY + STAGE_CARD_HEIGHT / 2 };
+  const { start, end } = stageConnectorPoints(from, to);
   return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
 }
 
@@ -84,7 +106,7 @@ function StageCard({
   onMoveLeft: () => void;
   onMoveRight: () => void;
 }) {
-  const templateCount = stage.taskTemplates?.length ?? 0;
+  const templateCount = sanitizeStageTemplates(stage.taskTemplates ?? []).length;
   return (
     <div
       data-stage-card="true"
@@ -154,39 +176,151 @@ function StageCard({
   );
 }
 
-function TaskTemplateCard({
-  template,
-  selected,
-  onSelect,
-}: {
-  template: StageTaskTemplate;
-  selected: boolean;
-  onSelect: () => void;
-}) {
+function NodeLink({ className }: { className?: string }) {
+  return <div className={cn("shrink-0 bg-white/[0.14]", className)} />;
+}
+
+function NodeAddButton({ title, onClick }: { title: string; onClick: () => void }) {
   return (
     <button
       type="button"
-      data-task-template="true"
+      data-node-insert="true"
+      title={title}
       onClick={(event) => {
         event.stopPropagation();
-        onSelect();
+        onClick();
       }}
-      className={cn(
-        "pointer-events-auto relative flex w-full shrink-0 items-center rounded-lg border px-3 text-left transition-[border-color,background-color] duration-150 hover:bg-[#151515]",
-        selected ? "border-emerald-500/30 bg-[#141a16]" : "border-white/[0.07] bg-[#111111]",
-      )}
-      style={{ minHeight: TASK_TEMPLATE_HEIGHT }}
+      className="pointer-events-auto relative z-10 flex shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-[#1a1a1a] text-muted-foreground shadow-md transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-400"
+      style={{ width: NODE_ADD_BTN_SIZE, height: NODE_ADD_BTN_SIZE }}
     >
-      <div className="flex w-full items-center gap-2">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/80" />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-white/90">{template.title}</span>
-        {template.assigneeRole ? (
-          <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            {template.assigneeRole}
-          </span>
-        ) : null}
-      </div>
+      <Plus className="h-3.5 w-3.5" />
     </button>
+  );
+}
+
+function TaskReorderButton({
+  direction,
+  disabled,
+  onClick,
+}: {
+  direction: "up" | "down";
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const Icon = direction === "up" ? ChevronUp : ChevronDown;
+  return (
+    <button
+      type="button"
+      data-task-reorder="true"
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className="flex h-[18px] w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+      aria-label={direction === "up" ? "Move up" : "Move down"}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
+function TaskNode({
+  template,
+  depth,
+  stageTemplates,
+  selectedTaskTemplateId,
+  onSelectTaskTemplate,
+  onAddSubtask,
+  onMoveTaskTemplate,
+}: {
+  template: StageTaskTemplate;
+  depth: number;
+  stageTemplates: StageTaskTemplate[];
+  selectedTaskTemplateId: string | null;
+  onSelectTaskTemplate: (templateId: string) => void;
+  onAddSubtask: (parentTemplateId: string) => void;
+  onMoveTaskTemplate: (templateId: string, delta: -1 | 1) => void;
+}) {
+  const selected = selectedTaskTemplateId === template.id;
+  const isSubtask = depth > 0;
+  const children = sanitizeStageTemplates(template.children ?? []);
+  const indent = depth * TASK_DEPTH_INDENT;
+  const canMoveUp = canMoveTemplateAmongSiblings(stageTemplates, template.id, -1);
+  const canMoveDown = canMoveTemplateAmongSiblings(stageTemplates, template.id, 1);
+  return (
+    <div className="pointer-events-auto flex flex-col gap-2">
+      <div className="flex items-center" style={{ paddingLeft: indent }}>
+        {depth > 0 ? (
+          <div className="relative mr-1 h-10 w-6 shrink-0">
+            <NodeLink className="absolute right-0 top-1/2 h-px w-4 -translate-y-1/2" />
+            <NodeLink className="absolute right-3 top-0 h-1/2 w-px" />
+          </div>
+        ) : null}
+        <div className="flex items-center">
+          <div className="mr-1 flex shrink-0 flex-col">
+            <TaskReorderButton
+              direction="up"
+              disabled={!canMoveUp}
+              onClick={() => onMoveTaskTemplate(template.id, -1)}
+            />
+            <TaskReorderButton
+              direction="down"
+              disabled={!canMoveDown}
+              onClick={() => onMoveTaskTemplate(template.id, 1)}
+            />
+          </div>
+          <button
+            type="button"
+            data-task-template="true"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelectTaskTemplate(template.id);
+            }}
+            className={cn(
+              "relative flex shrink-0 items-center rounded-lg border px-3 text-left transition-[border-color,background-color] duration-150 hover:bg-[#151515]",
+              selected ? "border-emerald-500/30 bg-[#141a16]" : "border-white/[0.07] bg-[#111111]",
+            )}
+            style={{ width: TASK_NODE_WIDTH, minHeight: TASK_TEMPLATE_HEIGHT }}
+          >
+            <div className="flex w-full items-center gap-2">
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  isSubtask ? "bg-sky-500/80" : "bg-emerald-500/80",
+                )}
+              />
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-white/90">
+                {template.title}
+              </span>
+              {template.assigneeRole ? (
+                <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {template.assigneeRole}
+                </span>
+              ) : null}
+            </div>
+          </button>
+          <NodeLink className="mx-1 h-px w-3" />
+          <NodeAddButton title="Add subtask" onClick={() => onAddSubtask(template.id)} />
+        </div>
+      </div>
+      {children.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {children.map((child) => (
+            <TaskNode
+              key={child.id}
+              template={child}
+              depth={depth + 1}
+              stageTemplates={stageTemplates}
+              selectedTaskTemplateId={selectedTaskTemplateId}
+              onSelectTaskTemplate={onSelectTaskTemplate}
+              onAddSubtask={onAddSubtask}
+              onMoveTaskTemplate={onMoveTaskTemplate}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -200,6 +334,9 @@ function StageColumn({
   canMoveRight,
   onSelectStage,
   onSelectTaskTemplate,
+  onAddStageTask,
+  onAddSubtask,
+  onMoveTaskTemplate,
   onMoveLeft,
   onMoveRight,
 }: {
@@ -212,15 +349,20 @@ function StageColumn({
   canMoveRight: boolean;
   onSelectStage: () => void;
   onSelectTaskTemplate: (templateId: string) => void;
+  onAddStageTask: () => void;
+  onAddSubtask: (parentTemplateId: string) => void;
+  onMoveTaskTemplate: (templateId: string, delta: -1 | 1) => void;
   onMoveLeft: () => void;
   onMoveRight: () => void;
 }) {
+  const roots = sanitizeStageTemplates(templates);
+  const columnWidth = stage.columnWidth ?? STAGE_CARD_WIDTH;
   return (
     <div
-      className="pointer-events-none absolute flex flex-col items-stretch"
-      style={{ left: stage.displayX, top: stage.displayY, width: STAGE_CARD_WIDTH }}
+      className="pointer-events-none absolute flex flex-col items-start"
+      style={{ left: stage.displayX, top: stage.displayY, width: columnWidth }}
     >
-      <div className="relative z-10 shrink-0">
+      <div className="relative z-10 shrink-0" style={{ width: STAGE_CARD_WIDTH }}>
         <StageCard
           stage={stage}
           flowIndex={flowIndex}
@@ -231,22 +373,30 @@ function StageColumn({
           onMoveLeft={onMoveLeft}
           onMoveRight={onMoveRight}
         />
-      </div>
-      {templates.length > 0 ? (
-        <div
-          className="pointer-events-auto relative z-0 flex flex-col gap-2 border-l border-white/[0.08] pl-3"
-          style={{ marginTop: STEP_TASK_GAP }}
-        >
-          {templates.map((template) => (
-            <TaskTemplateCard
-              key={template.id}
-              template={template}
-              selected={selectedStageId === stage.id && selectedTaskTemplateId === template.id}
-              onSelect={() => onSelectTaskTemplate(template.id)}
-            />
-          ))}
+        <div className="flex flex-col items-center">
+          <NodeLink className="h-4 w-px" />
+          <NodeAddButton title="Add task to step" onClick={onAddStageTask} />
         </div>
-      ) : null}
+      </div>
+      <div
+        className="pointer-events-auto relative z-0 flex w-full flex-col gap-2"
+        style={{ marginTop: STEP_TASK_GAP }}
+      >
+        {roots.map((template) => (
+          <TaskNode
+            key={template.id}
+            template={template}
+            depth={0}
+            stageTemplates={templates}
+            selectedTaskTemplateId={
+              selectedStageId === stage.id ? selectedTaskTemplateId : null
+            }
+            onSelectTaskTemplate={onSelectTaskTemplate}
+            onAddSubtask={onAddSubtask}
+            onMoveTaskTemplate={onMoveTaskTemplate}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -260,6 +410,9 @@ export function WorkflowCanvas({
   onMoveStage,
   onSelectStage,
   onSelectTaskTemplate,
+  onAddStageTask,
+  onAddSubtask,
+  onMoveTaskTemplate,
   className,
 }: WorkflowCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -273,6 +426,7 @@ export function WorkflowCanvas({
   zoomRef.current = zoom;
 
   const displayStages = useMemo(() => stagesForDisplay(stages), [stages]);
+  const layoutKey = useMemo(() => stageLayoutKey(stages), [stages]);
 
   const connectors = useMemo(() => {
     const paths: string[] = [];
@@ -295,7 +449,7 @@ export function WorkflowCanvas({
     for (const stage of displayStages) {
       minX = Math.min(minX, stage.displayX);
       minY = Math.min(minY, stage.displayY);
-      maxX = Math.max(maxX, stage.displayX + STAGE_CARD_WIDTH);
+      maxX = Math.max(maxX, stage.displayX + stage.columnWidth);
       maxY = Math.max(maxY, stage.displayY + stageStackHeight(stage));
     }
 
@@ -316,9 +470,41 @@ export function WorkflowCanvas({
     });
   }, [displayStages]);
 
+  const reflowPan = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || displayStages.length === 0) return;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const stage of displayStages) {
+      minX = Math.min(minX, stage.displayX);
+      minY = Math.min(minY, stage.displayY);
+      maxX = Math.max(maxX, stage.displayX + stage.columnWidth);
+      maxY = Math.max(maxY, stage.displayY + stageStackHeight(stage));
+    }
+
+    const boundsCenterX = (minX + maxX) / 2;
+    const boundsCenterY = (minY + maxY) / 2;
+    const currentZoom = zoomRef.current;
+    setPan({
+      x: viewport.clientWidth / 2 - boundsCenterX * currentZoom,
+      y: viewport.clientHeight / 2 - boundsCenterY * currentZoom,
+    });
+  }, [displayStages]);
+
+  const didInitialFitRef = useRef(false);
+
   useEffect(() => {
-    if (displayStages.length > 0) fitView();
-  }, [displayStages.length, fitView]);
+    if (displayStages.length === 0) return;
+    if (!didInitialFitRef.current) {
+      didInitialFitRef.current = true;
+      fitView();
+      return;
+    }
+    reflowPan();
+  }, [layoutKey, displayStages.length, fitView, reflowPan]);
 
   useEffect(() => {
     if (!panDrag) return;
@@ -378,7 +564,11 @@ export function WorkflowCanvas({
   }, []);
 
   function isInteractiveTarget(target: HTMLElement) {
-    return Boolean(target.closest("[data-stage-card], [data-stage-insert], [data-task-template]"));
+    return Boolean(
+      target.closest(
+        "[data-stage-card], [data-stage-insert], [data-node-insert], [data-task-template], [data-task-reorder]",
+      ),
+    );
   }
 
   function canStartPan(event: React.PointerEvent<HTMLDivElement>) {
@@ -400,7 +590,9 @@ export function WorkflowCanvas({
   return (
     <div className={cn("relative flex min-h-0 flex-col bg-[#080808]", className)}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-2">
-        <p className="text-xs text-muted-foreground">Click a step or task template · Drag to pan · Ctrl+scroll to zoom</p>
+        <p className="text-xs text-muted-foreground">
+          + adds tasks on canvas · Click node for details in sidebar · Drag to pan · Ctrl+scroll to zoom
+        </p>
         <div className="flex items-center gap-1">
           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setZoom((z) => clamp(z * 0.9, MIN_ZOOM, MAX_ZOOM))}>
             <ZoomOut className="h-4 w-4" />
@@ -431,7 +623,34 @@ export function WorkflowCanvas({
             height: CANVAS_HEIGHT,
           }}
         >
-          <svg className="pointer-events-none absolute inset-0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} aria-hidden>
+          {displayStages.map((stage, flowIndex) => (
+            <StageColumn
+              key={stage.id}
+              stage={stage}
+              flowIndex={flowIndex}
+              templates={stage.taskTemplates ?? []}
+              selectedStageId={selectedStageId}
+              selectedTaskTemplateId={selectedTaskTemplateId}
+              canMoveLeft={flowIndex > 0}
+              canMoveRight={flowIndex < displayStages.length - 1}
+              onSelectStage={() => onSelectStage?.(flowIndex)}
+              onSelectTaskTemplate={(templateId) => onSelectTaskTemplate?.(flowIndex, templateId)}
+              onAddStageTask={() => onAddStageTask?.(flowIndex)}
+              onAddSubtask={(parentId) => onAddSubtask?.(flowIndex, parentId)}
+              onMoveTaskTemplate={(templateId, delta) =>
+                onMoveTaskTemplate?.(flowIndex, templateId, delta)
+              }
+              onMoveLeft={() => onMoveStage(flowIndex, -1)}
+              onMoveRight={() => onMoveStage(flowIndex, 1)}
+            />
+          ))}
+
+          <svg
+            className="pointer-events-none absolute inset-0 z-[5]"
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            aria-hidden
+          >
             {connectors.map((path, index) => (
               <path
                 key={`connector-${index}`}
@@ -444,37 +663,21 @@ export function WorkflowCanvas({
           </svg>
 
           {displayStages.map((stage, flowIndex) => {
-            const templates = stage.taskTemplates ?? [];
             const nextStage = displayStages[flowIndex + 1];
-            const midpoint = nextStage ? connectorMidpoint(stage, nextStage) : null;
+            if (!nextStage) return null;
+            const midpoint = connectorMidpoint(stage, nextStage);
             return (
-              <div key={stage.id}>
-                <StageColumn
-                  stage={stage}
-                  flowIndex={flowIndex}
-                  templates={templates}
-                  selectedStageId={selectedStageId}
-                  selectedTaskTemplateId={selectedTaskTemplateId}
-                  canMoveLeft={flowIndex > 0}
-                  canMoveRight={flowIndex < displayStages.length - 1}
-                  onSelectStage={() => onSelectStage?.(flowIndex)}
-                  onSelectTaskTemplate={(templateId) => onSelectTaskTemplate?.(flowIndex, templateId)}
-                  onMoveLeft={() => onMoveStage(flowIndex, -1)}
-                  onMoveRight={() => onMoveStage(flowIndex, 1)}
-                />
-                {midpoint ? (
-                  <button
-                    type="button"
-                    data-stage-insert="true"
-                    title="Insert stage"
-                    onClick={() => onInsertStageAfter(flowIndex)}
-                    className="pointer-events-auto absolute z-10 flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.12] bg-[#1a1a1a] text-muted-foreground shadow-lg transition-colors hover:border-primary/40 hover:bg-primary/15 hover:text-primary"
-                    style={{ left: midpoint.x - 14, top: midpoint.y - 14 }}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-              </div>
+              <button
+                key={`insert-${stage.id}`}
+                type="button"
+                data-stage-insert="true"
+                title="Insert stage"
+                onClick={() => onInsertStageAfter(flowIndex)}
+                className="pointer-events-auto absolute z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/[0.12] bg-[#1a1a1a] text-muted-foreground shadow-lg transition-colors hover:border-primary/40 hover:bg-primary/15 hover:text-primary"
+                style={{ left: midpoint.x, top: midpoint.y }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
             );
           })}
         </div>

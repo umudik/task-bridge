@@ -1,61 +1,28 @@
-import type { AuthorType, BridgeTask, TaskComment } from "../domain/task.js";
-import {
-  canonicalDescription,
-  isDoneStage,
-  isTaskClaimed,
-} from "../domain/task.js";
+import type { BridgeTask, TaskComment } from "../domain/task.js";
+import { canonicalDescription, isTaskClaimed } from "../domain/task.js";
+import { isWorkDone, resolveWorkStatus } from "../domain/work-status.js";
 import { emptyToNull } from "../lib/strings.js";
 import { getProjectById } from "./project-registry.js";
+import {
+  buildEpicClaimIndex,
+  isWorkflowClaimable,
+  sortWorkflowClaimCandidates,
+  userAwaitingReply,
+  workflowClaimBlockReason,
+} from "./task-claim-policy.js";
 import { claimBridgeTask, listBridgeTasks } from "./task-service.js";
 
-function latestCommentByAuthor(comments: TaskComment[], authorType: AuthorType) {
-  for (let index = comments.length - 1; index >= 0; index -= 1) {
-    const entry = comments[index];
-    if (!entry) continue;
-    if (entry.authorType === authorType) return entry;
-  }
-  return null;
-}
-
-export function userAwaitingReply(task: BridgeTask): boolean {
-  const lastHuman = latestCommentByAuthor(task.comments, "human");
-  const lastAi = latestCommentByAuthor(task.comments, "ai");
-  if (!lastHuman) return false;
-  if (!lastAi) return true;
-
-  const humanAt = Date.parse(lastHuman.at);
-  const aiAt = Date.parse(lastAi.at);
-  if (Number.isNaN(humanAt) || Number.isNaN(aiAt)) return true;
-  return humanAt > aiAt;
-}
-
-export function taskIsClaimable(task: BridgeTask): boolean {
-  if (userAwaitingReply(task)) return true;
-  if (isTaskClaimed(task)) return false;
-  if (isDoneStage(task.stageId)) return false;
-  return true;
-}
+export { userAwaitingReply } from "./task-claim-policy.js";
 
 export function turnIdForTask(task: BridgeTask): string {
-  const lastHuman = latestCommentByAuthor(task.comments, "human");
-  if (lastHuman && userAwaitingReply(task)) {
-    return `user-${lastHuman.id}`;
+  if (userAwaitingReply(task)) {
+    for (let index = task.comments.length - 1; index >= 0; index -= 1) {
+      const comment = task.comments[index];
+      if (comment?.authorType === "human") return `user-${comment.id}`;
+    }
   }
   if (isTaskClaimed(task) && task.claimedAt) return `claimed-${task.claimedAt}`;
   return `create-${task.createdAt}`;
-}
-
-function claimPriority(task: BridgeTask): number {
-  if (userAwaitingReply(task)) return 0;
-  return 1;
-}
-
-function sortClaimableTasks(tasks: BridgeTask[]): BridgeTask[] {
-  return [...tasks].sort((a, b) => {
-    const priority = claimPriority(a) - claimPriority(b);
-    if (priority !== 0) return priority;
-    return b.id - a.id;
-  });
 }
 
 function resolveWorkspacePath(task: BridgeTask): string | null {
@@ -69,9 +36,12 @@ function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
     projectId: task.projectId,
     projectName: task.projectName,
     parentId: task.parentId,
+    epicId: task.parentId,
     title: task.title,
     description: canonicalDescription(task),
     workspacePath: resolveWorkspacePath(task),
+    stageId: task.stageId,
+    workStatus: task.parentId !== null ? resolveWorkStatus(task) : null,
     createdAt: task.createdAt,
     comments: task.comments,
   };
@@ -83,30 +53,39 @@ export type TaskClaimPayload = {
   projectId: string;
   projectName: string;
   parentId: number | null;
+  epicId: number | null;
   title: string;
   description: string;
   workspacePath: string | null;
+  stageId: string | null;
+  workStatus: ReturnType<typeof resolveWorkStatus> | null;
   createdAt: string;
   comments: TaskComment[];
 };
 
-export async function listPendingTasks(): Promise<TaskClaimPayload[]> {
-  const tasks = await listBridgeTasks();
-  return sortClaimableTasks(tasks.filter(taskIsClaimable)).map((task) =>
-    buildClaimPayload(task, turnIdForTask(task)),
-  );
+function scopeTasks(tasks: BridgeTask[], projectId?: string): BridgeTask[] {
+  if (!projectId) return tasks;
+  return tasks.filter((task) => task.projectId === projectId);
+}
+
+export async function listPendingTasks(projectId?: string): Promise<TaskClaimPayload[]> {
+  const tasks = scopeTasks(await listBridgeTasks(), projectId);
+  const index = buildEpicClaimIndex(tasks);
+  return sortWorkflowClaimCandidates(
+    tasks.filter((task) => isWorkflowClaimable(task, index)),
+    index,
+  ).map((task) => buildClaimPayload(task, turnIdForTask(task)));
 }
 
 export async function claimNextTask(
   claimedBy: string,
   options?: { projectId?: string },
 ): Promise<{ task: BridgeTask; item: TaskClaimPayload } | null> {
-  const tasks = await listBridgeTasks();
-  const candidates = sortClaimableTasks(
-    tasks.filter((task) => {
-      if (options?.projectId && task.projectId !== options.projectId) return false;
-      return taskIsClaimable(task) && !isTaskClaimed(task);
-    }),
+  const tasks = scopeTasks(await listBridgeTasks(), options?.projectId);
+  const index = buildEpicClaimIndex(tasks);
+  const candidates = sortWorkflowClaimCandidates(
+    tasks.filter((task) => isWorkflowClaimable(task, index) && !isTaskClaimed(task)),
+    index,
   );
 
   for (const candidate of candidates) {
@@ -119,4 +98,14 @@ export async function claimNextTask(
   }
 
   return null;
+}
+
+export async function validateTaskClaim(taskId: number): Promise<string | null> {
+  const tasks = await listBridgeTasks();
+  const task = tasks.find((entry) => entry.id === taskId);
+  if (!task) return "Task not found";
+  const index = buildEpicClaimIndex(tasks);
+  if (userAwaitingReply(task) && task.parentId !== null && !isWorkDone(task)) return null;
+  if (isTaskClaimed(task)) return "Task is already claimed";
+  return workflowClaimBlockReason(task, index);
 }

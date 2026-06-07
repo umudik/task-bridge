@@ -13,8 +13,6 @@
     "docker:logs": "docker compose logs -f",
     "lint": "npm run lint:backend && npm run lint:mobile",
     "lint:backend": "npm --prefix apps/backend run lint",
-    "lint:mobile": "cd apps/mobile && gradlew.bat detekt",
-    "workflow": "node scripts/workflow.mjs",
-    "bridge": "node scripts/bridge.mjs"
+    "lint:mobile": "cd apps/mobile && gradlew.bat detekt"
   }
 }

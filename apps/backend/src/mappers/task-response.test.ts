@@ -11,6 +11,8 @@ function makeTask(overrides: Partial<BridgeTask>): BridgeTask {
     projectId: "demo",
     projectName: "Demo",
     parentId: null,
+    epicId: null,
+    templateId: null,
     description: "",
     acceptanceCriteria: null,
     priority: null,

@@ -13,6 +13,7 @@ import {
   updateProjectMemberRow,
   upsertProjectWorkflowSettingsRow,
 } from "../db/workflow-db.js";
+import { countSpawnableTemplates } from "../domain/task-template-graph.js";
 import {
   type StageTaskTemplate,
   SUBTASK_SPAWN_STAGE_ID,
@@ -74,7 +75,7 @@ function normalizeStageForSave(stage: WorkflowStage, projectRoles?: Set<string>)
     ...stage,
     taskTemplates,
     autoAssignRole,
-    spawnTaskCount: taskTemplates.length,
+    spawnTaskCount: countSpawnableTemplates(taskTemplates),
   };
 }
 
@@ -134,7 +135,7 @@ function rowToStage(row: {
     autoAssignRole,
     layoutX: row.layout_x,
     layoutY: row.layout_y,
-    spawnTaskCount: taskTemplates.length,
+    spawnTaskCount: countSpawnableTemplates(taskTemplates),
     taskTemplates,
   };
 }
