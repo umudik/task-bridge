@@ -1,0 +1,126 @@
+import { Loader2, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import type { Session } from "@/lib/session";
+import { createProject, fetchWorkflowTemplates, type Project, type WorkflowTemplateSummary } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+type CreateProjectPanelProps = {
+  session: Session;
+  onCreated: (project: Project) => void;
+  onCancel: () => void;
+};
+
+export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProjectPanelProps) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [repoPath, setRepoPath] = useState("");
+  const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([]);
+  const [workflowTemplateId, setWorkflowTemplateId] = useState("empty");
+
+  useEffect(() => {
+    void fetchWorkflowTemplates(session)
+      .then((items) => {
+        setTemplates(items);
+        setWorkflowTemplateId((current) =>
+          items.some((item) => item.id === current) ? current : (items[0]?.id ?? "empty"),
+        );
+      })
+      .catch(() => setTemplates([]));
+  }, [session]);
+
+  async function handleCreate() {
+    const trimmedName = name.trim();
+    const trimmedRepo = repoPath.trim();
+    if (!trimmedName || !trimmedRepo) return;
+
+    setCreating(true);
+    try {
+      const created = await createProject(session, {
+        name: trimmedName,
+        repoPath: trimmedRepo,
+        workflowTemplateId,
+      });
+      onCreated(created);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create project");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const canSubmit = Boolean(name.trim() && repoPath.trim());
+
+  return (
+    <div className="mx-auto w-full max-w-lg space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">New project</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Choose a workspace path and starting workflow template.
+        </p>
+      </div>
+
+      <div className="panel-card space-y-5 p-6">
+        <div className="space-y-2">
+          <Label htmlFor="project-name">Name</Label>
+          <Input
+            id="project-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="My App"
+            disabled={creating}
+            autoFocus
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="project-repo">Repo path</Label>
+          <Input
+            id="project-repo"
+            value={repoPath}
+            onChange={(event) => setRepoPath(event.target.value)}
+            placeholder="C:\dev\my-app"
+            disabled={creating}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Workflow template</Label>
+          <div className="grid gap-2">
+            {templates.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Empty template will be used.</p>
+            ) : (
+              templates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  disabled={creating}
+                  onClick={() => setWorkflowTemplateId(template.id)}
+                  className={cn(
+                    "rounded-xl border px-4 py-3 text-left transition-colors",
+                    workflowTemplateId === template.id
+                      ? "border-primary bg-primary/10"
+                      : "border-white/[0.08] hover:border-white/[0.14]",
+                  )}
+                >
+                  <p className="text-sm font-medium text-white">{template.title}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{template.description}</p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onCancel} disabled={creating}>
+            Cancel
+          </Button>
+          <Button disabled={creating || !canSubmit} onClick={() => void handleCreate()}>
+            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Create
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

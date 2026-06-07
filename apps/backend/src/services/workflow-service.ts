@@ -1,126 +1,141 @@
 import { randomUUID } from "node:crypto";
 import {
   countWorkflowStages,
-  deleteProjectDecisionRow,
   deleteProjectMemberRow,
   deleteWorkflowStagesForProject,
-  getProjectDecisionRow,
   getProjectMemberRow,
   getWorkflowStageRow,
-  insertProjectDecisionRow,
   insertProjectMemberRow,
   insertWorkflowStageRow,
-  listProjectDecisionRows,
+  getProjectWorkflowSettingsRow,
   listProjectMemberRows,
   listWorkflowStageRows,
-  updateProjectDecisionRow,
   updateProjectMemberRow,
+  upsertProjectWorkflowSettingsRow,
 } from "../db/workflow-db.js";
+import {
+  type StageTaskTemplate,
+  SUBTASK_SPAWN_STAGE_ID,
+  parseRulesJson,
+  parseStageRolesJson,
+  resolveEpicDescription,
+  resolveStageTaskTemplates,
+  serializeTaskTemplates,
+} from "../domain/workflow-stage.js";
 import { isDoneStage, listSubtasks, type BridgeTask } from "../domain/task.js";
 import { AppError } from "../errors/app-error.js";
+import { countActiveTasksOnStage } from "../db/tasks-db.js";
 import { allocateTaskId, getBridgeTask, listBridgeTasks, upsertBridgeTask } from "./task-service.js";
-import { copyTemplateStagesToProject } from "./workflow-template-service.js";
+import { copyTemplateStagesToProject, getWorkflowTemplate } from "./workflow-template-service.js";
 import { validateStageTransition } from "./workflow-rules.js";
 
 export type WorkflowStage = {
   id: string;
   title: string;
   description: string;
-  purpose: string;
-  rules: string[];
   position: number;
-  autoAssign: boolean;
-  decisionIds: string[];
+  autoAssignRole?: string;
   layoutX: number | null;
   layoutY: number | null;
   spawnTaskCount: number;
-  decisions?: ProjectDecision[];
+  taskTemplates: StageTaskTemplate[];
+  activeTaskCount?: number;
 };
 
-export type ProjectDecision = {
-  id: string;
-  projectId: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
-};
+export type { StageTaskTemplate };
 
 export type ProjectMember = {
   id: string;
   projectId: string;
   name: string;
-  available: boolean;
+  role?: string;
   openTasks: number;
 };
 
 export type ProjectWorkflow = {
   projectId: string;
+  roles: string[];
   stages: WorkflowStage[];
   members: ProjectMember[];
-  decisions: ProjectDecision[];
 };
 
-function parseJsonArray(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-  } catch {
-    return [];
-  }
-}
-
-function rowToDecision(row: {
-  id: string;
-  project_id: string;
-  title: string;
-  body: string;
-  created_at: string;
-  updated_at: string;
-}): ProjectDecision {
+function normalizeStageForSave(stage: WorkflowStage, projectRoles?: Set<string>): WorkflowStage {
+  const taskTemplates = (stage.taskTemplates ?? []).map((template) => {
+    const assigneeRole = template.assigneeRole?.trim() || undefined;
+    if (!assigneeRole || !projectRoles || projectRoles.has(assigneeRole)) {
+      return { ...template, assigneeRole };
+    }
+    return { ...template, assigneeRole: undefined };
+  });
+  const rawRole = stage.autoAssignRole?.trim() || undefined;
+  const autoAssignRole =
+    rawRole && (!projectRoles || projectRoles.has(rawRole)) ? rawRole : undefined;
   return {
-    id: row.id,
-    projectId: row.project_id,
-    title: row.title,
-    body: row.body,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    ...stage,
+    taskTemplates,
+    autoAssignRole,
+    spawnTaskCount: taskTemplates.length,
   };
 }
 
-function rowToStage(
-  row: {
-    id: string;
-    title: string;
-    description: string;
-    purpose: string;
-    rules_json: string;
-    position: number;
-    auto_assign: number;
-    decision_ids_json: string;
-    layout_x: number | null;
-    layout_y: number | null;
-    spawn_task_count: number;
-  },
-  decisionsById: Map<string, ProjectDecision>,
-): WorkflowStage {
-  const decisionIds = parseJsonArray(row.decision_ids_json);
+function normalizeProjectRoles(roles: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const role of roles) {
+    const trimmed = role.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function loadProjectRoles(projectId: string, stageRows: { roles_json?: string }[]): string[] {
+  const settings = getProjectWorkflowSettingsRow(projectId);
+  const fromSettings = parseRulesJson(settings?.roles_json ?? "[]");
+  if (fromSettings.length > 0) {
+    return normalizeProjectRoles(fromSettings);
+  }
+  const legacy = stageRows.flatMap((row) => parseRulesJson(row.roles_json ?? "[]"));
+  return normalizeProjectRoles(legacy);
+}
+
+function rowToStage(row: {
+  id: string;
+  title: string;
+  description: string;
+  purpose: string;
+  rules_json: string;
+  position: number;
+  auto_assign: number;
+  auto_assign_role?: string;
+  decision_ids_json: string;
+  layout_x: number | null;
+  layout_y: number | null;
+  spawn_task_count: number;
+  task_templates_json: string;
+}): WorkflowStage {
+  const taskTemplates = resolveStageTaskTemplates({
+    taskTemplatesJson: row.task_templates_json,
+    spawnTaskCount: row.spawn_task_count ?? 0,
+    stageId: row.id,
+    stageTitle: row.title,
+  });
+  const autoAssignRole = row.auto_assign_role?.trim() || undefined;
   return {
     id: row.id,
     title: row.title,
-    description: row.description,
-    purpose: row.purpose,
-    rules: parseJsonArray(row.rules_json),
+    description: resolveEpicDescription({
+      description: row.description,
+      purpose: row.purpose,
+      rulesJson: row.rules_json,
+    }),
     position: row.position,
-    autoAssign: row.auto_assign === 1,
+    autoAssignRole,
     layoutX: row.layout_x,
     layoutY: row.layout_y,
-    spawnTaskCount: row.spawn_task_count ?? 0,
-    decisionIds,
-    decisions: decisionIds
-      .map((id) => decisionsById.get(id))
-      .filter((item): item is ProjectDecision => item !== undefined),
+    spawnTaskCount: taskTemplates.length,
+    taskTemplates,
   };
 }
 
@@ -128,6 +143,45 @@ function countOpenTasksForMember(tasks: BridgeTask[], memberName: string): numbe
   return tasks.filter(
     (task) => task.assignee === memberName && !isDoneStage(task.stageId),
   ).length;
+}
+
+function memberRowToProjectMember(
+  row: {
+    id: string;
+    project_id: string;
+    name: string;
+    stage_roles_json: string;
+    role?: string;
+  },
+  tasks: BridgeTask[],
+): ProjectMember {
+  const directRole = row.role?.trim() || "";
+  const legacyRole = Object.values(parseStageRolesJson(row.stage_roles_json)).find((value) => value.trim())?.trim() ?? "";
+  const role = directRole || legacyRole || undefined;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    role,
+    openTasks: countOpenTasksForMember(
+      tasks.filter((task) => task.projectId === row.project_id),
+      row.name,
+    ),
+  };
+}
+
+function pickMemberWithLowestLoad(
+  members: { name: string }[],
+  tasks: BridgeTask[],
+): string | null {
+  let best: { name: string; load: number } | null = null;
+  for (const member of members) {
+    const load = countOpenTasksForMember(tasks, member.name);
+    if (!best || load < best.load) {
+      best = { name: member.name, load };
+    }
+  }
+  return best?.name ?? null;
 }
 
 export async function ensureProjectWorkflow(projectId: string): Promise<void> {
@@ -141,6 +195,11 @@ export async function applyWorkflowTemplateToProject(
   projectId: string,
   templateId: string,
 ): Promise<ProjectWorkflow> {
+  const template = getWorkflowTemplate(templateId);
+  if (!template) {
+    throw new AppError("Workflow template not found", 404);
+  }
+  validateWorkflowStageRemoval(projectId, template.stages);
   copyTemplateStagesToProject(projectId, templateId);
   return getProjectWorkflow(projectId);
 }
@@ -160,10 +219,11 @@ export async function resolveNewTaskPlacement(projectId: string): Promise<{
   const stageId = await getFirstStageId(projectId);
   if (!stageId) return { stageId: null, assignee: null };
   const row = getWorkflowStageRow(projectId, stageId);
-  if (!row || row.auto_assign !== 1) {
+  const autoAssignRole = row?.auto_assign_role?.trim() ?? "";
+  if (!row || !autoAssignRole) {
     return { stageId, assignee: null };
   }
-  const assignee = await pickAutoAssignee(projectId);
+  const assignee = await pickMemberByProjectRole(projectId, autoAssignRole);
   return { stageId, assignee };
 }
 
@@ -175,62 +235,101 @@ export function getStageTitleLookup(projectId: string): Map<string, string> {
   return map;
 }
 
+function countActiveTasksForStage(tasks: BridgeTask[], stageId: string): number {
+  return tasks.filter((task) => task.parentId === null && task.stageId === stageId).length;
+}
+
+export function validateWorkflowStageRemoval(
+  projectId: string,
+  nextStages: WorkflowStage[],
+): void {
+  if (nextStages.length < 1) {
+    throw new AppError("At least one workflow stage is required", 400);
+  }
+  const current = listWorkflowStageRows(projectId);
+  const nextIds = new Set(nextStages.map((stage) => stage.id.trim()));
+  for (const row of current) {
+    if (nextIds.has(row.id)) continue;
+    const activeCount = countActiveTasksOnStage(projectId, row.id);
+    if (activeCount > 0) {
+      throw new AppError(
+        `Cannot remove stage "${row.title}": ${activeCount} active task(s) are on this stage`,
+        409,
+        { stageId: row.id, stageTitle: row.title, activeTaskCount: activeCount },
+      );
+    }
+  }
+}
+
 export async function getProjectWorkflow(projectId: string): Promise<ProjectWorkflow> {
   await ensureProjectWorkflow(projectId);
-  const decisions = listProjectDecisionRows(projectId).map(rowToDecision);
-  const decisionsById = new Map(decisions.map((item) => [item.id, item]));
-  const stages = listWorkflowStageRows(projectId).map((row) => rowToStage(row, decisionsById));
   const tasks = await listBridgeTasks();
-  const members = listProjectMemberRows(projectId).map((row) => ({
-    id: row.id,
-    projectId: row.project_id,
-    name: row.name,
-    available: row.available === 1,
-    openTasks: countOpenTasksForMember(
-      tasks.filter((task) => task.projectId === projectId),
-      row.name,
-    ),
-  }));
-  return { projectId, stages, members, decisions };
+  const projectTasks = tasks.filter((task) => task.projectId === projectId);
+  const stages = listWorkflowStageRows(projectId).map((row) => {
+    const stage = rowToStage(row);
+    return {
+      ...stage,
+      activeTaskCount: countActiveTasksForStage(projectTasks, stage.id),
+    };
+  });
+  const stageRows = listWorkflowStageRows(projectId);
+  const roles = loadProjectRoles(projectId, stageRows);
+  const members = listProjectMemberRows(projectId).map((row) =>
+    memberRowToProjectMember(row, tasks),
+  );
+  return { projectId, roles, stages, members };
 }
 
 export async function replaceProjectWorkflow(
   projectId: string,
   stages: WorkflowStage[],
+  roles: string[] = [],
 ): Promise<ProjectWorkflow> {
   const id = projectId.trim();
+  validateWorkflowStageRemoval(id, stages);
+  const normalizedRoles = normalizeProjectRoles(roles);
+  const roleSet = new Set(normalizedRoles);
   deleteWorkflowStagesForProject(id);
   stages.forEach((stage, index) => {
+    const normalized = normalizeStageForSave(stage, roleSet);
     insertWorkflowStageRow({
-      id: stage.id.trim(),
+      id: normalized.id.trim(),
       projectId: id,
-      title: stage.title,
-      description: stage.description,
-      purpose: stage.purpose,
-      rulesJson: JSON.stringify(stage.rules ?? []),
-      position: stage.position ?? index,
-      autoAssign: stage.autoAssign,
-      decisionIdsJson: JSON.stringify(stage.decisionIds ?? []),
-      layoutX: stage.layoutX,
-      layoutY: stage.layoutY,
-      spawnTaskCount: stage.spawnTaskCount ?? 0,
+      title: normalized.title,
+      description: normalized.description ?? "",
+      purpose: "",
+      rulesJson: "[]",
+      position: normalized.position ?? index,
+      autoAssignRole: normalized.autoAssignRole ?? "",
+      decisionIdsJson: "[]",
+      layoutX: normalized.layoutX,
+      layoutY: normalized.layoutY,
+      spawnTaskCount: normalized.spawnTaskCount,
+      taskTemplatesJson: serializeTaskTemplates(normalized.taskTemplates),
     });
   });
+  upsertProjectWorkflowSettingsRow(id, JSON.stringify(normalizedRoles));
   return getProjectWorkflow(id);
 }
 
-export async function pickAutoAssignee(projectId: string): Promise<string | null> {
-  const members = listProjectMemberRows(projectId).filter((row) => row.available === 1);
+export async function pickMemberByProjectRole(
+  projectId: string,
+  roleName: string,
+): Promise<string | null> {
+  const normalizedRole = roleName.trim();
+  if (!normalizedRole) return null;
+  const members = listProjectMemberRows(projectId).filter((row) => {
+    const directRole = row.role?.trim() ?? "";
+    if (directRole) return directRole === normalizedRole;
+    const legacyRoles = parseStageRolesJson(row.stage_roles_json);
+    return Object.values(legacyRoles).some((value) => value === normalizedRole);
+  });
   if (members.length === 0) return null;
   const tasks = (await listBridgeTasks()).filter((task) => task.projectId === projectId);
-  let best: { name: string; load: number } | null = null;
-  for (const member of members) {
-    const load = countOpenTasksForMember(tasks, member.name);
-    if (!best || load < best.load) {
-      best = { name: member.name, load };
-    }
-  }
-  return best?.name ?? null;
+  return pickMemberWithLowestLoad(
+    members.map((row) => ({ name: row.name })),
+    tasks,
+  );
 }
 
 export async function applyStageToTask(
@@ -243,8 +342,9 @@ export async function applyStageToTask(
     throw new AppError("Unknown stage", 400);
   }
   let assignee = task.assignee;
-  if (stage.auto_assign === 1) {
-    assignee = await pickAutoAssignee(task.projectId);
+  const autoAssignRole = stage.auto_assign_role?.trim() ?? "";
+  if (autoAssignRole) {
+    assignee = await pickMemberByProjectRole(task.projectId, autoAssignRole);
   }
   return { assignee };
 }
@@ -254,28 +354,42 @@ export async function spawnStageSubtasks(
   stageId: string,
 ): Promise<BridgeTask[]> {
   if (parent.parentId) return [];
+  if (stageId !== SUBTASK_SPAWN_STAGE_ID) return [];
   const row = getWorkflowStageRow(parent.projectId, stageId);
-  const target = row?.spawn_task_count ?? 0;
-  if (!row || target <= 0) return [];
+  if (!row) return [];
+
+  const templates = resolveStageTaskTemplates({
+    taskTemplatesJson: row.task_templates_json,
+    spawnTaskCount: row.spawn_task_count ?? 0,
+    stageId: row.id,
+    stageTitle: row.title,
+  });
+  if (templates.length === 0) return [];
 
   const tasks = await listBridgeTasks();
   const existing = listSubtasks(tasks, parent.id);
-  if (existing.length >= target) return [];
-
-  let assignee: string | null = null;
-  if (row.auto_assign === 1) {
-    assignee = await pickAutoAssignee(parent.projectId);
-  }
+  if (existing.length >= templates.length) return [];
 
   const created: BridgeTask[] = [];
-  for (let i = existing.length; i < target; i += 1) {
+  for (let i = existing.length; i < templates.length; i += 1) {
+    const template = templates[i];
+    if (!template) continue;
+    let assignee: string | null = null;
+    if (template.assigneeRole?.trim()) {
+      assignee = await pickMemberByProjectRole(parent.projectId, template.assigneeRole);
+    } else {
+      const autoAssignRole = row.auto_assign_role?.trim() ?? "";
+      if (autoAssignRole) {
+        assignee = await pickMemberByProjectRole(parent.projectId, autoAssignRole);
+      }
+    }
     const id = await allocateTaskId();
     const task = await upsertBridgeTask({
       id,
       projectId: parent.projectId,
       projectName: parent.projectName,
-      title: `${row.title} #${i + 1}`,
-      description: "",
+      title: template.title,
+      description: template.description ?? "",
       createdBy: "workflow",
       parentId: parent.id,
       stageId,
@@ -291,95 +405,46 @@ export async function getStageSnapshot(projectId: string, stageId: string | null
   await ensureProjectWorkflow(projectId);
   const row = getWorkflowStageRow(projectId, stageId);
   if (!row) return null;
-  const decisions = listProjectDecisionRows(projectId).map(rowToDecision);
-  const decisionsById = new Map(decisions.map((item) => [item.id, item]));
-  const stage = rowToStage(row, decisionsById);
+  const stage = rowToStage(row);
   return {
     id: stage.id,
     title: stage.title,
     description: stage.description,
-    purpose: stage.purpose,
-    rules: stage.rules,
     spawnTaskCount: stage.spawnTaskCount,
-    decisions: stage.decisions ?? [],
+    taskTemplates: stage.taskTemplates,
   };
-}
-
-export async function createProjectDecision(input: {
-  projectId: string;
-  title: string;
-  body?: string;
-}): Promise<ProjectDecision> {
-  const id = randomUUID();
-  insertProjectDecisionRow({
-    id,
-    projectId: input.projectId,
-    title: input.title,
-    body: input.body ?? "",
-  });
-  const row = getProjectDecisionRow(id);
-  if (!row) throw new Error("Failed to create decision");
-  return rowToDecision(row);
-}
-
-export async function updateProjectDecision(
-  id: string,
-  patch: { title?: string; body?: string },
-): Promise<ProjectDecision | null> {
-  if (!updateProjectDecisionRow(id, patch)) return null;
-  const row = getProjectDecisionRow(id);
-  return row ? rowToDecision(row) : null;
-}
-
-export async function removeProjectDecision(id: string): Promise<boolean> {
-  return deleteProjectDecisionRow(id);
 }
 
 export async function createProjectMember(input: {
   projectId: string;
   name: string;
-  available?: boolean;
+  role?: string;
 }): Promise<ProjectMember> {
   const id = randomUUID();
   insertProjectMemberRow({
     id,
     projectId: input.projectId,
     name: input.name,
-    available: input.available ?? true,
+    role: input.role ?? "",
   });
   const row = getProjectMemberRow(id);
   if (!row) throw new Error("Failed to create member");
   const tasks = await listBridgeTasks();
-  return {
-    id: row.id,
-    projectId: row.project_id,
-    name: row.name,
-    available: row.available === 1,
-    openTasks: countOpenTasksForMember(
-      tasks.filter((task) => task.projectId === input.projectId),
-      row.name,
-    ),
-  };
+  return memberRowToProjectMember(row, tasks);
 }
 
 export async function updateProjectMember(
   id: string,
-  patch: { name?: string; available?: boolean },
+  patch: { name?: string; role?: string },
 ): Promise<ProjectMember | null> {
-  if (!updateProjectMemberRow(id, patch)) return null;
+  const dbPatch: { name?: string; role?: string } = {};
+  if (patch.name !== undefined) dbPatch.name = patch.name;
+  if (patch.role !== undefined) dbPatch.role = patch.role;
+  if (!updateProjectMemberRow(id, dbPatch)) return null;
   const row = getProjectMemberRow(id);
   if (!row) return null;
   const tasks = await listBridgeTasks();
-  return {
-    id: row.id,
-    projectId: row.project_id,
-    name: row.name,
-    available: row.available === 1,
-    openTasks: countOpenTasksForMember(
-      tasks.filter((task) => task.projectId === row.project_id),
-      row.name,
-    ),
-  };
+  return memberRowToProjectMember(row, tasks);
 }
 
 export async function removeProjectMember(id: string): Promise<boolean> {
@@ -390,30 +455,20 @@ export async function exportWorkflowReadable(projectId: string) {
   const workflow = await getProjectWorkflow(projectId);
   return {
     projectId: workflow.projectId,
+    roles: workflow.roles,
     stages: workflow.stages.map((stage) => ({
       id: stage.id,
       title: stage.title,
       description: stage.description,
-      purpose: stage.purpose,
-      rules: stage.rules,
-      autoAssign: stage.autoAssign,
+      autoAssignRole: stage.autoAssignRole ?? "",
       spawnTaskCount: stage.spawnTaskCount,
-      linkedDecisions: (stage.decisions ?? []).map((decision) => ({
-        id: decision.id,
-        title: decision.title,
-      })),
+      taskTemplates: stage.taskTemplates,
     })),
     members: workflow.members.map((member) => ({
       id: member.id,
       name: member.name,
-      available: member.available,
+      role: member.role ?? "",
       openTasks: member.openTasks,
-    })),
-    decisions: workflow.decisions.map((decision) => ({
-      id: decision.id,
-      title: decision.title,
-      body: decision.body,
-      updatedAt: decision.updatedAt,
     })),
   };
 }

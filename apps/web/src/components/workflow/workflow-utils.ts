@@ -1,7 +1,10 @@
-import type { WorkflowStage } from "@/lib/api";
+import type { StageTaskTemplate, WorkflowStage } from "@/lib/api";
 
-export const STAGE_CARD_WIDTH = 260;
-export const STAGE_CARD_HEIGHT = 112;
+export const STAGE_CARD_WIDTH = 280;
+export const STAGE_CARD_HEIGHT = 88;
+export const STEP_TASK_GAP = 20;
+export const TASK_TEMPLATE_HEIGHT = 40;
+export const TASK_TEMPLATE_GAP = 8;
 export const CANVAS_WIDTH = 3200;
 export const CANVAS_HEIGHT = 2400;
 
@@ -18,24 +21,17 @@ export function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function rulesToText(rules: string[]) {
-  return rules.join("\n");
-}
-
-export function textToRules(value: string) {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
 export function stagesForDisplay(stages: WorkflowStage[]): DisplayStage[] {
   const sorted = [...stages].sort((a, b) => a.position - b.position);
   const count = sorted.length;
   const xGap = STAGE_CARD_WIDTH + 48;
   const totalWidth = count > 0 ? STAGE_CARD_WIDTH + (count - 1) * xGap : STAGE_CARD_WIDTH;
   const startX = Math.max(100, (CANVAS_WIDTH - totalWidth) / 2);
-  const centerY = (CANVAS_HEIGHT - STAGE_CARD_HEIGHT) / 2;
+  const maxStack = sorted.reduce(
+    (max, stage) => Math.max(max, stageStackHeight(stage)),
+    STAGE_CARD_HEIGHT,
+  );
+  const centerY = Math.max(48, (CANVAS_HEIGHT - maxStack) / 2);
   return sorted.map((stage, index) => ({
     ...stage,
     displayX: startX + index * xGap,
@@ -43,20 +39,74 @@ export function stagesForDisplay(stages: WorkflowStage[]): DisplayStage[] {
   }));
 }
 
+function newEntityId(prefix: string) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+export function createTaskTemplate(stageTitle: string, index: number): StageTaskTemplate {
+  return {
+    id: newEntityId("task"),
+    title: index === 0 ? "New task" : `${stageTitle} task ${index + 1}`,
+    description: "",
+  };
+}
+
 export function createEmptyStage(position: number): WorkflowStage {
   return {
-    id: `stage-${Date.now()}`,
-    title: "New stage",
+    id: newEntityId("stage"),
+    title: "New step",
     description: "",
-    purpose: "",
-    rules: [],
     position,
-    autoAssign: false,
-    decisionIds: [],
+    autoAssignRole: undefined,
     layoutX: null,
     layoutY: null,
     spawnTaskCount: 0,
+    taskTemplates: [],
   };
+}
+
+export function insertStageAt(
+  stages: WorkflowStage[],
+  afterIndex: number | null,
+  stage: WorkflowStage,
+): WorkflowStage[] {
+  const sorted = [...stages].sort((a, b) => a.position - b.position);
+  const insertAt = afterIndex === null ? 0 : afterIndex + 1;
+  const next = [...sorted.slice(0, insertAt), stage, ...sorted.slice(insertAt)];
+  return next.map((item, position) => ({ ...item, position }));
+}
+
+export function moveStageBy(stages: WorkflowStage[], index: number, delta: -1 | 1): WorkflowStage[] {
+  const sorted = [...stages].sort((a, b) => a.position - b.position);
+  const target = index + delta;
+  if (target < 0 || target >= sorted.length) return stages;
+  const next = [...sorted];
+  const current = next[index];
+  const swap = next[target];
+  if (!current || !swap) return stages;
+  next[index] = swap;
+  next[target] = current;
+  return next.map((item, position) => ({ ...item, position }));
+}
+
+export function syncStageTemplates(stage: WorkflowStage): WorkflowStage {
+  const taskTemplates = stage.taskTemplates ?? [];
+  return {
+    ...stage,
+    taskTemplates,
+    spawnTaskCount: taskTemplates.length,
+  };
+}
+
+export function stageStackHeight(stage: WorkflowStage): number {
+  const templates = stage.taskTemplates ?? [];
+  if (templates.length === 0) return STAGE_CARD_HEIGHT;
+  return (
+    STAGE_CARD_HEIGHT +
+    STEP_TASK_GAP +
+    templates.length * TASK_TEMPLATE_HEIGHT +
+    (templates.length - 1) * TASK_TEMPLATE_GAP
+  );
 }
 
 export function normalizeStagePositions(stages: WorkflowStage[]): WorkflowStage[] {

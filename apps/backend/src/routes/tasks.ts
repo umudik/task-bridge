@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { isDoneStage } from "../domain/task.js";
 import { assertBackendAuth } from "../middleware/auth.js";
 import {
   buildInboxItems,
@@ -18,25 +17,27 @@ import {
   listBridgeTasks,
   markBridgeTaskAnswered,
   releaseBridgeTask,
-  transitionBridgeTask,
   upsertBridgeTask,
 } from "../services/task-service.js";
 import {
-  applyStageToTask,
-  resolveNewTaskPlacement,
-  spawnStageSubtasks,
-} from "../services/workflow-service.js";
+  listEpicSubtasks,
+  spawnEpicWorkflow,
+  syncEpicStage,
+  updateTaskWorkStatus,
+} from "../services/epic-service.js";
+import { resolveWorkStatus, workStatusLabel } from "../domain/work-status.js";
+import { getStageTitleLookup, resolveNewTaskPlacement } from "../services/workflow-service.js";
+import { isWorkStatus } from "../domain/work-status.js";
 import {
   claimNextTask,
   listPendingTasks,
   turnIdForTask,
 } from "../services/task-queue.js";
 
-const createTaskBodySchema = z
+const createEpicBodySchema = z
   .object({
     text: z.string().optional(),
-    projectId: z.string().min(1).optional(),
-    parentId: z.coerce.number().int().positive().optional(),
+    projectId: z.string().min(1),
     title: z.string().optional(),
     description: z.string().optional(),
   })
@@ -48,16 +49,17 @@ const createTaskBodySchema = z
         path: ["title"],
       });
     }
-    if (!data.parentId && !data.projectId?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "projectId is required",
-        path: ["projectId"],
-      });
-    }
   });
 
-function resolveCreateTaskFields(body: z.infer<typeof createTaskBodySchema>) {
+const createTaskBodySchema = z
+  .object({
+    parentId: z.coerce.number().int().positive(),
+    title: z.string().min(1),
+    description: z.string().optional(),
+    stageId: z.string().min(1).optional(),
+  });
+
+function resolveEpicFields(body: z.infer<typeof createEpicBodySchema>) {
   const titleInput = body.title?.trim() ?? "";
   const descriptionInput = body.description?.trim() ?? "";
   const text = body.text?.trim() ?? "";
@@ -85,6 +87,28 @@ function resolveCreateTaskFields(body: z.infer<typeof createTaskBodySchema>) {
   };
 }
 
+function createdItemResponse(task: {
+  id: number;
+  title: string;
+  createdAt: string;
+  projectId: string;
+  projectName: string;
+  parentId: number | null;
+  stageId: string | null;
+  assignee: string | null;
+}) {
+  return {
+    id: task.id,
+    title: task.title,
+    createdAt: task.createdAt,
+    projectId: task.projectId,
+    projectName: task.projectName,
+    parentId: task.parentId,
+    stageId: task.stageId,
+    assignee: task.assignee,
+  };
+}
+
 const answerIdParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
@@ -108,8 +132,8 @@ const commentTaskBodySchema = z.object({
   by: z.string().min(1).default("mobile"),
 });
 
-const transitionTaskBodySchema = z.object({
-  stageId: z.string().min(1),
+const workStatusBodySchema = z.object({
+  workStatus: z.enum(["todo", "in_progress", "done"]),
   by: z.string().min(1).default("web"),
 });
 
@@ -139,52 +163,76 @@ const inboxQuerySchema = z.object({
 });
 
 export async function taskRoutes(app: FastifyInstance) {
-  app.post("/tasks", async (request, reply) => {
+  app.post("/epics", async (request, reply) => {
     assertBackendAuth(request);
-    const body = createTaskBodySchema.parse(request.body);
+    const body = createEpicBodySchema.parse(request.body);
     await refreshProjectRegistry();
 
-    const parent = body.parentId ? await getBridgeTask(body.parentId) : null;
-    if (body.parentId && !parent) {
-      return reply.status(400).send({ error: "Unknown parent task" });
-    }
-
-    const projectId = parent?.projectId ?? body.projectId;
-    if (!projectId) {
-      return reply.status(400).send({ error: "projectId is required" });
-    }
-
-    const project = getProjectById(projectId);
+    const project = getProjectById(body.projectId.trim());
     if (!project) {
       return reply.status(400).send({ error: "Unknown project" });
     }
 
     const id = await allocateTaskId();
-    const { title, description } = resolveCreateTaskFields(body);
+    const { title, description } = resolveEpicFields(body);
     const placement = await resolveNewTaskPlacement(project.id);
 
-    const task = await upsertBridgeTask({
+    const epic = await upsertBridgeTask({
       id,
       projectId: project.id,
       projectName: project.name,
       title,
       description,
-      createdBy: parent ? "web" : "mobile",
+      createdBy: body.text?.trim() && !body.title?.trim() ? "mobile" : "web",
       stageId: placement.stageId,
       assignee: placement.assignee,
-      parentId: parent?.id ?? null,
+      parentId: null,
+      workStatus: null,
     });
 
-    return reply.status(201).send({
-      id: task.id,
-      title: task.title,
-      createdAt: task.createdAt,
+    await spawnEpicWorkflow(epic);
+    await syncEpicStage(epic.id);
+
+    return reply.status(201).send(createdItemResponse(epic));
+  });
+
+  app.post("/tasks", async (request, reply) => {
+    assertBackendAuth(request);
+    const body = createTaskBodySchema.parse(request.body);
+    await refreshProjectRegistry();
+
+    const epic = await getBridgeTask(body.parentId);
+    if (!epic) {
+      return reply.status(400).send({ error: "Unknown epic" });
+    }
+    if (epic.parentId !== null) {
+      return reply.status(400).send({ error: "Tasks must belong to an epic" });
+    }
+
+    const project = getProjectById(epic.projectId);
+    if (!project) {
+      return reply.status(400).send({ error: "Unknown project" });
+    }
+
+    const placement = await resolveNewTaskPlacement(project.id);
+    const stageId = body.stageId?.trim() || epic.stageId || placement.stageId;
+
+    const task = await upsertBridgeTask({
+      id: await allocateTaskId(),
       projectId: project.id,
       projectName: project.name,
-      parentId: task.parentId,
-      stageId: task.stageId,
-      assignee: task.assignee,
+      title: body.title.trim().slice(0, 200),
+      description: body.description?.trim() ?? "",
+      createdBy: "web",
+      stageId,
+      assignee: null,
+      parentId: epic.id,
+      workStatus: "todo",
     });
+
+    await syncEpicStage(epic.id);
+
+    return reply.status(201).send(createdItemResponse(task));
   });
 
   app.get("/tasks", async (request) => {
@@ -275,26 +323,55 @@ export async function taskRoutes(app: FastifyInstance) {
     return await mapTaskDetail(task);
   });
 
-  app.post("/tasks/:id/transition", async (request, reply) => {
+  app.patch("/tasks/:id/work-status", async (request, reply) => {
     assertBackendAuth(request);
     const { id } = answerIdParamsSchema.parse(request.params);
-    const body = transitionTaskBodySchema.parse(request.body ?? {});
-    const task = await getBridgeTask(id);
-    if (!task) {
-      return reply.status(404).send({ error: "Task not found" });
+    const body = workStatusBodySchema.parse(request.body ?? {});
+    if (!isWorkStatus(body.workStatus)) {
+      return reply.status(400).send({ error: "Invalid work status" });
     }
-    const next = await applyStageToTask(task, body.stageId);
-    const updated = await transitionBridgeTask(id, {
-      stageId: body.stageId,
-      assignee: next.assignee,
-      by: body.by,
-      answeredAt: isDoneStage(body.stageId) ? new Date().toISOString() : null,
-    });
+    const updated = await updateTaskWorkStatus(id, body.workStatus, body.by);
     if (!updated) {
-      return reply.status(404).send({ error: "Task not found" });
+      const existing = await getBridgeTask(id);
+      if (!existing) {
+        return reply.status(404).send({ error: "Task not found" });
+      }
+      return reply.status(400).send({ error: "Only subtasks support work status" });
     }
-    await spawnStageSubtasks(updated, body.stageId);
     return await mapTaskDetail(updated);
+  });
+
+  app.get("/projects/:projectId/epics/:epicId/tasks", async (request, reply) => {
+    assertBackendAuth(request);
+    const params = z
+      .object({
+        projectId: z.string().min(1),
+        epicId: z.coerce.number().int().positive(),
+      })
+      .parse(request.params);
+    const epic = await getBridgeTask(params.epicId);
+    if (!epic || epic.projectId !== params.projectId || epic.parentId !== null) {
+      return reply.status(404).send({ error: "Epic not found" });
+    }
+    await syncEpicStage(epic.id);
+    const refreshed = (await getBridgeTask(params.epicId)) ?? epic;
+    const subtasks = await listEpicSubtasks(epic.id);
+    const stageTitles = getStageTitleLookup(params.projectId);
+    return {
+      epicId: refreshed.id,
+      epicTitle: refreshed.title,
+      stageId: refreshed.stageId,
+      stageTitle: refreshed.stageId ? (stageTitles.get(refreshed.stageId) ?? refreshed.stageId) : null,
+      tasks: subtasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        stageId: task.stageId,
+        stageTitle: task.stageId ? (stageTitles.get(task.stageId) ?? task.stageId) : null,
+        workStatus: resolveWorkStatus(task),
+        workStatusLabel: workStatusLabel(resolveWorkStatus(task)),
+        assignee: task.assignee,
+      })),
+    };
   });
 
   app.post("/tasks/:id/comments", async (request, reply) => {

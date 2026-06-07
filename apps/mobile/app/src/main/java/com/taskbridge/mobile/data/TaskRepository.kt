@@ -69,7 +69,7 @@ class TaskRepository(
         val body = JSONObject()
             .put("text", text)
             .put("projectId", projectId)
-        val json = postJson("/tasks", body)
+        val json = postJson("/epics", body)
         CreateTaskResult(
             id = json.opt("id")?.toString() ?: "",
             name = json.optString("title"),

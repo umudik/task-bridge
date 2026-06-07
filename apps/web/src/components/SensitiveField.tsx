@@ -16,10 +16,10 @@ export function SensitiveField({
   const hidden = value !== "—" && !revealed;
 
   return (
-    <div className="rounded-lg border bg-background/60 p-3">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="mt-1 flex items-start justify-between gap-2">
-        <div className="relative min-w-0 flex-1 overflow-hidden rounded-md">
+    <div className="rounded-xl border border-white/[0.08] bg-[#0d0d0d] p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+      <div className="mt-2 flex items-start justify-between gap-3">
+        <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg">
           {revealed ? (
             <code className="break-all text-xs text-foreground">{value}</code>
           ) : (
@@ -38,12 +38,12 @@ export function SensitiveField({
         </div>
         <div className="flex shrink-0 gap-1">
           {value !== "—" ? (
-            <Button variant="ghost" size="icon" onClick={() => setRevealed((current) => !current)}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRevealed((current) => !current)}>
               {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           ) : null}
           {onCopy && revealed ? (
-            <Button variant="ghost" size="icon" onClick={onCopy}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onCopy}>
               <Copy className="h-4 w-4" />
             </Button>
           ) : null}
@@ -56,22 +56,36 @@ export function SensitiveField({
 export function SensitiveReveal({
   children,
   label = "Show",
+  hideLabel = "Hide",
 }: {
   children: React.ReactNode;
   label?: string;
+  hideLabel?: string;
 }) {
   const [revealed, setRevealed] = useState(false);
 
-  if (revealed) return <>{children}</>;
+  if (!revealed) {
+    return (
+      <div className="relative flex min-h-[240px] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0d0d0d]">
+        <div className="absolute inset-0 scale-110 bg-gradient-to-br from-muted via-muted-foreground/15 to-muted blur-2xl" />
+        <div className="absolute inset-0 bg-black/75 backdrop-blur-xl" />
+        <Button variant="secondary" className="relative z-10" onClick={() => setRevealed(true)}>
+          <Eye className="h-4 w-4" />
+          {label}
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative flex h-[272px] w-[272px] items-center justify-center overflow-hidden rounded-xl border bg-muted/30">
-      <div className="absolute inset-0 scale-110 bg-gradient-to-br from-muted via-muted-foreground/20 to-muted blur-2xl" />
-      <div className="absolute inset-0 bg-background/70 backdrop-blur-xl" />
-      <Button variant="secondary" className="relative z-10" onClick={() => setRevealed(true)}>
-        <Eye className="h-4 w-4" />
-        {label}
-      </Button>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button variant="ghost" size="sm" onClick={() => setRevealed(false)}>
+          <EyeOff className="h-4 w-4" />
+          {hideLabel}
+        </Button>
+      </div>
+      {children}
     </div>
   );
 }

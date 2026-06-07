@@ -6,6 +6,8 @@ import {
   type BridgeTask,
   type TaskComment,
 } from "../domain/task.js";
+import { resolveWorkStatus, workStatusLabel } from "../domain/work-status.js";
+import { syncEpicStage } from "../services/epic-service.js";
 import { getStageSnapshot, getStageTitleLookup } from "../services/workflow-service.js";
 import { listBridgeTasks } from "../services/task-service.js";
 
@@ -59,17 +61,26 @@ function previewForTask(task: BridgeTask): string | null {
 
 function mapSubtaskSummary(task: BridgeTask, stageTitles: Map<string, string>) {
   const stageKey = task.stageId ? `${task.projectId}:${task.stageId}` : null;
+  const workStatus = resolveWorkStatus(task);
   return {
     taskId: task.id,
     title: task.title,
     stageId: task.stageId,
     stageTitle: stageKey ? (stageTitles.get(stageKey) ?? task.stageId) : null,
     assignee: task.assignee,
-    done: isDoneStage(task.stageId),
+    workStatus,
+    workStatusLabel: workStatusLabel(workStatus),
+    done: workStatus === "done",
   };
 }
 
 export async function mapTaskDetail(task: BridgeTask) {
+  if (task.parentId === null) {
+    await syncEpicStage(task.id);
+    const refreshed = (await listBridgeTasks()).find((entry) => entry.id === task.id);
+    if (refreshed) task = refreshed;
+  }
+
   const createdTime = Date.parse(task.createdAt);
   const answeredTime = task.answeredAt ? Date.parse(task.answeredAt) : NaN;
   const durationMs =
@@ -109,6 +120,9 @@ export async function mapTaskDetail(task: BridgeTask) {
     subtasks,
     stageId: task.stageId,
     stage,
+    workStatus: task.parentId !== null ? resolveWorkStatus(task) : null,
+    workStatusLabel: task.parentId !== null ? workStatusLabel(resolveWorkStatus(task)) : null,
+    isEpic: task.parentId === null,
     answer: task.aiSummary ?? task.answer,
     status: consumerStatus(task),
     createdAt: task.createdAt,

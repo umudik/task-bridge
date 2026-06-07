@@ -2,16 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Loader2, RefreshCw, Smartphone, Wifi } from "lucide-react";
 import { toast } from "sonner";
-import { SensitiveField } from "@/components/SensitiveField";
+import { SensitiveField, SensitiveReveal } from "@/components/SensitiveField";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "@/hooks/useSession";
-import {
-  ApiError,
-  buildMobileConnectUri,
-  fetchConnectConfig,
-} from "@/lib/api";
+import { ApiError, buildMobileConnectUri, fetchConnectConfig } from "@/lib/api";
 import { defaultBaseUrl } from "@/lib/session";
 
 export function MobilePage() {
@@ -53,76 +48,73 @@ export function MobilePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Mobile app</h1>
-        <p className="mt-2 text-muted-foreground">
-          Pair your phone here. QR and API key stay hidden until you reveal them.
-        </p>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="page-toolbar">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight text-white">Mobile</h1>
+          <p className="text-xs text-muted-foreground">Android pairing</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Refresh
+        </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Smartphone className="h-5 w-5 text-primary" />
-              Scan QR
-            </CardTitle>
-            <CardDescription>For the Android app — not required for web sign-in.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-4">
+      <div className="flex-1 overflow-y-auto p-8">
+        <div className="mx-auto max-w-xl space-y-8">
+          <div className="panel-card space-y-6 p-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
+                <Smartphone className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">Sensitive details</p>
+                <p className="text-sm text-muted-foreground">QR and connection details are hidden by default.</p>
+              </div>
+            </div>
+
             {loading && !config ? (
-              <div className="flex h-[272px] w-[272px] items-center justify-center rounded-xl border border-dashed">
+              <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-white/[0.08]">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : mobileUri ? (
-              <div className="flex flex-col items-center gap-3">
-                <div className="inline-flex shrink-0 rounded-xl bg-white p-4 shadow-sm">
-                  <div className="size-[280px] shrink-0 [&_svg]:block [&_svg]:size-[280px] [&_svg]:max-h-[280px] [&_svg]:max-w-[280px]">
-                    <QRCodeSVG value={mobileUri} size={280} level="L" includeMargin />
+              <SensitiveReveal label="Show QR code" hideLabel="Hide QR">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="inline-flex rounded-2xl bg-white p-4 shadow-sm">
+                    <QRCodeSVG value={mobileUri} size={240} level="L" includeMargin />
                   </div>
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                    Scan the QR code in the mobile app.
+                  </p>
                 </div>
-                <p className="max-w-xs text-center text-xs text-muted-foreground">
-                  Open the app, tap Scan QR, and hold steady for a few seconds.
-                </p>
-              </div>
+              </SensitiveReveal>
             ) : (
               <Alert>
                 <Wifi className="h-4 w-4" />
                 <AlertTitle>Ngrok not ready</AlertTitle>
-                <AlertDescription>{error ?? "Start docker and wait for the tunnel."}</AlertDescription>
+                <AlertDescription>{error ?? "Start Docker and wait for the tunnel."}</AlertDescription>
               </Alert>
             )}
-            <Button variant="outline" onClick={() => void refresh()}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Connection details</CardTitle>
-            <CardDescription>Tap the eye icon to reveal, then copy if needed.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <SensitiveField
-              label="Web API key"
-              value={session?.apiKey ?? "—"}
-              onCopy={session?.apiKey ? () => void copy(session.apiKey, "API key") : undefined}
-            />
-            <SensitiveField
-              label="Public endpoint"
-              value={endpoint ?? "—"}
-              onCopy={endpoint ? () => void copy(endpoint, "Endpoint") : undefined}
-            />
-            <SensitiveField
-              label="Mobile deep link"
-              value={mobileUri ?? "—"}
-              onCopy={mobileUri ? () => void copy(mobileUri, "Deep link") : undefined}
-            />
-          </CardContent>
-        </Card>
+            <div className="space-y-3">
+              <SensitiveField
+                label="Web API key"
+                value={session?.apiKey ?? "—"}
+                onCopy={session?.apiKey ? () => void copy(session.apiKey, "API key") : undefined}
+              />
+              <SensitiveField
+                label="Public endpoint"
+                value={endpoint ?? "—"}
+                onCopy={endpoint ? () => void copy(endpoint, "Endpoint") : undefined}
+              />
+              <SensitiveField
+                label="Mobile deep link"
+                value={mobileUri ?? "—"}
+                onCopy={mobileUri ? () => void copy(mobileUri, "Deep link") : undefined}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -65,12 +65,12 @@ export function InboxPage() {
   const hasMore = items.length < total;
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="page-toolbar">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Comments on your tasks, newest first.
+          <h1 className="text-lg font-semibold tracking-tight text-white">Inbox</h1>
+          <p className="text-xs text-muted-foreground">
+            {unreadOnPage > 0 ? `${unreadOnPage} unread` : "All caught up"}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={loading || loadingMore}>
@@ -79,6 +79,7 @@ export function InboxPage() {
         </Button>
       </div>
 
+      <div className="flex-1 overflow-y-auto p-5">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -139,6 +140,7 @@ export function InboxPage() {
           />
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

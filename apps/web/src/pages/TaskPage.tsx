@@ -12,12 +12,11 @@ import { useSession } from "@/hooks/useSession";
 import {
   createTask,
   fetchAnswer,
-  fetchProjectWorkflow,
   postTaskComment,
-  transitionTask,
+  updateTaskWorkStatus,
   type AnswerDetail,
-  type ProjectWorkflow,
   type TaskComment,
+  type WorkStatus,
 } from "@/lib/api";
 import { markTaskRead } from "@/lib/read-tasks";
 import { formatWhen } from "@/lib/utils";
@@ -46,8 +45,7 @@ export function TaskPage() {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
-  const [workflow, setWorkflow] = useState<ProjectWorkflow | null>(null);
-  const [transitioning, setTransitioning] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [creatingSubtask, setCreatingSubtask] = useState(false);
 
@@ -73,13 +71,6 @@ export function TaskPage() {
     }
 
     void load();
-    if (projectId) {
-      void fetchProjectWorkflow(activeSession, projectId)
-        .then((data) => {
-          if (active) setWorkflow(data);
-        })
-        .catch(() => undefined);
-    }
     return () => {
       active = false;
     };
@@ -91,17 +82,17 @@ export function TaskPage() {
   );
   const description = detail?.description?.trim() ? detail.description : null;
 
-  async function handleTransition(stageId: string) {
+  async function handleWorkStatus(workStatus: WorkStatus) {
     if (!session || !Number.isFinite(taskId)) return;
-    setTransitioning(true);
+    setUpdatingStatus(true);
     try {
-      const data = await transitionTask(session, taskId, stageId);
+      const data = await updateTaskWorkStatus(session, taskId, workStatus);
       setDetail(data);
-      toast.success("Stage updated");
+      toast.success("Status updated");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to move task");
+      toast.error(error instanceof Error ? error.message : "Failed to update status");
     } finally {
-      setTransitioning(false);
+      setUpdatingStatus(false);
     }
   }
 
@@ -111,7 +102,11 @@ export function TaskPage() {
     if (!title) return;
     setCreatingSubtask(true);
     try {
-      await createTask(session, { parentId: taskId, title });
+      await createTask(session, {
+        parentId: taskId,
+        title,
+        stageId: detail?.stageId ?? undefined,
+      });
       const data = await fetchAnswer(session, taskId);
       setDetail(data);
       setSubtaskTitle("");
@@ -147,7 +142,7 @@ export function TaskPage() {
       <Button variant="ghost" asChild className="w-fit px-0 text-muted-foreground hover:text-foreground">
         <Link to={`/projects/${projectId}/tasks`}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to tasks
+          Back to epics
         </Link>
       </Button>
 
@@ -166,109 +161,102 @@ export function TaskPage() {
                   Parent: {detail.parent.title}
                 </Link>
               ) : null}
-              {detail.stage?.title ? (
-                <span className="rounded-full border px-2 py-0.5 text-foreground">{detail.stage.title}</span>
+              {detail.isEpic && detail.stage?.title ? (
+                <span className="rounded-full border px-2 py-0.5 text-foreground">
+                  Stage: {detail.stage.title}
+                </span>
+              ) : null}
+              {!detail.isEpic && detail.workStatusLabel ? (
+                <span className="rounded-full border px-2 py-0.5 text-foreground">{detail.workStatusLabel}</span>
               ) : null}
               {detail.assignee ? <span>Assignee: {detail.assignee}</span> : null}
             </div>
           </header>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Subtasks</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              {(detail.subtasks ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No subtasks yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {(detail.subtasks ?? []).map((subtask) => (
-                    <li key={subtask.taskId}>
-                      <Link
-                        to={`/projects/${projectId}/tasks/${subtask.taskId}`}
-                        className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:border-primary/30"
-                      >
-                        <span>{subtask.title}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {subtask.stageTitle ?? subtask.stageId ?? "—"}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="flex gap-2 border-t border-border pt-3">
-                <input
-                  value={subtaskTitle}
-                  onChange={(event) => setSubtaskTitle(event.target.value)}
-                  placeholder="New subtask title"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  disabled={creatingSubtask}
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={creatingSubtask || !subtaskTitle.trim()}
-                  onClick={() => void handleCreateSubtask()}
-                >
-                  {creatingSubtask ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {detail.stage ? (
+          {detail.isEpic ? (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Stage</CardTitle>
+                <CardTitle className="text-base font-semibold">Tasks</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 pt-0">
-                {detail.stage.purpose ? (
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Purpose</p>
-                    <p className="text-sm">{detail.stage.purpose}</p>
-                  </div>
-                ) : null}
-                {detail.stage.rules.length > 0 ? (
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Rules</p>
-                    <ul className="list-disc space-y-1 pl-5 text-sm">
-                      {detail.stage.rules.map((rule) => (
-                        <li key={rule}>{rule}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {detail.stage.decisions.length > 0 ? (
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Linked decisions</p>
-                    <ul className="space-y-2 text-sm">
-                      {detail.stage.decisions.map((decision) => (
-                        <li key={decision.id} className="rounded-lg border px-3 py-2">
-                          <p className="font-medium">{decision.title}</p>
-                          {decision.body ? <p className="text-muted-foreground">{decision.body}</p> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {workflow && workflow.stages.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                    {workflow.stages
-                      .filter((stage) => stage.id !== detail.stageId)
-                      .map((stage) => (
-                        <Button
-                          key={stage.id}
-                          size="sm"
-                          variant="outline"
-                          disabled={transitioning}
-                          onClick={() => void handleTransition(stage.id)}
+                {(detail.subtasks ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No tasks spawned yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {(detail.subtasks ?? []).map((subtask) => (
+                      <li key={subtask.taskId}>
+                        <Link
+                          to={`/projects/${projectId}/tasks/${subtask.taskId}`}
+                          className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:border-primary/30"
                         >
-                          Move to {stage.title}
-                        </Button>
-                      ))}
-                  </div>
-                ) : null}
+                          <span>{subtask.title}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {subtask.workStatusLabel ?? "Todo"} · {subtask.stageTitle ?? subtask.stageId ?? "—"}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex gap-2 border-t border-border pt-3">
+                  <input
+                    value={subtaskTitle}
+                    onChange={(event) => setSubtaskTitle(event.target.value)}
+                    placeholder="Add task to current stage"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    disabled={creatingSubtask}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={creatingSubtask || !subtaskTitle.trim()}
+                    onClick={() => void handleCreateSubtask()}
+                  >
+                    {creatingSubtask ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {detail.isEpic && detail.stage ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Pipeline stage</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-0">
+                <p className="text-sm font-medium text-foreground">{detail.stage.title}</p>
+                {detail.stage.description ? (
+                  <ExpandableMarkdown content={detail.stage.description} collapsedMaxHeight={120} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">Computed from task progress across stages.</p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {!detail.isEpic ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Work status</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0">
+                <p className="text-sm text-muted-foreground">
+                  Stage: {detail.stage?.title ?? detail.stageId ?? "—"}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(["todo", "in_progress", "done"] as WorkStatus[]).map((status) => (
+                    <Button
+                      key={status}
+                      size="sm"
+                      variant={detail.workStatus === status ? "default" : "outline"}
+                      disabled={updatingStatus}
+                      onClick={() => void handleWorkStatus(status)}
+                    >
+                      {status === "in_progress" ? "In progress" : status === "done" ? "Done" : "Todo"}
+                    </Button>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           ) : null}

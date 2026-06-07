@@ -45,6 +45,7 @@ export async function webRoutes(app: FastifyInstance) {
   app.get("/app/projects/:projectId/tasks/:taskId", spa);
   app.get("/app/projects/:projectId/mobile", spa);
   app.get("/app/projects/:projectId/workflow", spa);
+  app.get("/app/workflow-templates", spa);
   app.get("/app/*", async (request, reply) => {
     const path = request.url.split("?")[0] ?? "";
     if (path.startsWith("/app/assets/")) {

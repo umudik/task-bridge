@@ -19,6 +19,7 @@ export type WorkflowTemplateStageRow = {
   layout_x: number | null;
   layout_y: number | null;
   spawn_task_count: number;
+  task_templates_json: string;
 };
 
 type TemplateStageSeed = {
@@ -242,6 +243,12 @@ export function migrateWorkflowTemplateTables() {
     CREATE INDEX IF NOT EXISTS idx_workflow_template_stages_template
       ON workflow_template_stages(template_id);
   `);
+
+  const columns = db.prepare("PRAGMA table_info(workflow_template_stages)").all() as { name: string }[];
+  const names = new Set(columns.map((column) => column.name));
+  if (!names.has("task_templates_json")) {
+    db.exec("ALTER TABLE workflow_template_stages ADD COLUMN task_templates_json TEXT NOT NULL DEFAULT '[]'");
+  }
 }
 
 export function countWorkflowTemplates(): number {
@@ -272,7 +279,7 @@ export function listWorkflowTemplateStageRows(templateId: string): WorkflowTempl
   migrateWorkflowTemplateTables();
   return getProjectsDb()
     .prepare(
-      `SELECT template_id, id, title, description, purpose, rules_json, position, auto_assign, layout_x, layout_y, spawn_task_count
+      `SELECT template_id, id, title, description, purpose, rules_json, position, auto_assign, layout_x, layout_y, spawn_task_count, task_templates_json
        FROM workflow_template_stages WHERE template_id = ? ORDER BY position ASC, title COLLATE NOCASE ASC`,
     )
     .all(templateId.trim()) as WorkflowTemplateStageRow[];
@@ -311,13 +318,14 @@ export function insertWorkflowTemplateStageRow(row: {
   layoutX?: number | null;
   layoutY?: number | null;
   spawnTaskCount?: number;
+  taskTemplatesJson?: string;
 }) {
   migrateWorkflowTemplateTables();
   getProjectsDb()
     .prepare(
       `INSERT INTO workflow_template_stages
-        (template_id, id, title, description, purpose, rules_json, position, auto_assign, layout_x, layout_y, spawn_task_count, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        (template_id, id, title, description, purpose, rules_json, position, auto_assign, layout_x, layout_y, spawn_task_count, task_templates_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
     )
     .run(
       row.templateId.trim(),
@@ -331,6 +339,7 @@ export function insertWorkflowTemplateStageRow(row: {
       row.layoutX ?? null,
       row.layoutY ?? null,
       row.spawnTaskCount ?? 0,
+      row.taskTemplatesJson ?? "[]",
     );
 }
 

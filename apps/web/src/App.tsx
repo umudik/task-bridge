@@ -18,6 +18,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export function App() {
   return (
+    <div className="h-full">
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
@@ -55,6 +56,7 @@ export function App() {
       <Route path="/" element={<RootRedirect />} />
       <Route path="*" element={<RootRedirect />} />
     </Routes>
+    </div>
   );
 }
 

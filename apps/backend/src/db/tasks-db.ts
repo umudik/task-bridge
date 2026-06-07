@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
 import {
+  DONE_STAGE_ID,
   normalizeTask,
   sortTasks,
   type BridgeTask,
@@ -25,6 +26,11 @@ function resolveLegacyJsonPath(): string {
 }
 
 let db: Database.Database | null = null;
+
+function columnExists(database: Database.Database, table: string, column: string): boolean {
+  const rows = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return rows.some((row) => row.name === column);
+}
 
 function migrate(database: Database.Database) {
   database.exec(`
@@ -56,6 +62,11 @@ function migrate(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_stage_id ON tasks(stage_id);
   `);
+  if (!columnExists(database, "tasks", "work_status")) {
+    database.exec(`ALTER TABLE tasks ADD COLUMN work_status TEXT`);
+    database.exec(`UPDATE tasks SET work_status = 'done' WHERE parent_id IS NOT NULL AND stage_id = 'done'`);
+    database.exec(`UPDATE tasks SET work_status = 'todo' WHERE parent_id IS NOT NULL AND (work_status IS NULL OR work_status = '')`);
+  }
 }
 
 function rowToTask(row: Record<string, unknown>): BridgeTask {
@@ -81,6 +92,10 @@ function rowToTask(row: Record<string, unknown>): BridgeTask {
     answeredAt: row.answered_at === null || row.answered_at === undefined ? null : String(row.answered_at),
     answer: row.answer === null || row.answer === undefined ? null : String(row.answer),
     stageId: row.stage_id === null || row.stage_id === undefined ? null : String(row.stage_id),
+    workStatus:
+      row.work_status === null || row.work_status === undefined || row.work_status === ""
+        ? null
+        : (String(row.work_status) as BridgeTask["workStatus"]),
     comments: JSON.parse(String(row.comments_json)),
     events: JSON.parse(String(row.events_json)),
   } as RawTask);
@@ -108,6 +123,7 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
     answered_at: task.answeredAt,
     answer: task.answer,
     stage_id: task.stageId,
+    work_status: task.workStatus ?? null,
     comments_json: JSON.stringify(task.comments),
     events_json: JSON.stringify(task.events),
   };
@@ -132,11 +148,11 @@ function importLegacyJson(database: Database.Database) {
     INSERT INTO tasks (
       id, project_id, project_name, parent_id, title, description, priority, labels_json,
       assignee, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
-      claimed_at, answered_by, answered_at, answer, stage_id, comments_json, events_json
+      claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
     ) VALUES (
       @id, @project_id, @project_name, @parent_id, @title, @description, @priority, @labels_json,
       @assignee, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
-      @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @comments_json, @events_json
+      @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
     )
   `);
 
@@ -159,6 +175,17 @@ export function getTasksDb(): Database.Database {
   migrate(db);
   importLegacyJson(db);
   return db;
+}
+
+export function countActiveTasksOnStage(projectId: string, stageId: string): number {
+  const database = getTasksDb();
+  const row = database
+    .prepare(
+      `SELECT COUNT(*) AS count FROM tasks
+       WHERE project_id = ? AND stage_id = ? AND stage_id != ?`,
+    )
+    .get(projectId.trim(), stageId.trim(), DONE_STAGE_ID) as { count: number };
+  return row.count;
 }
 
 export function listTaskRows(): BridgeTask[] {
@@ -189,11 +216,11 @@ export function upsertTaskRow(task: BridgeTask): void {
       INSERT INTO tasks (
         id, project_id, project_name, parent_id, title, description, priority, labels_json,
         assignee, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
-        claimed_at, answered_by, answered_at, answer, stage_id, comments_json, events_json
+        claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
       ) VALUES (
         @id, @project_id, @project_name, @parent_id, @title, @description, @priority, @labels_json,
         @assignee, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
-        @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @comments_json, @events_json
+        @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
       )
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
@@ -215,6 +242,7 @@ export function upsertTaskRow(task: BridgeTask): void {
         answered_at = excluded.answered_at,
         answer = excluded.answer,
         stage_id = excluded.stage_id,
+        work_status = excluded.work_status,
         comments_json = excluded.comments_json,
         events_json = excluded.events_json
     `,

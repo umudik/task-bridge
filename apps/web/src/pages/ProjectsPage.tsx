@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronRight, FolderKanban, GitBranch, LogOut, Plus, RefreshCw } from "lucide-react";
+import { GitBranch, LogOut, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { BrandMark } from "@/components/BrandMark";
-import { CreateProjectDialog } from "@/components/CreateProjectDialog";
+import { CreateProjectPanel } from "@/components/CreateProjectPanel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/useSession";
 import { fetchProjects, type Project } from "@/lib/api";
 import { clearSession, setSelectedProject } from "@/lib/session";
-import { cn } from "@/lib/utils";
-
 export function ProjectsPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -60,89 +57,106 @@ export function ProjectsPage() {
   if (!session) return null;
 
   return (
-    <div className="surface-grid flex min-h-full flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-2xl space-y-6">
-        <div className="flex items-center justify-between">
-          <BrandMark />
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="h-4 w-4" />
-            Sign out
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <div className="flex h-14 shrink-0 items-center border-b border-white/[0.06] px-4">
+          <BrandMark compact />
+        </div>
+
+        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Projects</p>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
           </Button>
         </div>
 
-        <Card className="border-primary/15 bg-card/95 shadow-xl backdrop-blur">
-          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-            <div className="space-y-1.5">
-              <CardTitle className="flex items-center gap-2 text-2xl">
-                <FolderKanban className="h-5 w-5 text-primary" />
-                Projects
-              </CardTitle>
-              <CardDescription>Pick where tasks should land.</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => navigate("/workflow-templates")}>
-                <GitBranch className="h-4 w-4" />
-                Templates
-              </Button>
-              <Button size="sm" onClick={() => setCreateOpen(true)}>
-                <Plus className="h-4 w-4" />
-                New
+        <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
+          {loading ? (
+            <>
+              <Skeleton className="h-10 w-full rounded-lg" />
+              <Skeleton className="h-10 w-full rounded-lg" />
+            </>
+          ) : error ? (
+            <div className="space-y-2 p-2">
+              <p className="text-xs text-destructive">{error}</p>
+              <Button variant="outline" size="sm" className="w-full" onClick={() => void reload()}>
+                <RefreshCw className="h-4 w-4" />
+                Retry
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {loading ? (
-              <>
-                <Skeleton className="h-16 w-full" />
-                <Skeleton className="h-16 w-full" />
-              </>
-            ) : error ? (
-              <div className="space-y-3">
-                <p className="text-sm text-destructive">{error}</p>
-                <Button variant="outline" onClick={() => void reload()}>
-                  <RefreshCw className="h-4 w-4" />
-                  Retry
-                </Button>
-              </div>
-            ) : projects.length === 0 ? (
-              <div className="space-y-3 rounded-xl border border-dashed px-4 py-8 text-center">
-                <p className="text-sm text-muted-foreground">No projects yet.</p>
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Create project
-                </Button>
-              </div>
-            ) : (
-              projects.map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  onClick={() => openProject(project)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-xl border px-4 py-4 text-left transition-colors hover:border-primary/40 hover:bg-accent/40",
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium">{project.name}</p>
-                    <p className="text-sm text-muted-foreground">{project.id}</p>
-                    {project.repoPath ? (
-                      <p className="truncate text-xs text-muted-foreground">{project.repoPath}</p>
-                    ) : null}
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          ) : projects.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
+            >
+              <Plus className="h-4 w-4" />
+              Create project
+            </button>
+          ) : (
+            projects.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                onClick={() => openProject(project)}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/[0.04]"
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                <span className="min-w-0 flex-1 truncate font-medium">{project.name}</span>
+              </button>
+            ))
+          )}
+        </div>
 
-      <CreateProjectDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        session={session}
-        onCreated={handleCreated}
-      />
+        <div className="shrink-0 border-t border-white/[0.06] p-2">
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Global
+          </p>
+          <div className="space-y-0.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 w-full justify-start rounded-lg text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+            onClick={() => navigate("/workflow-templates")}
+          >
+            <GitBranch className="h-4 w-4" />
+            Workflow templates
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 w-full justify-start rounded-lg text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+            onClick={signOut}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+          </div>
+        </div>
+      </aside>
+
+      <main className="app-main flex items-center justify-center p-8">
+        {createOpen ? (
+          <CreateProjectPanel
+            session={session}
+            onCreated={handleCreated}
+            onCancel={() => setCreateOpen(false)}
+          />
+        ) : (
+          <div className="w-full max-w-md text-center">
+            <h1 className="text-2xl font-semibold tracking-tight">Select a project</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Pick a workspace from the sidebar or create a new one.
+            </p>
+            {!loading && projects.length === 0 ? (
+              <Button className="mt-6" onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" />
+                New project
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </main>
     </div>
   );
 }

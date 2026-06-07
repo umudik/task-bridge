@@ -52,8 +52,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="surface-grid flex min-h-full items-center justify-center px-4 py-10">
-      <Card className="w-full max-w-md border-primary/15 bg-card/95 shadow-xl backdrop-blur">
+    <div className="flex h-full items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md border-white/[0.08] bg-card shadow-2xl">
         <CardHeader className="space-y-6 text-center">
           <div className="flex justify-center">
             <BrandMark />

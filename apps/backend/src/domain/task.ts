@@ -1,5 +1,6 @@
 import { AppError } from "../errors/app-error.js";
 import { emptyToNull } from "../lib/strings.js";
+import { isWorkDone, type WorkStatus } from "./work-status.js";
 
 export const DONE_STAGE_ID = "done";
 
@@ -53,6 +54,7 @@ export type BridgeTask = {
   answeredAt: string | null;
   answer: string | null;
   stageId: string | null;
+  workStatus?: WorkStatus | null;
   comments: TaskComment[];
   events: TaskEvent[];
 };
@@ -87,7 +89,7 @@ export function listSubtasks(tasks: BridgeTask[], parentId: number): BridgeTask[
 }
 
 export function incompleteSubtasks(tasks: BridgeTask[], parentId: number): BridgeTask[] {
-  return listSubtasks(tasks, parentId).filter((task) => !isDoneStage(task.stageId));
+  return listSubtasks(tasks, parentId).filter((task) => !isWorkDone(task));
 }
 
 export function assertCanCompleteTask(tasks: BridgeTask[], task: BridgeTask): void {

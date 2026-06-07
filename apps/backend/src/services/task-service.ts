@@ -15,6 +15,8 @@ import {
   type AuthorType,
   type BridgeTask,
 } from "../domain/task.js";
+import type { WorkStatus } from "../domain/work-status.js";
+import { syncEpicStage } from "./epic-service.js";
 import { emptyToNull } from "../lib/strings.js";
 
 export {
@@ -55,6 +57,7 @@ export async function upsertBridgeTask(input: {
   stageId?: string | null;
   assignee?: string | null;
   parentId?: number | null;
+  workStatus?: WorkStatus | null;
 }): Promise<BridgeTask> {
   const existing = getTaskRow(input.id);
   if (existing) {
@@ -90,6 +93,7 @@ export async function upsertBridgeTask(input: {
     answeredAt: null,
     answer: null,
     stageId: input.stageId ?? null,
+    workStatus: input.workStatus ?? (input.parentId ? "todo" : null),
     assignee: input.assignee ?? null,
     comments: [],
     events: [{ type: "created", at: createdAt, by: createdBy }],
@@ -258,7 +262,7 @@ export async function applyAgentWorkResult(
     assertCanCompleteTask(tasks, current);
   }
 
-  return mutateTaskRow(id, (task) => {
+  const result = mutateTaskRow(id, (task) => {
     if (payload.description !== undefined || payload.acceptanceCriteria !== undefined) {
       let desc = payload.description !== undefined ? payload.description : task.description;
       if (payload.acceptanceCriteria !== undefined) {
@@ -290,7 +294,11 @@ export async function applyAgentWorkResult(
 
     if (payload.action === "task.complete") {
       const answeredAt = new Date().toISOString();
-      task.stageId = DONE_STAGE_ID;
+      if (task.parentId !== null) {
+        task.workStatus = "done";
+      } else {
+        task.stageId = DONE_STAGE_ID;
+      }
       task.claimedBy = null;
       task.claimedAt = null;
       task.answeredBy = "Cursor AI";
@@ -305,6 +313,12 @@ export async function applyAgentWorkResult(
     task.events.push({ type: "spec_updated", at: new Date().toISOString(), by: "cursor-ai" });
     touchTask(task);
   });
+
+  if (result?.parentId && payload.action === "task.complete") {
+    await syncEpicStage(result.parentId);
+  }
+
+  return result;
 }
 
 export async function markBridgeTaskAnswered(

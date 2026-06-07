@@ -3,15 +3,18 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix apps/backend run dev",
-    "build": "npm --prefix apps/backend run build",
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:web": "npm --prefix apps/web run build && node scripts/copy-web.mjs",
+    "build": "npm run build:web && npm --prefix apps/backend run build",
     "test": "npm --prefix apps/backend run test",
-    "docker:up": "docker compose up --build",
-    "docker:up:d": "docker compose up --build -d",
-    "docker:down": "docker compose down",
+    "docker:up": "docker compose up --build --remove-orphans",
+    "docker:up:d": "docker compose up --build -d --remove-orphans",
+    "docker:down": "docker compose down --remove-orphans",
     "docker:logs": "docker compose logs -f",
     "lint": "npm run lint:backend && npm run lint:mobile",
     "lint:backend": "npm --prefix apps/backend run lint",
     "lint:mobile": "cd apps/mobile && gradlew.bat detekt",
-    "workflow": "node scripts/workflow.mjs"
+    "workflow": "node scripts/workflow.mjs",
+    "bridge": "node scripts/bridge.mjs"
   }
 }

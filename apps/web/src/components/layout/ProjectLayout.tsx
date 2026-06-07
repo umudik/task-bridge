@@ -1,9 +1,8 @@
 import { useEffect, useRef } from "react";
-import { NavLink, Navigate, Outlet, useNavigate, useParams } from "react-router-dom";
-import { GitBranch, Inbox, ListTodo, LogOut, Smartphone } from "lucide-react";
+import { NavLink, Navigate, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, GitBranch, Inbox, Layers, LogOut, Smartphone, type LucideIcon } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useCommentNotifications } from "@/hooks/useCommentNotifications";
 import { useSession } from "@/hooks/useSession";
@@ -13,11 +12,13 @@ import { clearSession, clearSelectedProject, setSelectedProject } from "@/lib/se
 
 export function ProjectLayout() {
   const { projectId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const session = useSession();
   const syncedRef = useRef<string | null>(null);
   const { commentItems } = useCommentNotifications(session, projectId);
   const unread = unreadCommentCount(commentItems);
+  const isWorkflow = location.pathname.endsWith("/workflow");
 
   useEffect(() => {
     if (!session || !projectId) return;
@@ -52,42 +53,62 @@ export function ProjectLayout() {
   }
 
   return (
-    <div className="surface-grid min-h-full">
-      <div className="mx-auto grid min-h-full w-full max-w-[1800px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:px-8 md:grid-cols-[15rem_minmax(0,1fr)] md:py-8 xl:grid-cols-[16rem_minmax(0,1fr)]">
-        <aside className="md:sticky md:top-8 md:self-start">
-          <div className="w-full space-y-6 rounded-2xl border bg-card/80 p-5 backdrop-blur">
-            <BrandMark />
-            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
-              <p className="truncate text-sm font-medium">{session.projectName ?? projectId}</p>
-            </div>
-            <nav className="space-y-1">
-              <NavItem to={tasksPath} label="Tasks" icon={ListTodo} />
-              <NavItem to={inboxPath} label="Inbox" icon={Inbox} badge={unread} />
-              <NavItem to={mobilePath} label="Mobile" icon={Smartphone} />
-              <NavItem to={workflowPath} label="Workflow" icon={GitBranch} />
-            </nav>
-            <Separator />
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                clearSelectedProject();
-                navigate("/projects");
-              }}
-            >
-              Switch project
-            </Button>
-            <Button variant="ghost" className="w-full justify-start" onClick={signOut}>
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Button>
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <div className="flex h-14 shrink-0 items-center border-b border-white/[0.07] px-4">
+          <BrandMark compact />
+        </div>
+
+        <div className="border-b border-white/[0.07] px-4 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workspace</p>
+          <p className="mt-1 truncate text-sm font-semibold text-white">{session.projectName ?? projectId}</p>
+        </div>
+
+        <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
+          <div className="space-y-0.5">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Work
+            </p>
+            <NavItem to={tasksPath} label="Epics" icon={Layers} />
+            <NavItem to={inboxPath} label="Inbox" icon={Inbox} badge={unread} />
+            <NavItem to={mobilePath} label="Mobile" icon={Smartphone} />
           </div>
-        </aside>
-        <main className="min-w-0 pb-8">
-          <Outlet />
-        </main>
-      </div>
+          <div className="space-y-0.5">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Configure
+            </p>
+            <NavItem to={workflowPath} label="Pipeline" icon={GitBranch} />
+          </div>
+        </nav>
+
+        <div className="shrink-0 space-y-0.5 border-t border-white/[0.07] p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 w-full justify-start rounded-lg text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+            onClick={() => {
+              clearSelectedProject();
+              navigate("/projects");
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            All projects
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 w-full justify-start rounded-lg text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+            onClick={signOut}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+        </div>
+      </aside>
+
+      <main className={cn("app-main", isWorkflow ? "overflow-hidden" : "overflow-y-auto")}>
+        <Outlet />
+      </main>
     </div>
   );
 }
@@ -100,7 +121,7 @@ function NavItem({
 }: {
   to: string;
   label: string;
-  icon: typeof ListTodo;
+  icon: LucideIcon;
   badge?: number;
 }) {
   return (
@@ -108,18 +129,18 @@ function NavItem({
       to={to}
       className={({ isActive }) =>
         cn(
-          "flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
+          "flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm transition-colors",
           isActive
-            ? "bg-primary/15 text-primary"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            ? "bg-white/[0.09] font-medium text-white"
+            : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
         )
       }
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className="h-4 w-4 shrink-0 opacity-90" />
       <span className="flex-1 truncate">{label}</span>
       <span
         className={cn(
-          "flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-medium",
+          "flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-medium",
           badge > 0 ? "bg-primary text-primary-foreground" : "invisible",
         )}
         aria-hidden={badge <= 0}

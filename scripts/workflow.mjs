@@ -26,6 +26,7 @@ async function request(path, init = {}) {
     const message = data?.error ?? text ?? response.statusText;
     throw new Error(`HTTP ${response.status}: ${message}`);
   }
+  if (response.status === 204) return null;
   return data;
 }
 
@@ -35,8 +36,8 @@ function usage() {
 Usage:
   node scripts/workflow.mjs get <projectId>
   node scripts/workflow.mjs export <projectId>
-  node scripts/workflow.mjs decisions list <projectId>
-  node scripts/workflow.mjs decisions add <projectId> <title> [body]
+  node scripts/workflow.mjs team <projectId>
+  node scripts/workflow.mjs roles list <projectId>
   node scripts/workflow.mjs members list <projectId>
 
 Env:
@@ -61,7 +62,7 @@ try {
     process.exit(0);
   }
 
-  if (command === "export") {
+  if (command === "export" || command === "team") {
     const [projectId] = args;
     if (!projectId) throw new Error("projectId required");
     const data = await request(`/projects/${projectId}/workflow/export`);
@@ -69,24 +70,15 @@ try {
     process.exit(0);
   }
 
-  if (command === "decisions") {
-    const [sub, projectId, title, ...bodyParts] = args;
+  if (command === "roles") {
+    const [sub, projectId] = args;
     if (!projectId) throw new Error("projectId required");
     if (sub === "list") {
-      const data = await request(`/projects/${projectId}/decisions`);
-      console.log(JSON.stringify(data, null, 2));
+      const data = await request(`/projects/${projectId}/workflow`);
+      console.log(JSON.stringify({ projectId, roles: data.roles ?? [] }, null, 2));
       process.exit(0);
     }
-    if (sub === "add") {
-      if (!title) throw new Error("title required");
-      const data = await request(`/projects/${projectId}/decisions`, {
-        method: "POST",
-        body: JSON.stringify({ title, body: bodyParts.join(" ") }),
-      });
-      console.log(JSON.stringify(data, null, 2));
-      process.exit(0);
-    }
-    throw new Error(`Unknown decisions subcommand: ${sub ?? "(missing)"}`);
+    throw new Error(`Unknown roles subcommand: ${sub ?? "(missing)"}`);
   }
 
   if (command === "members") {

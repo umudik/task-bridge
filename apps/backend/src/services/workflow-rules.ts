@@ -1,8 +1,17 @@
-import { assertCanCompleteTask, isDoneStage, type BridgeTask } from "../domain/task.js";
+import { incompleteSubtasks, type BridgeTask } from "../domain/task.js";
+import { AppError } from "../errors/app-error.js";
 import { listBridgeTasks } from "./task-service.js";
 
 export async function validateStageTransition(task: BridgeTask, stageId: string): Promise<void> {
-  if (!isDoneStage(stageId)) return;
+  if (stageId === task.stageId) return;
   const tasks = await listBridgeTasks();
-  assertCanCompleteTask(tasks, task);
+  const blocked = incompleteSubtasks(tasks, task.id);
+  if (blocked.length === 0) return;
+  throw new AppError(`Cannot move task: ${blocked.length} subtask(s) are not done`, 409, {
+    subtasks: blocked.map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      stageId: entry.stageId,
+    })),
+  });
 }

@@ -23,52 +23,46 @@ export type InboxItem = {
   stageTitle?: string | null;
 };
 
+export type StageTaskTemplate = {
+  id: string;
+  title: string;
+  description: string;
+  assigneeRole?: string;
+};
+
 export type WorkflowStage = {
   id: string;
   title: string;
   description: string;
-  purpose: string;
-  rules: string[];
   position: number;
-  autoAssign: boolean;
-  decisionIds: string[];
+  autoAssignRole?: string;
   layoutX?: number | null;
   layoutY?: number | null;
   spawnTaskCount?: number;
-  decisions?: ProjectDecision[];
-};
-
-export type ProjectDecision = {
-  id: string;
-  projectId: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
+  taskTemplates?: StageTaskTemplate[];
+  activeTaskCount?: number;
 };
 
 export type ProjectMember = {
   id: string;
   projectId: string;
   name: string;
-  available: boolean;
+  role?: string;
   openTasks: number;
 };
 
 export type ProjectWorkflow = {
   projectId: string;
+  roles: string[];
   stages: WorkflowStage[];
   members: ProjectMember[];
-  decisions: ProjectDecision[];
 };
 
 export type TaskStageSnapshot = {
   id: string;
   title: string;
   description: string;
-  purpose: string;
-  rules: string[];
-  decisions: ProjectDecision[];
+  taskTemplates?: StageTaskTemplate[];
 };
 
 export type InboxResult = {
@@ -86,12 +80,16 @@ export type InboxQuery = {
   limit?: number;
 };
 
+export type WorkStatus = "todo" | "in_progress" | "done";
+
 export type TaskSubtask = {
   taskId: number;
   title: string;
   stageId?: string | null;
   stageTitle?: string | null;
   assignee?: string | null;
+  workStatus?: WorkStatus;
+  workStatusLabel?: string;
   done: boolean;
 };
 
@@ -132,6 +130,9 @@ export type AnswerDetail = {
   assignee?: string | null;
   stageId?: string | null;
   stage?: TaskStageSnapshot | null;
+  isEpic?: boolean;
+  workStatus?: WorkStatus | null;
+  workStatusLabel?: string | null;
   comments?: TaskComment[];
 };
 
@@ -190,7 +191,14 @@ async function request<T>(
   if (!response.ok) {
     throw new ApiError(await parseError(response), response.status);
   }
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }
 
 export async function fetchConnectConfig(origin?: string) {
@@ -252,6 +260,17 @@ export async function fetchWorkflowTemplate(session: Session, templateId: string
   return request<WorkflowTemplate>(session, `/workflow-templates/${templateId}`);
 }
 
+export async function createWorkflowTemplate(
+  session: Session,
+  input: { title: string; id?: string; description?: string },
+) {
+  return request<WorkflowTemplate>(session, "/workflow-templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function saveWorkflowTemplate(session: Session, templateId: string, stages: WorkflowStage[]) {
   return request<WorkflowTemplate>(session, `/workflow-templates/${templateId}`, {
     method: "PUT",
@@ -268,12 +287,34 @@ export async function applyWorkflowTemplate(session: Session, projectId: string,
   });
 }
 
-export type CreateTaskInput = {
-  projectId?: string;
-  parentId?: number;
+export type CreateEpicInput = {
+  projectId: string;
   title: string;
   description?: string;
 };
+
+export type CreateTaskInput = {
+  parentId: number;
+  title: string;
+  description?: string;
+  stageId?: string;
+};
+
+export async function createEpic(session: Session, input: CreateEpicInput) {
+  return request<{ id: string | number; title?: string; projectName?: string; parentId?: number | null }>(
+    session,
+    "/epics",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: input.projectId,
+        title: input.title,
+        description: input.description ?? "",
+      }),
+    },
+  );
+}
 
 export async function createTask(session: Session, input: CreateTaskInput) {
   return request<{ id: string | number; title?: string; projectName?: string; parentId?: number | null }>(
@@ -283,10 +324,10 @@ export async function createTask(session: Session, input: CreateTaskInput) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        projectId: input.projectId,
         parentId: input.parentId,
         title: input.title,
         description: input.description ?? "",
+        stageId: input.stageId,
       }),
     },
   );
@@ -318,11 +359,15 @@ export async function fetchProjectWorkflow(session: Session, projectId: string) 
   return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow`);
 }
 
-export async function saveProjectWorkflow(session: Session, projectId: string, stages: WorkflowStage[]) {
+export async function saveProjectWorkflow(
+  session: Session,
+  projectId: string,
+  input: { stages: WorkflowStage[]; roles: string[] },
+) {
   return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stages }),
+    body: JSON.stringify(input),
   });
 }
 
@@ -330,39 +375,10 @@ export async function exportProjectWorkflow(session: Session, projectId: string)
   return request<Record<string, unknown>>(session, `/projects/${projectId}/workflow/export`);
 }
 
-export async function createDecision(
-  session: Session,
-  projectId: string,
-  input: { title: string; body?: string },
-) {
-  return request<ProjectDecision>(session, `/projects/${projectId}/decisions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-}
-
-export async function updateDecision(
-  session: Session,
-  projectId: string,
-  decisionId: string,
-  input: { title?: string; body?: string },
-) {
-  return request<ProjectDecision>(session, `/projects/${projectId}/decisions/${decisionId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-}
-
-export async function deleteDecision(session: Session, projectId: string, decisionId: string) {
-  await request<void>(session, `/projects/${projectId}/decisions/${decisionId}`, { method: "DELETE" });
-}
-
 export async function createMember(
   session: Session,
   projectId: string,
-  input: { name: string; available?: boolean },
+  input: { name: string; role?: string },
 ) {
   return request<ProjectMember>(session, `/projects/${projectId}/members`, {
     method: "POST",
@@ -375,7 +391,7 @@ export async function updateMember(
   session: Session,
   projectId: string,
   memberId: string,
-  input: { name?: string; available?: boolean },
+  input: { name?: string; role?: string },
 ) {
   return request<ProjectMember>(session, `/projects/${projectId}/members/${memberId}`, {
     method: "PATCH",
@@ -388,16 +404,16 @@ export async function deleteMember(session: Session, projectId: string, memberId
   await request<void>(session, `/projects/${projectId}/members/${memberId}`, { method: "DELETE" });
 }
 
-export async function transitionTask(
+export async function updateTaskWorkStatus(
   session: Session,
   taskId: number,
-  stageId: string,
+  workStatus: WorkStatus,
   by = "web",
 ) {
-  return request<AnswerDetail>(session, `/tasks/${taskId}/transition`, {
-    method: "POST",
+  return request<AnswerDetail>(session, `/tasks/${taskId}/work-status`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stageId, by }),
+    body: JSON.stringify({ workStatus, by }),
   });
 }
 

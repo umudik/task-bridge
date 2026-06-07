@@ -1,19 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Loader2, LogOut, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
-import { StageEditorDialog } from "@/components/workflow/StageEditorDialog";
+import { BrandMark } from "@/components/BrandMark";
+import { StageInspectorPanel } from "@/components/workflow/StageInspectorPanel";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
-import { createEmptyStage } from "@/components/workflow/workflow-utils";
+import {
+  createEmptyStage,
+  insertStageAt,
+  moveStageBy,
+  syncStageTemplates,
+} from "@/components/workflow/workflow-utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useSession } from "@/hooks/useSession";
 import {
+  createWorkflowTemplate,
   fetchWorkflowTemplate,
   fetchWorkflowTemplates,
   saveWorkflowTemplate,
   type WorkflowStage,
   type WorkflowTemplateSummary,
 } from "@/lib/api";
+import { clearSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export function WorkflowTemplatesPage() {
@@ -26,6 +35,9 @@ export function WorkflowTemplatesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [stages, setStages] = useState<WorkflowStage[]>([]);
   const [editorIndex, setEditorIndex] = useState<number | null>(null);
+  const [selectedTaskTemplateId, setSelectedTaskTemplateId] = useState<string | null>(null);
+  const [newTemplateTitle, setNewTemplateTitle] = useState("");
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
 
   const loadTemplates = useCallback(async () => {
     if (!session) return;
@@ -44,6 +56,7 @@ export function WorkflowTemplatesPage() {
       setStages(template.stages);
       setDirty(false);
       setEditorIndex(null);
+      setSelectedTaskTemplateId(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load template");
     } finally {
@@ -64,8 +77,57 @@ export function WorkflowTemplatesPage() {
   }, [loadTemplateStages, selectedId]);
 
   function markDirty(next: WorkflowStage[]) {
-    setStages(next);
+    setStages([...next].sort((a, b) => a.position - b.position));
     setDirty(true);
+  }
+
+  function selectNewStage(next: WorkflowStage[], index: number, taskTemplateId: string | null = null) {
+    markDirty(next);
+    setEditorIndex(index);
+    setSelectedTaskTemplateId(taskTemplateId);
+  }
+
+  function addStageAtEnd() {
+    const next = [...stages, createEmptyStage(stages.length)];
+    selectNewStage(next, next.length - 1);
+  }
+
+  function insertStageAfter(afterIndex: number) {
+    const stage = createEmptyStage(afterIndex + 1);
+    const next = insertStageAt(stages, afterIndex, stage);
+    selectNewStage(next, afterIndex + 1);
+  }
+
+  function moveStage(index: number, delta: -1 | 1) {
+    const next = moveStageBy(stages, index, delta);
+    if (next === stages) return;
+    markDirty(next);
+    setEditorIndex(index + delta);
+  }
+
+  async function handleCreateTemplate() {
+    if (!session || !newTemplateTitle.trim()) return;
+    if (dirty && !window.confirm("You have unsaved changes. Continue anyway?")) return;
+    setCreatingTemplate(true);
+    try {
+      const template = await createWorkflowTemplate(session, { title: newTemplateTitle.trim() });
+      setTemplates((current) =>
+        [...current, { id: template.id, title: template.title, description: template.description }].sort((a, b) =>
+          a.title.localeCompare(b.title),
+        ),
+      );
+      setSelectedId(template.id);
+      setStages(template.stages);
+      setDirty(false);
+      setEditorIndex(null);
+      setSelectedTaskTemplateId(null);
+      setNewTemplateTitle("");
+      toast.success("Template created");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create template");
+    } finally {
+      setCreatingTemplate(false);
+    }
   }
 
   async function handleSave() {
@@ -84,38 +146,56 @@ export function WorkflowTemplatesPage() {
   }
 
   const editingStage = editorIndex !== null ? stages[editorIndex] ?? null : null;
-  const selectedTemplate = templates.find((item) => item.id === selectedId) ?? null;
+
+  function setStageBySortedIndex(sortedIndex: number | null, taskTemplateId: string | null = null) {
+    if (sortedIndex === null) {
+      setEditorIndex(null);
+      setSelectedTaskTemplateId(null);
+      return;
+    }
+    const sorted = [...stages].sort((a, b) => a.position - b.position);
+    const stage = sorted[sortedIndex];
+    if (!stage) return;
+    const index = stages.findIndex((item) => item.id === stage.id);
+    setEditorIndex(index >= 0 ? index : null);
+    setSelectedTaskTemplateId(taskTemplateId);
+  }
 
   if (!session) return null;
 
   return (
-    <div className="surface-grid min-h-full px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-[1800px] space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <Button variant="ghost" size="sm" className="mb-2 -ml-2" onClick={() => navigate("/projects")}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Projects
-            </Button>
-            <h1 className="text-2xl font-semibold tracking-tight">Workflow templates</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Edit shared templates. Projects copy a template when created or via Apply template on the workflow page.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {dirty ? (
-              <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
-                Unsaved changes
-              </span>
-            ) : null}
-            <Button onClick={() => void handleSave()} disabled={saving || !dirty || !selectedId}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save template
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <div className="flex h-14 shrink-0 items-center border-b border-white/[0.06] px-4">
+          <BrandMark compact />
+        </div>
+
+        <div className="space-y-2 border-b border-white/[0.06] px-3 py-3">
+          <p className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Templates</p>
+          <div className="flex gap-2">
+            <Input
+              value={newTemplateTitle}
+              onChange={(event) => setNewTemplateTitle(event.target.value)}
+              placeholder="New template name"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && newTemplateTitle.trim()) {
+                  event.preventDefault();
+                  void handleCreateTemplate();
+                }
+              }}
+            />
+            <Button
+              type="button"
+              size="icon"
+              disabled={!newTemplateTitle.trim() || creatingTemplate}
+              onClick={() => void handleCreateTemplate()}
+            >
+              {creatingTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             </Button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
           {templates.map((template) => (
             <button
               key={template.id}
@@ -125,55 +205,117 @@ export function WorkflowTemplatesPage() {
                 setSelectedId(template.id);
               }}
               className={cn(
-                "rounded-lg border px-4 py-2 text-left transition-colors",
+                "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
                 selectedId === template.id
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-card/80 hover:border-primary/40",
+                  ? "bg-white/[0.08] text-foreground"
+                  : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
               )}
             >
               <p className="text-sm font-medium">{template.title}</p>
-              <p className="text-xs text-muted-foreground">{template.description}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{template.description}</p>
             </button>
           ))}
         </div>
 
+        <div className="shrink-0 space-y-1 border-t border-white/[0.06] p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 w-full justify-start text-muted-foreground hover:text-foreground"
+            onClick={() => navigate("/projects")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Projects
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 w-full justify-start text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              clearSession();
+              navigate("/login", { replace: true });
+            }}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+        </div>
+      </aside>
+
+      <main className="app-main flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-3">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">
+              {templates.find((item) => item.id === selectedId)?.title ?? "Template"}
+            </h1>
+            <p className="text-xs text-muted-foreground">Stages and task templates</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {dirty ? (
+              <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
+                Unsaved
+              </span>
+            ) : null}
+            <Button onClick={() => void handleSave()} disabled={saving || !dirty || !selectedId}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save
+            </Button>
+          </div>
+        </div>
+
         {loading ? (
-          <div className="flex justify-center py-20">
+          <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : selectedTemplate ? (
-          <WorkflowCanvas
-            stages={stages}
-            onSelectStage={setEditorIndex}
-            onAddStage={() => {
-              const next = [...stages, createEmptyStage(stages.length)];
-              markDirty(next);
-              setEditorIndex(next.length - 1);
-            }}
-          />
-        ) : null}
-
-        <StageEditorDialog
-          open={editorIndex !== null}
-          stage={editingStage}
-          decisions={[]}
-          onOpenChange={(open) => {
-            if (!open) setEditorIndex(null);
-          }}
-          onSave={(stage) => {
-            if (editorIndex === null) return;
-            markDirty(stages.map((item, idx) => (idx === editorIndex ? stage : item)));
-            setEditorIndex(null);
-          }}
-          onDelete={() => {
-            if (editorIndex === null) return;
-            markDirty(
-              stages.filter((_, idx) => idx !== editorIndex).map((stage, position) => ({ ...stage, position })),
-            );
-            setEditorIndex(null);
-          }}
-        />
-      </div>
+        ) : (
+          <div className="flex min-h-0 flex-1">
+            <WorkflowCanvas
+              className="min-h-0 flex-1"
+              stages={stages}
+              selectedStageId={editingStage?.id ?? null}
+              selectedTaskTemplateId={selectedTaskTemplateId}
+              onAddStage={addStageAtEnd}
+              onInsertStageAfter={insertStageAfter}
+              onMoveStage={moveStage}
+              onSelectStage={(flowIndex) => setStageBySortedIndex(flowIndex, null)}
+              onSelectTaskTemplate={(flowIndex, templateId) => setStageBySortedIndex(flowIndex, templateId)}
+            />
+            <aside className="flex w-[380px] shrink-0 flex-col border-l border-white/[0.07] bg-[#0a0a0a]">
+              <div className="flex-1 overflow-y-auto p-4">
+            {editingStage ? (
+              <StageInspectorPanel
+                stage={editingStage}
+                stageCount={stages.length}
+                projectRoles={[]}
+                selectedTaskTemplateId={selectedTaskTemplateId}
+                onChange={(stage) => {
+                  if (editorIndex === null) return;
+                  markDirty(stages.map((item, idx) => (idx === editorIndex ? syncStageTemplates(stage) : item)));
+                }}
+                onSelectTaskTemplate={setSelectedTaskTemplateId}
+                onDeleteStage={() => {
+                  if (editorIndex === null) return;
+                  if (stages.length <= 1) {
+                    toast.error("At least one stage is required");
+                    return;
+                  }
+                  markDirty(
+                    stages.filter((_, idx) => idx !== editorIndex).map((stage, position) => ({ ...stage, position })),
+                  );
+                  setEditorIndex(null);
+                  setSelectedTaskTemplateId(null);
+                }}
+                onClose={() => {
+                  setEditorIndex(null);
+                  setSelectedTaskTemplateId(null);
+                }}
+              />
+            ) : null}
+              </div>
+            </aside>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
