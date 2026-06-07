@@ -78,6 +78,21 @@ fun AnswerDetailScreen(
                     )
                 }
 
+                val stageMeta = detail?.let {
+                    listOfNotNull(
+                        it.stageTitle,
+                        it.assignee?.let { name -> "@$name" },
+                    ).joinToString(" · ")
+                }?.takeIf { it.isNotBlank() }
+                if (stageMeta != null) {
+                    Text(
+                        text = stageMeta,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = TextMuted,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
+                    )
+                }
+
                 if (state.isLoadingDetail && detail == null) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = AccentSoft)

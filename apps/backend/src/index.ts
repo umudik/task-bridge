@@ -1,12 +1,15 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { ZodError } from "zod";
+import { isAppError, statusCodeFromError } from "./errors/app-error.js";
 import { createLogger } from "./logger.js";
 import { config } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
 import { connectRoutes } from "./routes/connect.js";
 import { projectRoutes } from "./routes/projects.js";
 import { taskRoutes } from "./routes/tasks.js";
+import { workflowRoutes } from "./routes/workflow.js";
+import { workflowTemplateRoutes } from "./routes/workflow-templates.js";
 import { webRoutes } from "./routes/web.js";
 import { refreshProjectRegistry, initProjectRegistry } from "./services/project-registry.js";
 import { resolveConnectTarget } from "./services/connect-target.js";
@@ -37,24 +40,24 @@ async function main() {
   await connectRoutes(app);
   await projectRoutes(app);
   await taskRoutes(app);
+  await workflowRoutes(app);
+  await workflowTemplateRoutes(app);
   await webRoutes(app);
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
       return reply.status(400).send({ error: error.message });
     }
-    const statusCode =
-      typeof error === "object" &&
-      error !== null &&
-      "statusCode" in error &&
-      typeof error.statusCode === "number"
-        ? error.statusCode
-        : 500;
+    const statusCode = statusCodeFromError(error);
     const message = error instanceof Error ? error.message : "Internal error";
     if (statusCode >= 500) {
       logger.error(message);
     }
-    return reply.status(statusCode).send({ error: message });
+    const body: { error: string; details?: unknown } = { error: message };
+    if (isAppError(error) && error.details !== undefined) {
+      body.details = error.details;
+    }
+    return reply.status(statusCode).send(body);
   });
 
   await app.listen({ port: config.port, host: "0.0.0.0" });

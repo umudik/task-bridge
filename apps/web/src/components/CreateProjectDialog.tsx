@@ -13,7 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Session } from "@/lib/session";
-import { createProject, type Project } from "@/lib/api";
+import { createProject, fetchWorkflowTemplates, type Project, type WorkflowTemplateSummary } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 function slugifyProjectId(name: string) {
   const lowered = name.trim().toLowerCase();
@@ -48,6 +49,8 @@ export function CreateProjectDialog({
   const [projectId, setProjectId] = useState("");
   const [repoPath, setRepoPath] = useState("");
   const [idTouched, setIdTouched] = useState(false);
+  const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([]);
+  const [workflowTemplateId, setWorkflowTemplateId] = useState("empty");
 
   useEffect(() => {
     if (!open) {
@@ -56,8 +59,21 @@ export function CreateProjectDialog({
       setRepoPath("");
       setIdTouched(false);
       setCreating(false);
+      setWorkflowTemplateId("empty");
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !session) return;
+    void fetchWorkflowTemplates(session)
+      .then((items) => {
+        setTemplates(items);
+        setWorkflowTemplateId((current) =>
+          items.some((item) => item.id === current) ? current : (items[0]?.id ?? "empty"),
+        );
+      })
+      .catch(() => setTemplates([]));
+  }, [open, session]);
 
   function handleNameChange(value: string) {
     setName(value);
@@ -78,6 +94,7 @@ export function CreateProjectDialog({
         name: trimmedName,
         id: trimmedId,
         repoPath: trimmedRepo,
+        workflowTemplateId,
       });
       onCreated(created);
       onOpenChange(false);
@@ -134,6 +151,32 @@ export function CreateProjectDialog({
               placeholder="C:\dev\my-app"
               disabled={creating}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Workflow template</Label>
+            <div className="grid gap-2">
+              {templates.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Empty template will be used.</p>
+              ) : (
+                templates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    disabled={creating}
+                    onClick={() => setWorkflowTemplateId(template.id)}
+                    className={cn(
+                      "rounded-lg border px-3 py-2 text-left transition-colors",
+                      workflowTemplateId === template.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/40",
+                    )}
+                  >
+                    <p className="text-sm font-medium">{template.title}</p>
+                    <p className="text-xs text-muted-foreground">{template.description}</p>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </div>
 

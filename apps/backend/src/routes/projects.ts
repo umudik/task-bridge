@@ -1,19 +1,12 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { config } from "../config.js";
+import { assertBackendAuth } from "../middleware/auth.js";
 import {
   createProject,
   listPublicProjects,
   refreshProjectRegistry,
   updateProjectRepoPath,
 } from "../services/project-registry.js";
-
-function assertBackendAuth(request: FastifyRequest) {
-  const apiKey = request.headers["x-api-key"];
-  if (typeof apiKey !== "string" || apiKey !== config.backendApiKey) {
-    throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
-  }
-}
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(1),
@@ -24,6 +17,7 @@ const createProjectSchema = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
     .optional(),
   repoPath: z.string().trim().min(1),
+  workflowTemplateId: z.string().trim().min(1).optional(),
 });
 
 const updateRepoPathSchema = z.object({

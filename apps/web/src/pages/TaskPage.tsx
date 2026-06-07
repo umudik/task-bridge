@@ -9,7 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/hooks/useSession";
-import { fetchAnswer, postTaskComment, type AnswerDetail, type TaskComment } from "@/lib/api";
+import {
+  createTask,
+  fetchAnswer,
+  fetchProjectWorkflow,
+  postTaskComment,
+  transitionTask,
+  type AnswerDetail,
+  type ProjectWorkflow,
+  type TaskComment,
+} from "@/lib/api";
 import { markTaskRead } from "@/lib/read-tasks";
 import { formatWhen } from "@/lib/utils";
 
@@ -37,6 +46,10 @@ export function TaskPage() {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
+  const [workflow, setWorkflow] = useState<ProjectWorkflow | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const [subtaskTitle, setSubtaskTitle] = useState("");
+  const [creatingSubtask, setCreatingSubtask] = useState(false);
 
   useEffect(() => {
     if (!session || !Number.isFinite(taskId)) return;
@@ -60,16 +73,55 @@ export function TaskPage() {
     }
 
     void load();
+    if (projectId) {
+      void fetchProjectWorkflow(activeSession, projectId)
+        .then((data) => {
+          if (active) setWorkflow(data);
+        })
+        .catch(() => undefined);
+    }
     return () => {
       active = false;
     };
-  }, [session, taskId]);
+  }, [session, taskId, projectId]);
 
   const comments = useMemo(
     () => sortComments(detail?.comments ?? []),
     [detail?.comments],
   );
   const description = detail?.description?.trim() ? detail.description : null;
+
+  async function handleTransition(stageId: string) {
+    if (!session || !Number.isFinite(taskId)) return;
+    setTransitioning(true);
+    try {
+      const data = await transitionTask(session, taskId, stageId);
+      setDetail(data);
+      toast.success("Stage updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to move task");
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
+  async function handleCreateSubtask() {
+    if (!session || !Number.isFinite(taskId)) return;
+    const title = subtaskTitle.trim();
+    if (!title) return;
+    setCreatingSubtask(true);
+    try {
+      await createTask(session, { parentId: taskId, title });
+      const data = await fetchAnswer(session, taskId);
+      setDetail(data);
+      setSubtaskTitle("");
+      toast.success("Subtask created");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create subtask");
+    } finally {
+      setCreatingSubtask(false);
+    }
+  }
 
   async function handleSendComment() {
     if (!session || !Number.isFinite(taskId)) return;
@@ -91,7 +143,7 @@ export function TaskPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 pb-10">
+    <div className="flex w-full flex-col gap-5 pb-10">
       <Button variant="ghost" asChild className="w-fit px-0 text-muted-foreground hover:text-foreground">
         <Link to={`/projects/${projectId}/tasks`}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -105,7 +157,121 @@ export function TaskPage() {
         <>
           <header className="border-b border-border pb-4">
             <h1 className="text-2xl font-semibold leading-snug tracking-tight">{detail.title}</h1>
+            <div className="mt-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
+              {detail.parent ? (
+                <Link
+                  to={`/projects/${projectId}/tasks/${detail.parent.taskId}`}
+                  className="rounded-full border px-2 py-0.5 hover:text-foreground"
+                >
+                  Parent: {detail.parent.title}
+                </Link>
+              ) : null}
+              {detail.stage?.title ? (
+                <span className="rounded-full border px-2 py-0.5 text-foreground">{detail.stage.title}</span>
+              ) : null}
+              {detail.assignee ? <span>Assignee: {detail.assignee}</span> : null}
+            </div>
           </header>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Subtasks</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              {(detail.subtasks ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No subtasks yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {(detail.subtasks ?? []).map((subtask) => (
+                    <li key={subtask.taskId}>
+                      <Link
+                        to={`/projects/${projectId}/tasks/${subtask.taskId}`}
+                        className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:border-primary/30"
+                      >
+                        <span>{subtask.title}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {subtask.stageTitle ?? subtask.stageId ?? "—"}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-2 border-t border-border pt-3">
+                <input
+                  value={subtaskTitle}
+                  onChange={(event) => setSubtaskTitle(event.target.value)}
+                  placeholder="New subtask title"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  disabled={creatingSubtask}
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={creatingSubtask || !subtaskTitle.trim()}
+                  onClick={() => void handleCreateSubtask()}
+                >
+                  {creatingSubtask ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {detail.stage ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Stage</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0">
+                {detail.stage.purpose ? (
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Purpose</p>
+                    <p className="text-sm">{detail.stage.purpose}</p>
+                  </div>
+                ) : null}
+                {detail.stage.rules.length > 0 ? (
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Rules</p>
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {detail.stage.rules.map((rule) => (
+                        <li key={rule}>{rule}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {detail.stage.decisions.length > 0 ? (
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Linked decisions</p>
+                    <ul className="space-y-2 text-sm">
+                      {detail.stage.decisions.map((decision) => (
+                        <li key={decision.id} className="rounded-lg border px-3 py-2">
+                          <p className="font-medium">{decision.title}</p>
+                          {decision.body ? <p className="text-muted-foreground">{decision.body}</p> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {workflow && workflow.stages.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                    {workflow.stages
+                      .filter((stage) => stage.id !== detail.stageId)
+                      .map((stage) => (
+                        <Button
+                          key={stage.id}
+                          size="sm"
+                          variant="outline"
+                          disabled={transitioning}
+                          onClick={() => void handleTransition(stage.id)}
+                        >
+                          Move to {stage.title}
+                        </Button>
+                      ))}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader className="pb-2">
@@ -176,11 +342,13 @@ export function TaskPage() {
 function CommentRow({ comment }: { comment: TaskComment }) {
   const name = authorLabel(comment);
   const body = comment.body ?? comment.text ?? null;
+  const tags = comment.tags ?? [];
 
   return (
     <article className="w-full py-3 first:pt-0 last:pb-0">
       <p className="text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{name}</span>
+        {tags.length > 0 ? <> · {tags.join(", ")}</> : null}
         {comment.at ? <> · {formatWhen(comment.at)}</> : null}
       </p>
       <div className="mt-1 w-full">

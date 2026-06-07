@@ -1,31 +1,42 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { isDoneStage } from "../domain/task.js";
+import { assertBackendAuth } from "../middleware/auth.js";
+import {
+  buildInboxItems,
+  consumerStatus,
+  mapComments,
+  mapTaskDetail,
+} from "../mappers/task-response.js";
+import { getProjectById, refreshProjectRegistry } from "../services/project-registry.js";
 import {
   addBridgeTaskUserComment,
   allocateTaskId,
   applyAgentWorkResult,
-  canonicalDescription,
   claimBridgeTask,
   getBridgeTask,
   listBridgeTasks,
   markBridgeTaskAnswered,
   releaseBridgeTask,
+  transitionBridgeTask,
   upsertBridgeTask,
-  type BridgeTask,
-  type TaskComment,
-} from "../services/bridge-task-store.js";
+} from "../services/task-service.js";
+import {
+  applyStageToTask,
+  resolveNewTaskPlacement,
+  spawnStageSubtasks,
+} from "../services/workflow-service.js";
 import {
   claimNextTask,
   listPendingTasks,
   turnIdForTask,
 } from "../services/task-queue.js";
-import { getProjectById, refreshProjectRegistry } from "../services/project-registry.js";
-import { config } from "../config.js";
 
 const createTaskBodySchema = z
   .object({
     text: z.string().optional(),
-    projectId: z.string().min(1),
+    projectId: z.string().min(1).optional(),
+    parentId: z.coerce.number().int().positive().optional(),
     title: z.string().optional(),
     description: z.string().optional(),
   })
@@ -35,6 +46,13 @@ const createTaskBodySchema = z
         code: z.ZodIssueCode.custom,
         message: "title or text is required",
         path: ["title"],
+      });
+    }
+    if (!data.parentId && !data.projectId?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "projectId is required",
+        path: ["projectId"],
       });
     }
   });
@@ -90,6 +108,11 @@ const commentTaskBodySchema = z.object({
   by: z.string().min(1).default("mobile"),
 });
 
+const transitionTaskBodySchema = z.object({
+  stageId: z.string().min(1),
+  by: z.string().min(1).default("web"),
+});
+
 const agentResultBodySchema = z.object({
   action: z.enum(["task.start", "task.complete"]).optional(),
   description: z.string().optional(),
@@ -98,17 +121,7 @@ const agentResultBodySchema = z.object({
   aiContext: z.string().optional(),
   comment: z
     .object({
-      type: z
-        .enum([
-          "note",
-          "review",
-          "execution_log",
-          "decision",
-          "question",
-          "warning",
-          "summary",
-        ])
-        .optional(),
+      tags: z.array(z.string().min(1)).optional(),
       body: z.string().min(1),
       metadata: z.record(z.unknown()).optional(),
     })
@@ -125,135 +138,30 @@ const inboxQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
 });
 
-function assertBackendAuth(request: FastifyRequest) {
-  const apiKey = request.headers["x-api-key"];
-  if (typeof apiKey !== "string" || apiKey !== config.backendApiKey) {
-    throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
-  }
-}
-
-function parseActivityTime(item: {
-  activityAt?: string | null;
-  createdAt?: string | null;
-}): number {
-  const raw = item.activityAt ?? item.createdAt;
-  if (!raw) return NaN;
-  return Date.parse(raw);
-}
-
-function sortInboxByActivity<
-  T extends { taskId: number; activityAt?: string | null; createdAt?: string | null },
->(items: T[]): T[] {
-  return [...items].sort((a, b) => {
-    const aTime = parseActivityTime(a);
-    const bTime = parseActivityTime(b);
-    if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime !== bTime) {
-      return bTime - aTime;
-    }
-    return b.taskId - a.taskId;
-  });
-}
-
-function previewForTask(task: Awaited<ReturnType<typeof getBridgeTask>>): string | null {
-  if (!task) return null;
-  if (task.answer?.trim()) {
-    const text = task.answer.trim();
-    return text.length > 160 ? `${text.slice(0, 157)}...` : text;
-  }
-  return null;
-}
-
-function latestCommentByAuthor(comments: TaskComment[], authorType: TaskComment["authorType"]) {
-  for (let index = comments.length - 1; index >= 0; index -= 1) {
-    const entry = comments[index];
-    if (entry.authorType === authorType) return entry;
-  }
-  return null;
-}
-
-function consumerStatus(task: Awaited<ReturnType<typeof getBridgeTask>>) {
-  if (!task) return "sent";
-  if (task.status === "open" || task.status === "in_progress") return "sent";
-
-  const comments = Array.isArray(task.comments) ? task.comments : [];
-  const lastHuman = latestCommentByAuthor(comments, "human");
-  const lastAi = latestCommentByAuthor(comments, "ai");
-  if (lastHuman && lastAi) {
-    const humanAt = Date.parse(lastHuman.at);
-    const aiAt = Date.parse(lastAi.at);
-    if (!Number.isNaN(humanAt) && !Number.isNaN(aiAt) && humanAt > aiAt) {
-      return "sent";
-    }
-  }
-
-  if (task.aiSummary?.trim() || task.answer?.trim()) return "ready";
-  if (task.status === "done" || task.answeredAt) return "ready";
-  return "sent";
-}
-
-function mapComments(task: BridgeTask) {
-  return (Array.isArray(task.comments) ? task.comments : []).map((comment) => ({
-    id: comment.id,
-    authorType: comment.authorType,
-    authorId: comment.authorId,
-    type: comment.type,
-    body: comment.body,
-    at: comment.at,
-    metadata: comment.metadata ?? null,
-    by: comment.authorId,
-    text: comment.body,
-    role: comment.authorType === "human" ? "user" : "assistant",
-  }));
-}
-
-function mapTaskDetail(task: BridgeTask) {
-  const createdTime = Date.parse(task.createdAt);
-  const answeredTime = task.answeredAt ? Date.parse(task.answeredAt) : NaN;
-  const durationMs =
-    !Number.isNaN(createdTime) && !Number.isNaN(answeredTime)
-      ? Math.max(0, answeredTime - createdTime)
-      : null;
-
-  return {
-    taskId: task.id,
-    title: task.title,
-    request: canonicalDescription(task),
-    description: canonicalDescription(task),
-    acceptanceCriteria: null,
-    aiSummary: task.aiSummary,
-    aiContext: task.aiContext,
-    priority: task.priority,
-    labels: task.labels,
-    assignee: task.assignee,
-    answer: task.aiSummary ?? task.answer,
-    status: consumerStatus(task),
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-    answeredAt: task.answeredAt,
-    durationMs,
-    createdBy: task.createdBy,
-    answeredBy: task.answeredBy,
-    projectId: task.projectId,
-    projectName: task.projectName,
-    claimedBy: task.claimedBy,
-    workflowStatus: task.status,
-    events: task.events,
-    comments: mapComments(task),
-  };
-}
-
 export async function taskRoutes(app: FastifyInstance) {
   app.post("/tasks", async (request, reply) => {
     assertBackendAuth(request);
     const body = createTaskBodySchema.parse(request.body);
     await refreshProjectRegistry();
-    const project = getProjectById(body.projectId);
+
+    const parent = body.parentId ? await getBridgeTask(body.parentId) : null;
+    if (body.parentId && !parent) {
+      return reply.status(400).send({ error: "Unknown parent task" });
+    }
+
+    const projectId = parent?.projectId ?? body.projectId;
+    if (!projectId) {
+      return reply.status(400).send({ error: "projectId is required" });
+    }
+
+    const project = getProjectById(projectId);
     if (!project) {
       return reply.status(400).send({ error: "Unknown project" });
     }
 
     const id = await allocateTaskId();
     const { title, description } = resolveCreateTaskFields(body);
+    const placement = await resolveNewTaskPlacement(project.id);
 
     const task = await upsertBridgeTask({
       id,
@@ -261,7 +169,10 @@ export async function taskRoutes(app: FastifyInstance) {
       projectName: project.name,
       title,
       description,
-      createdBy: "mobile",
+      createdBy: parent ? "web" : "mobile",
+      stageId: placement.stageId,
+      assignee: placement.assignee,
+      parentId: parent?.id ?? null,
     });
 
     return reply.status(201).send({
@@ -270,6 +181,9 @@ export async function taskRoutes(app: FastifyInstance) {
       createdAt: task.createdAt,
       projectId: project.id,
       projectName: project.name,
+      parentId: task.parentId,
+      stageId: task.stageId,
+      assignee: task.assignee,
     });
   });
 
@@ -282,7 +196,9 @@ export async function taskRoutes(app: FastifyInstance) {
         title: task.title,
         projectId: task.projectId,
         projectName: task.projectName,
-        status: task.status,
+        parentId: task.parentId,
+        stageId: task.stageId,
+        assignee: task.assignee,
         createdBy: task.createdBy,
         createdAt: task.createdAt,
         claimedBy: task.claimedBy,
@@ -315,7 +231,7 @@ export async function taskRoutes(app: FastifyInstance) {
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    return { taskId: task.id, workflowStatus: task.status };
+    return { taskId: task.id, stageId: task.stageId };
   });
 
   app.post("/worker/claim-next", async (request, reply) => {
@@ -330,7 +246,7 @@ export async function taskRoutes(app: FastifyInstance) {
     const { task, item } = claimed;
     return {
       ...item,
-      workflowStatus: task.status,
+      stageId: task.stageId,
       claimedBy: task.claimedBy,
       claimedAt: task.claimedAt,
       comments: mapComments(task),
@@ -356,7 +272,29 @@ export async function taskRoutes(app: FastifyInstance) {
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    return mapTaskDetail(task);
+    return await mapTaskDetail(task);
+  });
+
+  app.post("/tasks/:id/transition", async (request, reply) => {
+    assertBackendAuth(request);
+    const { id } = answerIdParamsSchema.parse(request.params);
+    const body = transitionTaskBodySchema.parse(request.body ?? {});
+    const task = await getBridgeTask(id);
+    if (!task) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    const next = await applyStageToTask(task, body.stageId);
+    const updated = await transitionBridgeTask(id, {
+      stageId: body.stageId,
+      assignee: next.assignee,
+      by: body.by,
+      answeredAt: isDoneStage(body.stageId) ? new Date().toISOString() : null,
+    });
+    if (!updated) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    await spawnStageSubtasks(updated, body.stageId);
+    return await mapTaskDetail(updated);
   });
 
   app.post("/tasks/:id/comments", async (request, reply) => {
@@ -371,7 +309,7 @@ export async function taskRoutes(app: FastifyInstance) {
     return reply.status(201).send({
       taskId: task.id,
       status: consumerStatus(task),
-      workflowStatus: task.status,
+      stageId: task.stageId,
       comments: mapComments(task),
       turnId,
     });
@@ -386,47 +324,7 @@ export async function taskRoutes(app: FastifyInstance) {
   app.get("/inbox", async (request) => {
     assertBackendAuth(request);
     const query = inboxQuerySchema.parse(request.query);
-    const bridgeTasks = await listBridgeTasks();
-
-    let items = bridgeTasks.map((task) => {
-      const activityAt = task.answeredAt ?? task.claimedAt ?? task.createdAt;
-      return {
-        taskId: task.id,
-        title: task.title,
-        preview: previewForTask(task),
-        status: consumerStatus(task),
-        activityAt,
-        updatedAt: task.answeredAt ?? task.claimedAt ?? task.createdAt,
-        createdAt: task.createdAt,
-        answeredAt: task.answeredAt,
-        done: task.status === "done",
-        projectId: task.projectId,
-        projectName: task.projectName,
-        createdBy: task.createdBy,
-        claimedBy: task.claimedBy,
-        workflowStatus: task.status,
-      };
-    });
-
-    if (query.projectId) {
-      items = items.filter((item) => item.projectId === query.projectId);
-    }
-    if (query.commentsOnly) {
-      items = items.filter((item) => item.status === "ready");
-    }
-
-    items = sortInboxByActivity(items);
-    const total = items.length;
-    const offset = (query.page - 1) * query.limit;
-    const pageItems = items.slice(offset, offset + query.limit);
-
-    return {
-      items: pageItems,
-      total,
-      page: query.page,
-      limit: query.limit,
-      totalPages: Math.max(1, Math.ceil(total / query.limit)),
-    };
+    return buildInboxItems(query);
   });
 
   app.get("/answers/:id", async (request, reply) => {
@@ -436,6 +334,6 @@ export async function taskRoutes(app: FastifyInstance) {
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    return mapTaskDetail(task);
+    return await mapTaskDetail(task);
   });
 }

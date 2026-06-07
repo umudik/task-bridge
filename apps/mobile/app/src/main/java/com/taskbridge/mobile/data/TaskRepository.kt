@@ -105,6 +105,8 @@ class TaskRepository(
                         answeredAt = item.optString("answeredAt").ifBlank { null },
                         projectId = item.optString("projectId").ifBlank { null },
                         projectName = item.optString("projectName").ifBlank { null },
+                        stageTitle = item.optString("stageTitle").ifBlank { null },
+                        assignee = item.optString("assignee").ifBlank { null },
                     ),
                 )
             }
@@ -130,6 +132,9 @@ class TaskRepository(
             answeredBy = json.optString("answeredBy").ifBlank { null },
             projectId = json.optString("projectId").ifBlank { null },
             projectName = json.optString("projectName").ifBlank { null },
+            stageTitle = json.optJSONObject("stage")?.optString("title")?.ifBlank { null }
+                ?: json.optString("stageId").ifBlank { null },
+            assignee = json.optString("assignee").ifBlank { null },
             comments = parseComments(json.optJSONArray("comments")),
         )
     }
@@ -155,6 +160,18 @@ class TaskRepository(
                     authorType == "ai" -> "assistant"
                     else -> item.optString("role", "user")
                 }
+                val tags = buildList {
+                    val tagsArray = item.optJSONArray("tags")
+                    if (tagsArray != null) {
+                        for (index in 0 until tagsArray.length()) {
+                            val tag = tagsArray.optString(index).trim()
+                            if (tag.isNotEmpty()) add(tag)
+                        }
+                    } else {
+                        val legacyType = item.optString("type").trim()
+                        if (legacyType.isNotEmpty()) add(legacyType)
+                    }
+                }
                 add(
                     TaskComment(
                         id = id,
@@ -162,7 +179,7 @@ class TaskRepository(
                         text = body,
                         at = item.optString("at"),
                         role = role,
-                        type = item.optString("type").ifBlank { "note" },
+                        tags = tags,
                     ),
                 )
             }

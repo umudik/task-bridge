@@ -136,6 +136,10 @@ fun AnswersListScreen(
                                 preview = entry.item.preview?.takeIf { preview ->
                                     preview.isNotBlank() && preview != entry.item.title
                                 }?.let { textSnippet(it) },
+                                meta = listOfNotNull(
+                                    entry.item.stageTitle,
+                                    entry.item.assignee?.let { "@$it" },
+                                ).joinToString(" · ").ifBlank { null },
                                 isRead = entry.taskId in state.readTaskIds,
                                 onClick = { onOpenTask(entry.taskId) },
                             )
@@ -159,6 +163,7 @@ fun AnswersListScreen(
 private fun ListRow(
     title: String,
     preview: String?,
+    meta: String? = null,
     isRead: Boolean = false,
     onClick: () -> Unit,
 ) {
@@ -187,6 +192,16 @@ private fun ListRow(
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                     maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (meta != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextMuted,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

@@ -11,13 +11,64 @@ export type InboxItem = {
   title: string;
   preview?: string;
   status: string;
-  workflowStatus?: string | null;
+  parentId?: number | null;
   activityAt?: string | null;
   updatedAt?: string | null;
   createdAt?: string | null;
   answeredAt?: string | null;
   projectId?: string | null;
   projectName?: string | null;
+  assignee?: string | null;
+  stageId?: string | null;
+  stageTitle?: string | null;
+};
+
+export type WorkflowStage = {
+  id: string;
+  title: string;
+  description: string;
+  purpose: string;
+  rules: string[];
+  position: number;
+  autoAssign: boolean;
+  decisionIds: string[];
+  layoutX?: number | null;
+  layoutY?: number | null;
+  spawnTaskCount?: number;
+  decisions?: ProjectDecision[];
+};
+
+export type ProjectDecision = {
+  id: string;
+  projectId: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectMember = {
+  id: string;
+  projectId: string;
+  name: string;
+  available: boolean;
+  openTasks: number;
+};
+
+export type ProjectWorkflow = {
+  projectId: string;
+  stages: WorkflowStage[];
+  members: ProjectMember[];
+  decisions: ProjectDecision[];
+};
+
+export type TaskStageSnapshot = {
+  id: string;
+  title: string;
+  description: string;
+  purpose: string;
+  rules: string[];
+  decisions: ProjectDecision[];
 };
 
 export type InboxResult = {
@@ -35,11 +86,20 @@ export type InboxQuery = {
   limit?: number;
 };
 
+export type TaskSubtask = {
+  taskId: number;
+  title: string;
+  stageId?: string | null;
+  stageTitle?: string | null;
+  assignee?: string | null;
+  done: boolean;
+};
+
 export type TaskComment = {
   id: string;
   authorType?: "human" | "ai" | "system";
   authorId?: string;
-  type?: string;
+  tags?: string[];
   body?: string;
   at: string;
   metadata?: Record<string, unknown> | null;
@@ -58,7 +118,9 @@ export type AnswerDetail = {
   aiContext?: string | null;
   answer?: string | null;
   status: string;
-  workflowStatus?: string | null;
+  parentId?: number | null;
+  parent?: { taskId: number; title: string; stageId?: string | null } | null;
+  subtasks?: TaskSubtask[];
   createdAt?: string | null;
   updatedAt?: string | null;
   answeredAt?: string | null;
@@ -67,6 +129,9 @@ export type AnswerDetail = {
   answeredBy?: string | null;
   projectId?: string | null;
   projectName?: string | null;
+  assignee?: string | null;
+  stageId?: string | null;
+  stage?: TaskStageSnapshot | null;
   comments?: TaskComment[];
 };
 
@@ -148,10 +213,21 @@ export async function fetchProjects(session: Session) {
   return data.projects ?? [];
 }
 
+export type WorkflowTemplateSummary = {
+  id: string;
+  title: string;
+  description: string;
+};
+
+export type WorkflowTemplate = WorkflowTemplateSummary & {
+  stages: WorkflowStage[];
+};
+
 export type CreateProjectInput = {
   name: string;
   id?: string;
   repoPath: string;
+  workflowTemplateId?: string;
 };
 
 export async function createProject(session: Session, input: CreateProjectInput) {
@@ -162,18 +238,45 @@ export async function createProject(session: Session, input: CreateProjectInput)
       name: input.name,
       id: input.id?.trim() || undefined,
       repoPath: input.repoPath,
+      workflowTemplateId: input.workflowTemplateId?.trim() || undefined,
     }),
   });
 }
 
+export async function fetchWorkflowTemplates(session: Session) {
+  const data = await request<{ items: WorkflowTemplateSummary[] }>(session, "/workflow-templates");
+  return data.items ?? [];
+}
+
+export async function fetchWorkflowTemplate(session: Session, templateId: string) {
+  return request<WorkflowTemplate>(session, `/workflow-templates/${templateId}`);
+}
+
+export async function saveWorkflowTemplate(session: Session, templateId: string, stages: WorkflowStage[]) {
+  return request<WorkflowTemplate>(session, `/workflow-templates/${templateId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stages }),
+  });
+}
+
+export async function applyWorkflowTemplate(session: Session, projectId: string, templateId: string) {
+  return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow/apply-template`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ templateId }),
+  });
+}
+
 export type CreateTaskInput = {
-  projectId: string;
+  projectId?: string;
+  parentId?: number;
   title: string;
   description?: string;
 };
 
 export async function createTask(session: Session, input: CreateTaskInput) {
-  return request<{ id: string | number; title?: string; projectName?: string }>(
+  return request<{ id: string | number; title?: string; projectName?: string; parentId?: number | null }>(
     session,
     "/tasks",
     {
@@ -181,6 +284,7 @@ export async function createTask(session: Session, input: CreateTaskInput) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         projectId: input.projectId,
+        parentId: input.parentId,
         title: input.title,
         description: input.description ?? "",
       }),
@@ -207,6 +311,93 @@ export async function postTaskComment(session: Session, taskId: number, text: st
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, by: "web" }),
+  });
+}
+
+export async function fetchProjectWorkflow(session: Session, projectId: string) {
+  return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow`);
+}
+
+export async function saveProjectWorkflow(session: Session, projectId: string, stages: WorkflowStage[]) {
+  return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stages }),
+  });
+}
+
+export async function exportProjectWorkflow(session: Session, projectId: string) {
+  return request<Record<string, unknown>>(session, `/projects/${projectId}/workflow/export`);
+}
+
+export async function createDecision(
+  session: Session,
+  projectId: string,
+  input: { title: string; body?: string },
+) {
+  return request<ProjectDecision>(session, `/projects/${projectId}/decisions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateDecision(
+  session: Session,
+  projectId: string,
+  decisionId: string,
+  input: { title?: string; body?: string },
+) {
+  return request<ProjectDecision>(session, `/projects/${projectId}/decisions/${decisionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteDecision(session: Session, projectId: string, decisionId: string) {
+  await request<void>(session, `/projects/${projectId}/decisions/${decisionId}`, { method: "DELETE" });
+}
+
+export async function createMember(
+  session: Session,
+  projectId: string,
+  input: { name: string; available?: boolean },
+) {
+  return request<ProjectMember>(session, `/projects/${projectId}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateMember(
+  session: Session,
+  projectId: string,
+  memberId: string,
+  input: { name?: string; available?: boolean },
+) {
+  return request<ProjectMember>(session, `/projects/${projectId}/members/${memberId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMember(session: Session, projectId: string, memberId: string) {
+  await request<void>(session, `/projects/${projectId}/members/${memberId}`, { method: "DELETE" });
+}
+
+export async function transitionTask(
+  session: Session,
+  taskId: number,
+  stageId: string,
+  by = "web",
+) {
+  return request<AnswerDetail>(session, `/tasks/${taskId}/transition`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stageId, by }),
   });
 }
 

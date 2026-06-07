@@ -1,0 +1,320 @@
+import {
+  allocateTaskRowId,
+  getTaskRow,
+  listTaskRows,
+  mutateTaskRow,
+  upsertTaskRow,
+} from "../db/tasks-db.js";
+import {
+  assertCanCompleteTask,
+  DONE_STAGE_ID,
+  isDoneStage,
+  mergeAcceptanceCriteria,
+  touchTask,
+  type AgentWorkPayload,
+  type AuthorType,
+  type BridgeTask,
+} from "../domain/task.js";
+import { emptyToNull } from "../lib/strings.js";
+
+export {
+  assertCanCompleteTask,
+  canonicalDescription,
+  DONE_STAGE_ID,
+  isDoneStage,
+  isTaskClaimed,
+  listSubtasks,
+  sortTasks,
+  type AgentWorkPayload,
+  type AuthorType,
+  type BridgeTask,
+  type TaskComment,
+  type TaskEvent,
+} from "../domain/task.js";
+
+export async function allocateTaskId(): Promise<number> {
+  return allocateTaskRowId();
+}
+
+export async function listBridgeTasks(): Promise<BridgeTask[]> {
+  return listTaskRows();
+}
+
+export async function getBridgeTask(id: number): Promise<BridgeTask | null> {
+  return getTaskRow(id);
+}
+
+export async function upsertBridgeTask(input: {
+  id: number;
+  projectId: string;
+  projectName: string;
+  title: string;
+  description: string;
+  createdBy?: string;
+  createdAt?: string;
+  stageId?: string | null;
+  assignee?: string | null;
+  parentId?: number | null;
+}): Promise<BridgeTask> {
+  const existing = getTaskRow(input.id);
+  if (existing) {
+    existing.title = input.title;
+    existing.description = input.description;
+    existing.projectId = input.projectId;
+    existing.projectName = input.projectName;
+    touchTask(existing);
+    upsertTaskRow(existing);
+    return existing;
+  }
+
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const createdBy = input.createdBy ?? "mobile";
+  const task: BridgeTask = {
+    id: input.id,
+    projectId: input.projectId,
+    projectName: input.projectName,
+    parentId: input.parentId ?? null,
+    title: input.title,
+    description: input.description,
+    acceptanceCriteria: null,
+    priority: null,
+    labels: [],
+    aiContext: null,
+    aiSummary: null,
+    createdBy,
+    createdAt,
+    updatedAt: createdAt,
+    claimedBy: null,
+    claimedAt: null,
+    answeredBy: null,
+    answeredAt: null,
+    answer: null,
+    stageId: input.stageId ?? null,
+    assignee: input.assignee ?? null,
+    comments: [],
+    events: [{ type: "created", at: createdAt, by: createdBy }],
+  };
+  upsertTaskRow(task);
+  return task;
+}
+
+export async function transitionBridgeTask(
+  id: number,
+  input: {
+    stageId: string;
+    assignee?: string | null;
+    by: string;
+    answeredAt?: string | null;
+  },
+): Promise<BridgeTask | null> {
+  return mutateTaskRow(id, (task) => {
+    const at = new Date().toISOString();
+    const fromStage = task.stageId;
+    task.stageId = input.stageId;
+    if (input.assignee !== undefined) {
+      task.assignee = input.assignee;
+    }
+    if (isDoneStage(input.stageId)) {
+      task.claimedBy = null;
+      task.claimedAt = null;
+      task.answeredAt = input.answeredAt ?? task.answeredAt ?? at;
+    }
+    task.events.push({
+      type: "stage_changed",
+      at,
+      by: input.by,
+      note: `${fromStage ?? "none"} -> ${input.stageId}`,
+    });
+    touchTask(task);
+  });
+}
+
+export async function claimBridgeTask(
+  id: number,
+  claimedBy: string,
+): Promise<BridgeTask | null> {
+  const existing = getTaskRow(id);
+  if (!existing || existing.claimedBy || isDoneStage(existing.stageId)) return null;
+
+  return mutateTaskRow(id, (task) => {
+    const claimedAt = new Date().toISOString();
+    task.claimedBy = claimedBy;
+    task.claimedAt = claimedAt;
+    task.events.push({ type: "claimed", at: claimedAt, by: claimedBy });
+    touchTask(task);
+  });
+}
+
+export async function releaseBridgeTask(id: number): Promise<BridgeTask | null> {
+  return mutateTaskRow(id, (task) => {
+    task.claimedBy = null;
+    task.claimedAt = null;
+    touchTask(task);
+  });
+}
+
+export async function updateBridgeTaskSpec(
+  id: number,
+  input: {
+    description?: string;
+    acceptanceCriteria?: string;
+    aiSummary?: string;
+    aiContext?: string;
+    title?: string;
+    by: string;
+  },
+): Promise<BridgeTask | null> {
+  return mutateTaskRow(id, (task) => {
+    if (input.title !== undefined) task.title = input.title;
+    if (input.description !== undefined || input.acceptanceCriteria !== undefined) {
+      let desc = input.description !== undefined ? input.description : task.description;
+      if (input.acceptanceCriteria !== undefined) {
+        desc = mergeAcceptanceCriteria(desc, input.acceptanceCriteria);
+      }
+      task.description = desc;
+      task.acceptanceCriteria = null;
+    }
+    if (input.aiSummary !== undefined) {
+      task.aiSummary = emptyToNull(input.aiSummary);
+      task.answer = task.aiSummary;
+    }
+    if (input.aiContext !== undefined) {
+      task.aiContext = emptyToNull(input.aiContext);
+    }
+    const at = new Date().toISOString();
+    task.events.push({ type: "spec_updated", at, by: input.by });
+    touchTask(task);
+  });
+}
+
+export async function addBridgeTaskComment(
+  id: number,
+  input: {
+    authorType: AuthorType;
+    authorId: string;
+    tags?: string[];
+    body: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<BridgeTask | null> {
+  const body = emptyToNull(input.body);
+  if (!body) return null;
+
+  return mutateTaskRow(id, (task) => {
+    const at = new Date().toISOString();
+    task.comments.push({
+      id: `${input.authorType}-${id}-${Date.now()}`,
+      authorType: input.authorType,
+      authorId: input.authorId,
+      tags: input.tags ?? [],
+      body,
+      at,
+      metadata: input.metadata,
+    });
+    task.events.push({
+      type: "commented",
+      at,
+      by: input.authorId,
+      note: body.slice(0, 200),
+    });
+    touchTask(task);
+  });
+}
+
+export async function addBridgeTaskUserComment(
+  id: number,
+  by: string,
+  text: string,
+): Promise<BridgeTask | null> {
+  const body = emptyToNull(text);
+  if (!body) return null;
+
+  return mutateTaskRow(id, (task) => {
+    const at = new Date().toISOString();
+    task.comments.push({
+      id: `human-${id}-${Date.now()}`,
+      authorType: "human",
+      authorId: by,
+      tags: [],
+      body,
+      at,
+    });
+    task.claimedBy = null;
+    task.claimedAt = null;
+    task.events.push({ type: "commented", at, by, note: body.slice(0, 200) });
+    touchTask(task);
+  });
+}
+
+export async function applyAgentWorkResult(
+  id: number,
+  payload: AgentWorkPayload,
+): Promise<BridgeTask | null> {
+  const tasks = listTaskRows();
+  const current = getTaskRow(id);
+  if (!current) return null;
+
+  if (payload.action === "task.complete") {
+    assertCanCompleteTask(tasks, current);
+  }
+
+  return mutateTaskRow(id, (task) => {
+    if (payload.description !== undefined || payload.acceptanceCriteria !== undefined) {
+      let desc = payload.description !== undefined ? payload.description : task.description;
+      if (payload.acceptanceCriteria !== undefined) {
+        desc = mergeAcceptanceCriteria(desc, payload.acceptanceCriteria);
+      }
+      task.description = desc;
+      task.acceptanceCriteria = null;
+    }
+    if (payload.aiSummary !== undefined) {
+      task.aiSummary = emptyToNull(payload.aiSummary);
+      task.answer = task.aiSummary;
+    }
+    if (payload.aiContext !== undefined) {
+      task.aiContext = emptyToNull(payload.aiContext);
+    }
+
+    const commentBody = emptyToNull(payload.comment?.body);
+    if (commentBody) {
+      task.comments.push({
+        id: `ai-${id}-${Date.now()}`,
+        authorType: "ai",
+        authorId: "cursor-ai",
+        tags: payload.comment?.tags ?? [],
+        body: commentBody,
+        at: new Date().toISOString(),
+        metadata: payload.comment?.metadata,
+      });
+    }
+
+    if (payload.action === "task.complete") {
+      const answeredAt = new Date().toISOString();
+      task.stageId = DONE_STAGE_ID;
+      task.claimedBy = null;
+      task.claimedAt = null;
+      task.answeredBy = "Cursor AI";
+      task.answeredAt = answeredAt;
+      task.events.push({ type: "answered", at: answeredAt, by: "Cursor AI" });
+      task.events.push({ type: "done", at: answeredAt, by: "Cursor AI" });
+    } else if (payload.action === "task.start") {
+      task.claimedBy = "cursor-ai";
+      task.claimedAt = new Date().toISOString();
+    }
+
+    task.events.push({ type: "spec_updated", at: new Date().toISOString(), by: "cursor-ai" });
+    touchTask(task);
+  });
+}
+
+export async function markBridgeTaskAnswered(
+  id: number,
+  _answeredBy: string,
+  answer?: string,
+): Promise<BridgeTask | null> {
+  return applyAgentWorkResult(id, {
+    action: "task.complete",
+    aiSummary: answer,
+    comment: answer ? { body: answer } : undefined,
+  });
+}

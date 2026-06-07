@@ -65,7 +65,7 @@ export function InboxPage() {
   const hasMore = items.length < total;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>

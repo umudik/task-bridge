@@ -10,6 +10,8 @@ data class InboxItem(
     val answeredAt: String? = null,
     val projectId: String? = null,
     val projectName: String? = null,
+    val stageTitle: String? = null,
+    val assignee: String? = null,
 ) {
     val isReady: Boolean
         get() = status == "ready"
@@ -29,7 +31,7 @@ data class TaskComment(
     val text: String,
     val at: String,
     val role: String,
-    val type: String = "note",
+    val tags: List<String> = emptyList(),
 ) {
     val isUser: Boolean
         get() = role == "user"
@@ -52,6 +54,8 @@ data class AnswerDetail(
     val answeredBy: String?,
     val projectId: String? = null,
     val projectName: String? = null,
+    val stageTitle: String? = null,
+    val assignee: String? = null,
     val comments: List<TaskComment> = emptyList(),
 )
 

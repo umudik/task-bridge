@@ -1,19 +1,25 @@
-import type { AuthorType, BridgeTask, TaskComment } from "./bridge-task-store.js";
-import { canonicalDescription, claimBridgeTask, listBridgeTasks } from "./bridge-task-store.js";
+import type { AuthorType, BridgeTask, TaskComment } from "../domain/task.js";
+import {
+  canonicalDescription,
+  isDoneStage,
+  isTaskClaimed,
+} from "../domain/task.js";
+import { emptyToNull } from "../lib/strings.js";
 import { getProjectById } from "./project-registry.js";
+import { claimBridgeTask, listBridgeTasks } from "./task-service.js";
 
 function latestCommentByAuthor(comments: TaskComment[], authorType: AuthorType) {
   for (let index = comments.length - 1; index >= 0; index -= 1) {
     const entry = comments[index];
+    if (!entry) continue;
     if (entry.authorType === authorType) return entry;
   }
   return null;
 }
 
 export function userAwaitingReply(task: BridgeTask): boolean {
-  const comments = Array.isArray(task.comments) ? task.comments : [];
-  const lastHuman = latestCommentByAuthor(comments, "human");
-  const lastAi = latestCommentByAuthor(comments, "ai");
+  const lastHuman = latestCommentByAuthor(task.comments, "human");
+  const lastAi = latestCommentByAuthor(task.comments, "ai");
   if (!lastHuman) return false;
   if (!lastAi) return true;
 
@@ -24,27 +30,24 @@ export function userAwaitingReply(task: BridgeTask): boolean {
 }
 
 export function taskIsClaimable(task: BridgeTask): boolean {
-  if (task.status === "in_progress") return false;
-  if (task.status === "done" && !userAwaitingReply(task)) return false;
   if (userAwaitingReply(task)) return true;
-  if (task.status === "open") return true;
-  return false;
+  if (isTaskClaimed(task)) return false;
+  if (isDoneStage(task.stageId)) return false;
+  return true;
 }
 
 export function turnIdForTask(task: BridgeTask): string {
-  const comments = Array.isArray(task.comments) ? task.comments : [];
-  const lastHuman = latestCommentByAuthor(comments, "human");
+  const lastHuman = latestCommentByAuthor(task.comments, "human");
   if (lastHuman && userAwaitingReply(task)) {
     return `user-${lastHuman.id}`;
   }
-  if (task.status === "in_progress" && task.claimedAt) return `claimed-${task.claimedAt}`;
+  if (isTaskClaimed(task) && task.claimedAt) return `claimed-${task.claimedAt}`;
   return `create-${task.createdAt}`;
 }
 
 function claimPriority(task: BridgeTask): number {
   if (userAwaitingReply(task)) return 0;
-  if (task.status === "open") return 1;
-  return 3;
+  return 1;
 }
 
 function sortClaimableTasks(tasks: BridgeTask[]): BridgeTask[] {
@@ -56,7 +59,7 @@ function sortClaimableTasks(tasks: BridgeTask[]): BridgeTask[] {
 }
 
 function resolveWorkspacePath(task: BridgeTask): string | null {
-  return getProjectById(task.projectId)?.repoPath?.trim() || null;
+  return emptyToNull(getProjectById(task.projectId)?.repoPath);
 }
 
 function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
@@ -65,11 +68,12 @@ function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
     turnId,
     projectId: task.projectId,
     projectName: task.projectName,
+    parentId: task.parentId,
     title: task.title,
     description: canonicalDescription(task),
     workspacePath: resolveWorkspacePath(task),
     createdAt: task.createdAt,
-    comments: Array.isArray(task.comments) ? task.comments : [],
+    comments: task.comments,
   };
 }
 
@@ -78,6 +82,7 @@ export type TaskClaimPayload = {
   turnId: string;
   projectId: string;
   projectName: string;
+  parentId: number | null;
   title: string;
   description: string;
   workspacePath: string | null;
@@ -100,7 +105,7 @@ export async function claimNextTask(
   const candidates = sortClaimableTasks(
     tasks.filter((task) => {
       if (options?.projectId && task.projectId !== options.projectId) return false;
-      return taskIsClaimable(task) && task.status === "open";
+      return taskIsClaimable(task) && !isTaskClaimed(task);
     }),
   );
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { NavLink, Navigate, Outlet, useNavigate, useParams } from "react-router-dom";
-import { Inbox, ListTodo, LogOut, Smartphone } from "lucide-react";
+import { GitBranch, Inbox, ListTodo, LogOut, Smartphone } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -44,6 +44,7 @@ export function ProjectLayout() {
   const tasksPath = `/projects/${projectId}/tasks`;
   const inboxPath = `/projects/${projectId}/inbox`;
   const mobilePath = `/projects/${projectId}/mobile`;
+  const workflowPath = `/projects/${projectId}/workflow`;
 
   function signOut() {
     clearSession();
@@ -52,7 +53,7 @@ export function ProjectLayout() {
 
   return (
     <div className="surface-grid min-h-full">
-      <div className="mx-auto grid min-h-full w-full max-w-5xl grid-cols-1 gap-6 px-4 py-6 md:grid-cols-[15rem_minmax(0,1fr)] md:py-8">
+      <div className="mx-auto grid min-h-full w-full max-w-[1800px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:px-8 md:grid-cols-[15rem_minmax(0,1fr)] md:py-8 xl:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="md:sticky md:top-8 md:self-start">
           <div className="w-full space-y-6 rounded-2xl border bg-card/80 p-5 backdrop-blur">
             <BrandMark />
@@ -64,6 +65,7 @@ export function ProjectLayout() {
               <NavItem to={tasksPath} label="Tasks" icon={ListTodo} />
               <NavItem to={inboxPath} label="Inbox" icon={Inbox} badge={unread} />
               <NavItem to={mobilePath} label="Mobile" icon={Smartphone} />
+              <NavItem to={workflowPath} label="Workflow" icon={GitBranch} />
             </nav>
             <Separator />
             <Button

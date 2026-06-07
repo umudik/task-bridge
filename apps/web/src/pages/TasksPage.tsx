@@ -10,23 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/hooks/useSession";
 import { createTask, fetchInbox, type InboxItem } from "@/lib/api";
-import { cn, formatWhen } from "@/lib/utils";
+import { formatWhen } from "@/lib/utils";
 
 const PAGE_SIZE = 30;
-
-function statusLabel(status: string | null | undefined) {
-  const value = (status ?? "open").toLowerCase();
-  if (value === "done") return "Done";
-  if (value === "in_progress" || value === "claimed") return "In progress";
-  return "Open";
-}
-
-function statusClass(status: string | null | undefined) {
-  const value = (status ?? "open").toLowerCase();
-  if (value === "done") return "bg-emerald-500/15 text-emerald-400";
-  if (value === "in_progress" || value === "claimed") return "bg-amber-500/15 text-amber-400";
-  return "bg-muted text-muted-foreground";
-}
 
 export function TasksPage() {
   const { projectId } = useParams();
@@ -51,7 +37,8 @@ export function TasksPage() {
           page: pageNum,
           limit: PAGE_SIZE,
         });
-        setItems((prev) => (append ? [...prev, ...data.items] : data.items));
+        const scoped = data.items.filter((item) => !item.parentId);
+        setItems((prev) => (append ? [...prev, ...scoped] : scoped));
         setTotal(data.total);
         setPage(pageNum);
       } catch (error) {
@@ -97,7 +84,7 @@ export function TasksPage() {
   const hasMore = items.length < total;
 
   return (
-    <div className="flex w-full max-w-2xl flex-col gap-8">
+    <div className="flex w-full flex-col gap-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -167,14 +154,17 @@ export function TasksPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground">#{item.taskId}</span>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-xs font-medium",
-                          statusClass(item.workflowStatus),
-                        )}
-                      >
-                        {statusLabel(item.workflowStatus)}
-                      </span>
+                      {item.stageTitle ? (
+                        <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
+                          {item.stageTitle}
+                        </span>
+                      ) : null}
+                      {item.parentId ? (
+                        <span className="text-xs text-muted-foreground">subtask</span>
+                      ) : null}
+                      {item.assignee ? (
+                        <span className="text-xs text-muted-foreground">{item.assignee}</span>
+                      ) : null}
                     </div>
                     <p className="mt-1 truncate text-sm font-medium">
                       {item.title || `Task #${item.taskId}`}

@@ -4,12 +4,14 @@
   "scripts": {
     "dev": "npm --prefix apps/backend run dev",
     "build": "npm --prefix apps/backend run build",
+    "test": "npm --prefix apps/backend run test",
     "docker:up": "docker compose up --build",
     "docker:up:d": "docker compose up --build -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "lint": "npm run lint:backend && npm run lint:mobile",
     "lint:backend": "npm --prefix apps/backend run lint",
-    "lint:mobile": "cd apps/mobile && gradlew.bat detekt"
+    "lint:mobile": "cd apps/mobile && gradlew.bat detekt",
+    "workflow": "node scripts/workflow.mjs"
   }
 }

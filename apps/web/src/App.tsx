@@ -6,6 +6,8 @@ import { MobilePage } from "@/pages/MobilePage";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { TasksPage } from "@/pages/TasksPage";
 import { TaskPage } from "@/pages/TaskPage";
+import { WorkflowPage } from "@/pages/WorkflowPage";
+import { WorkflowTemplatesPage } from "@/pages/WorkflowTemplatesPage";
 import { loadSession } from "@/lib/session";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -27,6 +29,14 @@ export function App() {
         }
       />
       <Route
+        path="/workflow-templates"
+        element={
+          <RequireAuth>
+            <WorkflowTemplatesPage />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/projects/:projectId"
         element={
           <RequireAuth>
@@ -40,6 +50,7 @@ export function App() {
         <Route path="tasks/:taskId" element={<TaskPage />} />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="mobile" element={<MobilePage />} />
+        <Route path="workflow" element={<WorkflowPage />} />
       </Route>
       <Route path="/" element={<RootRedirect />} />
       <Route path="*" element={<RootRedirect />} />

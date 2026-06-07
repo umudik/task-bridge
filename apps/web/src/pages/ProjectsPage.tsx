@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronRight, FolderKanban, LogOut, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, FolderKanban, GitBranch, LogOut, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { BrandMark } from "@/components/BrandMark";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
@@ -61,7 +61,7 @@ export function ProjectsPage() {
 
   return (
     <div className="surface-grid flex min-h-full flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-lg space-y-6">
+      <div className="w-full max-w-2xl space-y-6">
         <div className="flex items-center justify-between">
           <BrandMark />
           <Button variant="ghost" size="sm" onClick={signOut}>
@@ -79,10 +79,16 @@ export function ProjectsPage() {
               </CardTitle>
               <CardDescription>Pick where tasks should land.</CardDescription>
             </div>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4" />
-              New
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => navigate("/workflow-templates")}>
+                <GitBranch className="h-4 w-4" />
+                Templates
+              </Button>
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" />
+                New
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-2">
             {loading ? (

@@ -5,6 +5,10 @@ import {
   listProjectRows,
   updateProjectRepoPathRow,
 } from "../db/projects-db.js";
+import {
+  copyTemplateStagesToProject,
+  ensureDefaultWorkflowTemplates,
+} from "./workflow-template-service.js";
 
 export type BridgeProject = {
   id: string;
@@ -49,6 +53,7 @@ function slugifyProjectId(name: string): string {
 
 export async function initProjectRegistry(): Promise<void> {
   getProjectsDb();
+  ensureDefaultWorkflowTemplates();
 }
 
 export async function refreshProjectRegistry(): Promise<BridgeProject[]> {
@@ -67,6 +72,7 @@ export async function createProject(input: {
   name: string;
   id?: string;
   repoPath: string;
+  workflowTemplateId?: string;
 }): Promise<BridgeProject | "duplicate" | null> {
   const name = input.name.trim();
   const repoPath = input.repoPath.trim();
@@ -75,6 +81,8 @@ export async function createProject(input: {
   if (!id || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) return null;
   if (getProjectRow(id)) return "duplicate";
   if (!insertProjectRow(id, name, repoPath)) return "duplicate";
+  const templateId = input.workflowTemplateId?.trim() || "empty";
+  copyTemplateStagesToProject(id, templateId);
   const row = getProjectRow(id);
   return row ? rowToProject(row) : null;
 }
