@@ -8,13 +8,16 @@ import com.taskbridge.mobile.data.TaskRepository
 import com.taskbridge.mobile.domain.models.AnswerDetail
 import com.taskbridge.mobile.domain.models.AnswerEntry
 import com.taskbridge.mobile.domain.models.ConnectConfigParser
+import com.taskbridge.mobile.domain.models.EpicListItem
 import com.taskbridge.mobile.domain.models.InboxItem
 import com.taskbridge.mobile.domain.models.Project
 import com.taskbridge.mobile.domain.models.RecentTask
+import com.taskbridge.mobile.domain.models.WorkflowStageItem
 import com.taskbridge.mobile.domain.models.buildAnswerEntries
 import com.taskbridge.mobile.domain.models.taskBelongsToProject
 import com.taskbridge.mobile.speech.SpeechRecognizerHelper
 import com.taskbridge.mobile.speech.TextToSpeechHelper
+import com.taskbridge.mobile.speech.plainSpeechText
 import com.taskbridge.mobile.notifications.InboxPollWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,12 +40,21 @@ data class AppUiState(
     val isSending: Boolean = false,
     val isSendingComment: Boolean = false,
     val isLoadingInbox: Boolean = false,
+    val isLoadingEpics: Boolean = false,
     val isLoadingDetail: Boolean = false,
+    val isLoadingWorkflowStages: Boolean = false,
+    val isCreatingEpicTask: Boolean = false,
+    val workflowStages: List<WorkflowStageItem> = emptyList(),
+    val workflowStagesError: String? = null,
     val isSpeaking: Boolean = false,
+    val speakingKey: String? = null,
     val recentTasks: List<RecentTask> = emptyList(),
     val inboxItems: List<InboxItem> = emptyList(),
+    val epics: List<EpicListItem> = emptyList(),
+    val epicsTotal: Int = 0,
     val answerEntries: List<AnswerEntry> = emptyList(),
     val inboxError: String? = null,
+    val epicsError: String? = null,
     val readTaskIds: Set<Int> = emptySet(),
     val activeDetail: AnswerDetail? = null,
     val detailError: String? = null,
@@ -116,7 +128,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             ttsHelper.isSpeaking.collect { speaking ->
-                _uiState.update { it.copy(isSpeaking = speaking) }
+                _uiState.update {
+                    it.copy(
+                        isSpeaking = speaking,
+                        speakingKey = if (speaking) it.speakingKey else null,
+                    )
+                }
             }
         }
         if (sessionStore.isConfigured) {
@@ -314,6 +331,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun refreshEpics() {
+        if (!sessionStore.projectConfirmed) return
+        val projectId = sessionStore.selectedProjectId?.takeIf { it.isNotBlank() } ?: return
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoadingEpics = true, epicsError = null) }
+                val result = taskRepository.fetchEpics(projectId)
+                _uiState.update {
+                    it.copy(
+                        isLoadingEpics = false,
+                        epics = result.items,
+                        epicsTotal = result.total,
+                        epicsError = null,
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoadingEpics = false,
+                        epicsError = e.message ?: "Failed to load epics",
+                    )
+                }
+            }
+        }
+    }
+
     fun refreshInbox(silent: Boolean = false, force: Boolean = false) {
         if (!sessionStore.projectConfirmed) return
         val now = System.currentTimeMillis()
@@ -404,6 +447,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (detail.status == "ready") {
                     refreshInbox(silent = true)
                 }
+                if (detail.isEpic && !detail.projectId.isNullOrBlank()) {
+                    loadWorkflowStages(detail.projectId)
+                }
             } catch (e: Exception) {
                 val recent = _uiState.value.recentTasks.find { it.taskId == taskId }
                 if (recent != null && !silent) {
@@ -441,7 +487,78 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearActiveDetail() {
         stopSpeech()
-        _uiState.update { it.copy(activeDetail = null, detailError = null) }
+        _uiState.update {
+            it.copy(
+                activeDetail = null,
+                detailError = null,
+                workflowStages = emptyList(),
+                workflowStagesError = null,
+            )
+        }
+    }
+
+    fun loadWorkflowStages(projectId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update {
+                    it.copy(isLoadingWorkflowStages = true, workflowStagesError = null)
+                }
+                val stages = taskRepository.fetchWorkflowStages(projectId)
+                _uiState.update {
+                    it.copy(
+                        isLoadingWorkflowStages = false,
+                        workflowStages = stages,
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoadingWorkflowStages = false,
+                        workflowStages = emptyList(),
+                        workflowStagesError = e.message ?: "Workflow failed",
+                    )
+                }
+            }
+        }
+    }
+
+    fun createEpicWorkflowTask(
+        epicId: Int,
+        parentId: Int,
+        stageId: String?,
+        title: String,
+        description: String,
+        onCreated: (Int) -> Unit = {},
+    ) {
+        val trimmedTitle = title.trim()
+        if (trimmedTitle.isBlank() || parentId <= 0) return
+        viewModelScope.launch {
+            try {
+                _uiState.update {
+                    it.copy(isCreatingEpicTask = true, statusMessage = "Creating task...")
+                }
+                val createdId = taskRepository.createEpicSubtask(
+                    parentId = parentId,
+                    title = trimmedTitle,
+                    description = description.trim(),
+                    stageId = stageId?.trim()?.takeIf { it.isNotBlank() },
+                )
+                loadAnswerDetail(epicId, silent = true)
+                _uiState.update {
+                    it.copy(isCreatingEpicTask = false, statusMessage = "Task created")
+                }
+                if (createdId > 0) {
+                    onCreated(createdId)
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isCreatingEpicTask = false,
+                        statusMessage = "Failed: ${e.message}",
+                    )
+                }
+            }
+        }
     }
 
     fun sendTaskComment(taskId: Int, text: String) {
@@ -470,21 +587,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleSpeech(text: String) {
-        if (_uiState.value.isSpeaking) {
+    fun listen(key: String, text: String) {
+        val trimmed = plainSpeechText(text)
+        if (trimmed.isBlank()) return
+        val state = _uiState.value
+        if (state.isSpeaking && state.speakingKey == key) {
             stopSpeech()
-        } else {
-            speak(text)
+            return
         }
-    }
-
-    fun speak(text: String) {
-        if (text.isBlank()) return
-        ttsHelper.speak(text)
+        if (state.isSpeaking) {
+            ttsHelper.stop()
+        }
+        _uiState.update { it.copy(speakingKey = key) }
+        ttsHelper.speak(trimmed)
     }
 
     fun stopSpeech() {
         ttsHelper.stop()
+        _uiState.update { it.copy(speakingKey = null) }
     }
 
     fun updateBackendHost(host: String) {

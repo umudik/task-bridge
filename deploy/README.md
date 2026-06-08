@@ -30,6 +30,15 @@ Aç: **http://localhost:3000/app/login**
 
 API key olarak `.env` içindeki `BACKEND_API_KEY` değerini kullan.
 
+## Android APK
+
+Image APK içeriyorsa:
+
+- Web: **Mobile** sayfası → **Download APK**
+- Direkt: **http://localhost:3000/downloads/task-bridge.apk**
+
+APK yoksa image sadece API+UI içerir; mobil build için repodaki `npm run docker:mobile:build` gerekir.
+
 ## Veri
 
 SQLite veritabanı `task_bridge_data` volume'ünde kalır. Silmek için:

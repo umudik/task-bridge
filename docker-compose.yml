@@ -42,5 +42,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  mobile-build:
+    profiles: ["mobile"]
+    build:
+      context: .
+      dockerfile: Dockerfile.mobile
+    image: task-bridge-mobile:local
+    volumes:
+      - ./artifacts:/out
+    entrypoint: ["cp", "/task-bridge.apk", "/out/task-bridge.apk"]
+
 volumes:
   task_bridge_data:

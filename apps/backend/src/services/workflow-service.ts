@@ -111,7 +111,6 @@ function rowToStage(row: {
   position: number;
   auto_assign: number;
   auto_assign_role?: string;
-  decision_ids_json: string;
   layout_x: number | null;
   layout_y: number | null;
   spawn_task_count: number;
@@ -315,7 +314,6 @@ export async function replaceProjectWorkflow(
       rulesJson: "[]",
       position: normalized.position ?? index,
       autoAssignRole: normalized.autoAssignRole ?? "",
-      decisionIdsJson: "[]",
       layoutX: normalized.layoutX,
       layoutY: normalized.layoutY,
       spawnTaskCount: normalized.spawnTaskCount,

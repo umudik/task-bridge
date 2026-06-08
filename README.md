@@ -2,6 +2,14 @@
 
 Mobil + web UI + backend task manager.
 
+## API docs (GitHub Pages)
+
+Statik referans: [docs/index.html](docs/index.html) — yerelde `docs/index.html` dosyasını tarayıcıda aç.
+
+Yayınlamak için repo **Settings → Pages → Build and deployment → GitHub Actions** seçili olsun; `main`/`master` push’unda [Deploy API docs](.github/workflows/pages.yml) workflow’u çalışır.
+
+Canlı URL (Pages açıldıktan sonra): `https://umudik.github.io/task-bridge/`
+
 ## Dev (watch mode)
 
 ```powershell
@@ -58,7 +66,8 @@ Image build + push:
 ```powershell
 # .env içine DOCKER_USER=your-dockerhub-user ekle
 npm run docker:publish
-# veya belirli tag: node scripts/docker-publish.mjs 0.1.0
+npm run docker:publish:all
+# veya: node scripts/docker-publish.mjs 0.1.0 0.1.0 --mobile
 ```
 
 Başka bir projede sadece pull ile çalıştır:
@@ -75,9 +84,24 @@ Detay: [deploy/README.md](deploy/README.md)
 
 ## Mobil
 
-1. Web UI → proje seç → **Mobile** → QR
-2. Mobilde QR tara
-3. Task oluştur
+### Docker image içinden (önerilen)
+
+```powershell
+npm run docker:mobile:build
+npm run docker:up:d
+```
+
+Web UI → **Mobile** → **Download APK** → telefona kur → QR tara.
+
+Tek seferde Hub'a API+UI+APK:
+
+```powershell
+npm run docker:publish:all
+```
+
+### Android Studio
+
+`apps/mobile` → Run (emulator için varsayılan port `3000`)
 
 ## Projeler
 

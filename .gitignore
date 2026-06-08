@@ -156,6 +156,9 @@ apps/mobile/local.properties
 .idea/
 *.iml
 
+artifacts/*
+!artifacts/.gitkeep
+
 # Backend runtime
 .state/
 data/bridge-tasks.json

@@ -22,7 +22,7 @@ android {
         versionCode = 1
         versionName = "0.0.1"
         buildConfigField("String", "DEFAULT_BACKEND_HOST", "\"10.0.2.2\"")
-        buildConfigField("int", "DEFAULT_BACKEND_PORT", "3001")
+        buildConfigField("int", "DEFAULT_BACKEND_PORT", "3000")
     }
 
     buildFeatures {

@@ -10,21 +10,11 @@ export type WorkflowStageRow = {
   position: number;
   auto_assign: number;
   auto_assign_role: string;
-  decision_ids_json: string;
   layout_x: number | null;
   layout_y: number | null;
   spawn_task_count: number;
   task_templates_json: string;
   roles_json: string;
-};
-
-export type ProjectDecisionRow = {
-  id: string;
-  project_id: string;
-  title: string;
-  body: string;
-  created_at: string;
-  updated_at: string;
 };
 
 export type ProjectMemberRow = {
@@ -53,24 +43,10 @@ export function migrateWorkflowTables() {
       rules_json TEXT NOT NULL DEFAULT '[]',
       position INTEGER NOT NULL DEFAULT 0,
       auto_assign INTEGER NOT NULL DEFAULT 0,
-      decision_ids_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (project_id, id)
     );
-
-    CREATE TABLE IF NOT EXISTS project_decisions (
-      id TEXT NOT NULL,
-      project_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      body TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_project_decisions_project
-      ON project_decisions(project_id);
 
     CREATE TABLE IF NOT EXISTS project_members (
       id TEXT NOT NULL,
@@ -121,6 +97,8 @@ export function migrateWorkflowTables() {
   if (!memberNames.has("role")) {
     db.exec("ALTER TABLE project_members ADD COLUMN role TEXT NOT NULL DEFAULT ''");
   }
+
+  db.exec("DROP TABLE IF EXISTS project_decisions");
 }
 
 export function countWorkflowStages(projectId: string): number {
@@ -135,7 +113,7 @@ export function listWorkflowStageRows(projectId: string): WorkflowStageRow[] {
   migrateWorkflowTables();
   return getProjectsDb()
     .prepare(
-      `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, decision_ids_json, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
+      `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
        FROM workflow_stages WHERE project_id = ? ORDER BY position ASC, title COLLATE NOCASE ASC`,
     )
     .all(projectId.trim()) as WorkflowStageRow[];
@@ -145,7 +123,7 @@ export function getWorkflowStageRow(projectId: string, stageId: string): Workflo
   migrateWorkflowTables();
   return getProjectsDb()
     .prepare(
-      `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, decision_ids_json, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
+      `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
        FROM workflow_stages WHERE project_id = ? AND id = ?`,
     )
     .get(projectId.trim(), stageId.trim()) as WorkflowStageRow | undefined;
@@ -167,7 +145,6 @@ export function insertWorkflowStageRow(row: {
   rulesJson: string;
   position: number;
   autoAssignRole: string;
-  decisionIdsJson: string;
   layoutX?: number | null;
   layoutY?: number | null;
   spawnTaskCount?: number;
@@ -178,8 +155,8 @@ export function insertWorkflowStageRow(row: {
   getProjectsDb()
     .prepare(
       `INSERT INTO workflow_stages
-        (id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, decision_ids_json, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', datetime('now'))`,
+        (id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', datetime('now'))`,
     )
     .run(
       row.id.trim(),
@@ -191,71 +168,11 @@ export function insertWorkflowStageRow(row: {
       row.position,
       autoAssignRole ? 1 : 0,
       autoAssignRole,
-      row.decisionIdsJson,
       row.layoutX ?? null,
       row.layoutY ?? null,
       row.spawnTaskCount ?? 0,
       row.taskTemplatesJson ?? "[]",
     );
-}
-
-export function listProjectDecisionRows(projectId: string): ProjectDecisionRow[] {
-  migrateWorkflowTables();
-  return getProjectsDb()
-    .prepare(
-      `SELECT id, project_id, title, body, created_at, updated_at
-       FROM project_decisions WHERE project_id = ? ORDER BY updated_at DESC`,
-    )
-    .all(projectId.trim()) as ProjectDecisionRow[];
-}
-
-export function getProjectDecisionRow(id: string): ProjectDecisionRow | undefined {
-  migrateWorkflowTables();
-  return getProjectsDb()
-    .prepare(
-      `SELECT id, project_id, title, body, created_at, updated_at FROM project_decisions WHERE id = ?`,
-    )
-    .get(id.trim()) as ProjectDecisionRow | undefined;
-}
-
-export function insertProjectDecisionRow(row: {
-  id: string;
-  projectId: string;
-  title: string;
-  body: string;
-}) {
-  migrateWorkflowTables();
-  getProjectsDb()
-    .prepare(
-      `INSERT INTO project_decisions (id, project_id, title, body, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))`,
-    )
-    .run(row.id.trim(), row.projectId.trim(), row.title.trim(), row.body.trim());
-}
-
-export function updateProjectDecisionRow(
-  id: string,
-  patch: { title?: string; body?: string },
-): boolean {
-  migrateWorkflowTables();
-  const existing = getProjectDecisionRow(id);
-  if (!existing) return false;
-  const title = patch.title !== undefined ? patch.title.trim() : existing.title;
-  const body = patch.body !== undefined ? patch.body.trim() : existing.body;
-  const result = getProjectsDb()
-    .prepare(
-      `UPDATE project_decisions SET title = ?, body = ?, updated_at = datetime('now') WHERE id = ?`,
-    )
-    .run(title, body, id.trim());
-  return result.changes > 0;
-}
-
-export function deleteProjectDecisionRow(id: string): boolean {
-  migrateWorkflowTables();
-  const result = getProjectsDb()
-    .prepare("DELETE FROM project_decisions WHERE id = ?")
-    .run(id.trim());
-  return result.changes > 0;
 }
 
 export function listProjectMemberRows(projectId: string): ProjectMemberRow[] {

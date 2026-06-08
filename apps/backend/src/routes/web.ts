@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyStatic from "@fastify/static";
@@ -21,11 +21,40 @@ function resolveWebRoot() {
   return null;
 }
 
+function resolveMobileApkPath(root: string) {
+  return join(root, "downloads", "task-bridge.apk");
+}
+
 export async function webRoutes(app: FastifyInstance) {
   const root = resolveWebRoot();
   if (!root) {
     return;
   }
+
+  const mobileApkPath = resolveMobileApkPath(root);
+
+  app.get("/mobile/release", async (_request, reply) => {
+    if (!existsSync(mobileApkPath)) {
+      return reply.send({ available: false });
+    }
+    const stats = statSync(mobileApkPath);
+    return reply.send({
+      available: true,
+      downloadUrl: "/downloads/task-bridge.apk",
+      sizeBytes: stats.size,
+      fileName: "task-bridge.apk",
+    });
+  });
+
+  app.get("/downloads/task-bridge.apk", async (_request, reply) => {
+    if (!existsSync(mobileApkPath)) {
+      return reply.status(404).send({ error: "Android APK not bundled in this image" });
+    }
+    return reply
+      .type("application/vnd.android.package-archive")
+      .header("Content-Disposition", 'attachment; filename="task-bridge.apk"')
+      .sendFile("downloads/task-bridge.apk", root);
+  });
 
   await app.register(fastifyStatic, {
     root,

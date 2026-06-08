@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Loader2, RefreshCw, Smartphone, Wifi } from "lucide-react";
+import { Download, Loader2, RefreshCw, Smartphone, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { useParams } from "react-router-dom";
 import { SensitiveField, SensitiveReveal } from "@/components/SensitiveField";
@@ -17,6 +17,12 @@ export function MobilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<Awaited<ReturnType<typeof fetchConnectConfig>> | null>(null);
+  const [apkRelease, setApkRelease] = useState<{
+    available: boolean;
+    downloadUrl?: string;
+    sizeBytes?: number;
+    fileName?: string;
+  } | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -35,6 +41,29 @@ export function MobilePage() {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 30000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadApkRelease() {
+      try {
+        const response = await fetch(`${defaultBaseUrl()}/mobile/release`);
+        if (!response.ok) return;
+        const data = (await response.json()) as {
+          available: boolean;
+          downloadUrl?: string;
+          sizeBytes?: number;
+          fileName?: string;
+        };
+        if (active) setApkRelease(data);
+      } catch {
+        if (active) setApkRelease({ available: false });
+      }
+    }
+    void loadApkRelease();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const endpoint = config
@@ -121,6 +150,41 @@ export function MobilePage() {
                 onCopy={mobileUri ? () => void copy(mobileUri, "Deep link") : undefined}
               />
             </div>
+          </div>
+
+          <div className="panel-card space-y-4 p-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15">
+                <Download className="h-5 w-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">Android app</p>
+                <p className="text-sm text-muted-foreground">
+                  Install the APK, then scan the QR code above to connect.
+                </p>
+              </div>
+            </div>
+
+            {apkRelease?.available && apkRelease.downloadUrl ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button asChild>
+                  <a href={`${defaultBaseUrl()}${apkRelease.downloadUrl}`} download={apkRelease.fileName}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download APK
+                  </a>
+                </Button>
+                {apkRelease.sizeBytes ? (
+                  <span className="text-sm text-muted-foreground">
+                    {(apkRelease.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+                  </span>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                APK not bundled. Build with <code className="text-foreground">npm run docker:mobile:build</code> before
+                publishing the Docker image.
+              </p>
+            )}
           </div>
         </div>
       </div>

@@ -36,14 +36,21 @@ function run(command, args) {
 
 async function main() {
   const env = { ...process.env, ...loadEnv() };
-  const tag = process.argv[2]?.trim() || "latest";
-  const version = process.argv[3]?.trim() || tag;
+  const args = process.argv.slice(2).filter((entry) => entry !== "--mobile");
+  const includeMobile = process.argv.includes("--mobile");
+  const tag = args[0]?.trim() || "latest";
+  const version = args[1]?.trim() || tag;
   const user = env.DOCKER_USER?.trim() || env.DOCKERHUB_USER?.trim();
 
   if (!user) {
     console.error("Set DOCKER_USER (or DOCKERHUB_USER) in .env or environment.");
     console.error("Example: DOCKER_USER=yourname node scripts/docker-publish.mjs latest");
     process.exit(1);
+  }
+
+  if (includeMobile) {
+    console.log("[docker] Building Android APK first…");
+    await run("node", ["scripts/docker-mobile-build.mjs"]);
   }
 
   const image = `${user}/task-bridge`;

@@ -13,7 +13,6 @@ function makeStage(overrides: Partial<WorkflowStageRow> & { id: string; position
     rules_json: "[]",
     auto_assign: 0,
     auto_assign_role: "",
-    decision_ids_json: "[]",
     layout_x: null,
     layout_y: null,
     spawn_task_count: 0,

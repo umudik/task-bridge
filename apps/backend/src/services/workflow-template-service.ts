@@ -192,7 +192,6 @@ export function copyTemplateStagesToProject(projectId: string, templateId: strin
       rulesJson: "[]",
       position: stage.position,
       autoAssignRole: "",
-      decisionIdsJson: "[]",
       layoutX: stage.layoutX ?? null,
       layoutY: stage.layoutY ?? null,
       spawnTaskCount: taskTemplates.length,

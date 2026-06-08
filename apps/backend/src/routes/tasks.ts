@@ -434,17 +434,28 @@ export async function taskRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Task not found" });
     }
     if (existing.parentId === null) {
-      if (body.description === undefined) {
-        return reply.status(400).send({ error: "Epics support description updates only" });
+      if (!body.comment && body.description === undefined) {
+        return reply.status(400).send({ error: "Epics support description or comment updates" });
       }
-      const updated = await updateBridgeTaskSpec(id, {
-        description: body.description,
-        by: "web",
-      });
-      if (!updated) {
-        return reply.status(404).send({ error: "Task not found" });
+      let task = existing;
+      if (body.description !== undefined) {
+        const updated = await updateBridgeTaskSpec(id, {
+          description: body.description,
+          by: body.comment?.by ?? "web",
+        });
+        if (!updated) {
+          return reply.status(404).send({ error: "Task not found" });
+        }
+        task = updated;
       }
-      return await mapTaskDetail(updated);
+      if (body.comment) {
+        const updated = await addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
+        if (!updated) {
+          return reply.status(404).send({ error: "Task not found" });
+        }
+        task = updated;
+      }
+      return await mapTaskDetail(task);
     }
     if (!body.comment) {
       return reply.status(400).send({ error: "comment is required" });

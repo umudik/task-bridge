@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
@@ -103,6 +104,7 @@ fun HomeScreen(
     onTextChange: (String) -> Unit,
     onSubmitText: () -> Unit,
     onNavigateAnswers: () -> Unit,
+    onNavigateEpics: () -> Unit,
     onNavigateSettings: () -> Unit,
     onOpenRecent: (Int) -> Unit,
 ) {
@@ -143,6 +145,9 @@ fun HomeScreen(
                     }
                 }
                 Row {
+                    IconButton(onClick = onNavigateEpics) {
+                        Icon(Icons.Default.ListAlt, contentDescription = "Epics", tint = TextSecondary)
+                    }
                     IconButton(onClick = onNavigateAnswers) {
                         Icon(Icons.Default.Inbox, contentDescription = "Answers", tint = TextSecondary)
                     }

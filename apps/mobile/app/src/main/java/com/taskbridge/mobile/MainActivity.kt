@@ -27,6 +27,7 @@ import com.taskbridge.mobile.ui.AnswerDetailScreen
 import com.taskbridge.mobile.ui.AnswersListScreen
 import com.taskbridge.mobile.ui.AppViewModel
 import com.taskbridge.mobile.ui.ConnectScreen
+import com.taskbridge.mobile.ui.EpicsListScreen
 import com.taskbridge.mobile.ui.HomeScreen
 import com.taskbridge.mobile.ui.ProjectSelectScreen
 import com.taskbridge.mobile.ui.SettingsScreen
@@ -184,9 +185,20 @@ class MainActivity : ComponentActivity() {
                             onTextChange = viewModel::updateTextMessage,
                             onSubmitText = viewModel::submitTextMessage,
                             onNavigateAnswers = { navController.navigate("answers") },
+                            onNavigateEpics = { navController.navigate("epics") },
                             onNavigateSettings = { navController.navigate("settings") },
                             onOpenRecent = { taskId ->
                                 navController.navigate("answer/$taskId")
+                            },
+                        )
+                    }
+                    composable("epics") {
+                        EpicsListScreen(
+                            state = state,
+                            onBack = { navController.popBackStack() },
+                            onRefresh = { viewModel.refreshEpics() },
+                            onOpenEpic = { epicId ->
+                                navController.navigate("answer/$epicId")
                             },
                         )
                     }
@@ -214,6 +226,21 @@ class MainActivity : ComponentActivity() {
                             },
                             onLoad = viewModel::loadAnswerDetail,
                             onSendComment = viewModel::sendTaskComment,
+                            onListen = viewModel::listen,
+                            onOpenLinkedTask = { linkedTaskId ->
+                                navController.navigate("answer/$linkedTaskId")
+                            },
+                            onCreateEpicTask = { epicId, parentId, stageId, title, description ->
+                                viewModel.createEpicWorkflowTask(
+                                    epicId = epicId,
+                                    parentId = parentId,
+                                    stageId = stageId,
+                                    title = title,
+                                    description = description,
+                                ) { createdId ->
+                                    navController.navigate("answer/$createdId")
+                                }
+                            },
                         )
                     }
                 }

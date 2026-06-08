@@ -1,9 +1,14 @@
 package com.taskbridge.mobile.data
 
 import com.taskbridge.mobile.domain.models.AnswerDetail
-import com.taskbridge.mobile.domain.models.TaskComment
-import com.taskbridge.mobile.domain.models.Project
+import com.taskbridge.mobile.domain.models.EpicListItem
+import com.taskbridge.mobile.domain.models.EpicPageResult
 import com.taskbridge.mobile.domain.models.InboxItem
+import com.taskbridge.mobile.domain.models.Project
+import com.taskbridge.mobile.domain.models.TaskComment
+import com.taskbridge.mobile.domain.models.TaskParentRef
+import com.taskbridge.mobile.domain.models.TaskSubtaskSummary
+import com.taskbridge.mobile.domain.models.WorkflowStageItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -80,6 +85,45 @@ class TaskRepository(
         return JSONObject(raw)
     }
 
+    suspend fun fetchWorkflowStages(projectId: String): List<WorkflowStageItem> = withContext(Dispatchers.IO) {
+        val encoded = java.net.URLEncoder.encode(projectId, Charsets.UTF_8.name())
+        val json = getJson("/projects/$encoded/workflow")
+        val stages = json.optJSONArray("stages") ?: JSONArray()
+        buildList {
+            for (index in 0 until stages.length()) {
+                val item = stages.getJSONObject(index)
+                val id = item.optString("id")
+                val title = item.optString("title")
+                if (id.isBlank() || title.isBlank()) continue
+                add(
+                    WorkflowStageItem(
+                        id = id,
+                        title = title,
+                        position = item.optInt("position", index),
+                    ),
+                )
+            }
+        }.sortedBy { it.position }
+    }
+
+    suspend fun createEpicSubtask(
+        parentId: Int,
+        title: String,
+        description: String,
+        stageId: String? = null,
+    ): Int = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("parentId", parentId)
+            .put("title", title)
+            .put("description", description)
+        stageId?.trim()?.takeIf { it.isNotBlank() }?.let { body.put("stageId", it) }
+        val json = postJson("/tasks", body)
+        when {
+            json.has("id") && !json.isNull("id") -> json.optInt("id")
+            else -> json.optString("id").toIntOrNull() ?: 0
+        }
+    }
+
     suspend fun createTask(text: String, projectId: String): CreateTaskResult = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("text", text)
@@ -91,6 +135,39 @@ class TaskRepository(
             projectId = json.optString("projectId").ifBlank { projectId },
             projectName = json.optString("projectName").ifBlank { null },
             createdAt = json.optString("createdAt").ifBlank { null },
+        )
+    }
+
+    suspend fun fetchEpics(
+        projectId: String,
+        page: Int = 1,
+        limit: Int = 100,
+    ): EpicPageResult = withContext(Dispatchers.IO) {
+        val encodedProject = java.net.URLEncoder.encode(projectId, Charsets.UTF_8.name())
+        val json = getJson("/inbox?projectId=$encodedProject&epicsOnly=true&page=$page&limit=$limit")
+        val items = json.optJSONArray("items") ?: JSONArray()
+        EpicPageResult(
+            items = buildList {
+                for (index in 0 until items.length()) {
+                    val item = items.getJSONObject(index)
+                    val taskId = when {
+                        item.has("taskId") -> item.optInt("taskId")
+                        else -> item.optString("taskId").toIntOrNull() ?: continue
+                    }
+                    add(
+                        EpicListItem(
+                            taskId = taskId,
+                            title = item.optString("title"),
+                            stageTitle = item.optString("stageTitle").ifBlank { null },
+                            preview = item.optString("preview").ifBlank { null },
+                            updatedAt = item.optString("updatedAt").ifBlank { null },
+                        ),
+                    )
+                }
+            },
+            total = json.optInt("total", items.length()),
+            page = json.optInt("page", page),
+            limit = json.optInt("limit", limit),
         )
     }
 
@@ -130,6 +207,16 @@ class TaskRepository(
 
     suspend fun fetchAnswerDetail(taskId: Int): AnswerDetail = withContext(Dispatchers.IO) {
         val json = getJson("/tasks/$taskId")
+        val parentJson = json.optJSONObject("parent")
+        val parent = if (parentJson != null) {
+            TaskParentRef(
+                taskId = parentJson.optInt("taskId"),
+                title = parentJson.optString("title"),
+                stageId = parentJson.optString("stageId").ifBlank { null },
+            )
+        } else {
+            null
+        }
         AnswerDetail(
             taskId = json.optInt("taskId", taskId),
             title = json.optString("title"),
@@ -147,10 +234,15 @@ class TaskRepository(
             answeredBy = json.optString("answeredBy").ifBlank { null },
             projectId = json.optString("projectId").ifBlank { null },
             projectName = json.optString("projectName").ifBlank { null },
+            stageId = json.optString("stageId").ifBlank { null },
             stageTitle = json.optJSONObject("stage")?.optString("title")?.ifBlank { null }
                 ?: json.optString("stageId").ifBlank { null },
             assignee = json.optString("assignee").ifBlank { null },
             isEpic = json.optBoolean("isEpic", false),
+            workStatusLabel = json.optString("workStatusLabel").ifBlank { null },
+            parentId = if (json.has("parentId") && !json.isNull("parentId")) json.optInt("parentId") else null,
+            parent = parent,
+            subtasks = parseSubtasks(json.optJSONArray("subtasks")),
             comments = parseComments(json.optJSONArray("comments")),
         )
     }
@@ -164,6 +256,30 @@ class TaskRepository(
                     .put("by", "mobile"),
             )
         patchJson("/tasks/$taskId", body)
+    }
+
+    private fun parseSubtasks(array: JSONArray?): List<TaskSubtaskSummary> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                val taskId = when {
+                    item.has("taskId") -> item.optInt("taskId")
+                    else -> item.optString("taskId").toIntOrNull() ?: continue
+                }
+                add(
+                    TaskSubtaskSummary(
+                        taskId = taskId,
+                        title = item.optString("title"),
+                        stageId = item.optString("stageId").ifBlank { null },
+                        stageTitle = item.optString("stageTitle").ifBlank { null },
+                        workStatus = item.optString("workStatus").ifBlank { null },
+                        workStatusLabel = item.optString("workStatusLabel").ifBlank { null },
+                        done = item.optBoolean("done", false),
+                    ),
+                )
+            }
+        }
     }
 
     private fun parseComments(array: JSONArray?): List<TaskComment> {

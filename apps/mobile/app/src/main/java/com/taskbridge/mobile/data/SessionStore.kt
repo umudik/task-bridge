@@ -130,7 +130,7 @@ class SessionStore(context: Context) {
         private const val KEY_NOTIFIED_TASK_IDS = "notified_task_ids"
         private const val KEY_RECENT_TASKS = "recent_tasks"
         const val DEFAULT_HOST = "10.0.2.2"
-        const val DEFAULT_PORT = 3001
+        const val DEFAULT_PORT = 3000
         const val DEFAULT_API_KEY = "dev-key"
     }
 }

@@ -24,6 +24,12 @@ COPY --from=backend /build/node_modules ./node_modules
 COPY --from=backend /build/dist ./dist
 COPY --from=web /build/dist ./public
 
+COPY artifacts ./artifacts-input
+RUN mkdir -p ./public/downloads && \
+    if [ -f artifacts-input/task-bridge.apk ]; then \
+      cp artifacts-input/task-bridge.apk ./public/downloads/task-bridge.apk; \
+    fi
+
 RUN mkdir -p /app/data && chown -R taskbridge:taskbridge /app
 
 ARG VERSION=0.1.0

@@ -1,5 +1,42 @@
 package com.taskbridge.mobile.domain.models
 
+data class EpicListItem(
+    val taskId: Int,
+    val title: String,
+    val stageTitle: String? = null,
+    val preview: String? = null,
+    val updatedAt: String? = null,
+)
+
+data class EpicPageResult(
+    val items: List<EpicListItem>,
+    val total: Int,
+    val page: Int,
+    val limit: Int,
+)
+
+data class WorkflowStageItem(
+    val id: String,
+    val title: String,
+    val position: Int,
+)
+
+data class TaskSubtaskSummary(
+    val taskId: Int,
+    val title: String,
+    val stageId: String? = null,
+    val stageTitle: String? = null,
+    val workStatus: String? = null,
+    val workStatusLabel: String? = null,
+    val done: Boolean = false,
+)
+
+data class TaskParentRef(
+    val taskId: Int,
+    val title: String,
+    val stageId: String? = null,
+)
+
 data class InboxItem(
     val taskId: Int,
     val title: String,
@@ -54,9 +91,14 @@ data class AnswerDetail(
     val answeredBy: String?,
     val projectId: String? = null,
     val projectName: String? = null,
+    val stageId: String? = null,
     val stageTitle: String? = null,
     val assignee: String? = null,
     val isEpic: Boolean = false,
+    val workStatusLabel: String? = null,
+    val parentId: Int? = null,
+    val parent: TaskParentRef? = null,
+    val subtasks: List<TaskSubtaskSummary> = emptyList(),
     val comments: List<TaskComment> = emptyList(),
 )
 

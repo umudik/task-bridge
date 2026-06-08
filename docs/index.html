@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Task Bridge API</title>
+  <meta name="description" content="Task Bridge REST API reference — epics, workflow, inbox, worker queue." />
+  <link rel="stylesheet" href="api.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">TB</div>
+        <div>
+          <h1>Task Bridge</h1>
+          <p>API Reference v1</p>
+        </div>
+      </div>
+      <input type="search" id="search" class="search" placeholder="Endpoint ara…" autocomplete="off" />
+      <nav>
+        <div class="nav-group">
+          <div class="nav-label">Başlangıç</div>
+          <a class="nav-link" href="#overview">Genel bakış</a>
+          <a class="nav-link" href="#auth">Kimlik doğrulama</a>
+          <a class="nav-link" href="#errors">Hatalar</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-label">Sistem</div>
+          <a class="nav-link" href="#health">Health</a>
+          <a class="nav-link" href="#connect">Connect</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-label">Kaynaklar</div>
+          <a class="nav-link" href="#projects">Projects</a>
+          <a class="nav-link" href="#epics-tasks">Epics &amp; Tasks</a>
+          <a class="nav-link" href="#inbox">Inbox</a>
+          <a class="nav-link" href="#workflow">Workflow</a>
+          <a class="nav-link" href="#templates">Workflow templates</a>
+          <a class="nav-link" href="#worker">Worker</a>
+          <a class="nav-link" href="#libraries">Libraries</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="hero" id="overview">
+        <h2>Task Bridge API</h2>
+        <p>
+          Mobil uygulama, web arayüzü ve otomasyon ajanları için tek backend.
+          Epik oluşturma, workflow aşamaları, yorumlar, worker kuyruğu ve kütüphane bağlantıları bu API üzerinden yönetilir.
+        </p>
+        <div class="badges">
+          <span class="badge">Base URL: <code>http://localhost:3000</code></span>
+          <span class="badge">Format: JSON</span>
+          <span class="badge">Auth: <code>X-Api-Key</code></span>
+        </div>
+      </header>
+
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>Varsayılan port</h3>
+          <p><code>3000</code> — <code>TASK_BRIDGE_PORT</code> ile değişir</p>
+        </div>
+        <div class="info-box">
+          <h3>API anahtarı</h3>
+          <p><code>BACKEND_API_KEY</code> — her istekte header</p>
+        </div>
+        <div class="info-box">
+          <h3>Public endpoint</h3>
+          <p><code>GET /health</code> ve <code>GET /connect.json</code> auth gerektirmez</p>
+        </div>
+      </div>
+
+      <section id="auth">
+        <h2>Kimlik doğrulama</h2>
+        <p class="section-desc">
+          Korunan tüm route'lar <code>X-Api-Key</code> header'ı bekler. Değer sunucudaki <code>BACKEND_API_KEY</code> ile eşleşmelidir.
+          Yanlış veya eksik anahtar <code>401 Unauthorized</code> döner.
+        </p>
+        <div class="card" data-search="auth x-api-key header curl">
+          <div class="card-header">
+            <span class="method get">ÖRNEK</span>
+            <span class="path">Herhangi bir korunan endpoint</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>curl -s http://localhost:3000/projects \
+  -H "X-Api-Key: dev-key"</pre>
+            </div>
+            <p>Mobil uygulama <code>GET /connect.json</code> ile tünel bilgisini ve API anahtarını alır.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="errors">
+        <h2>Hata formatı</h2>
+        <p class="section-desc">Çoğu hata düz JSON nesnesi olarak döner.</p>
+        <div class="card" data-search="errors 400 401 404 409 500">
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{ "error": "Task not found" }</pre>
+            </div>
+            <table>
+              <thead><tr><th>Kod</th><th>Anlam</th></tr></thead>
+              <tbody>
+                <tr><td><code>400</code></td><td>Geçersiz body veya iş kuralı ihlali</td></tr>
+                <tr><td><code>401</code></td><td>API anahtarı eksik veya hatalı</td></tr>
+                <tr><td><code>404</code></td><td>Kaynak bulunamadı</td></tr>
+                <tr><td><code>409</code></td><td>Çakışma (ör. task zaten claim edilmiş)</td></tr>
+                <tr><td><code>503</code></td><td><code>/connect.json</code> — ngrok tüneli yok</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="health">
+        <h2>Health</h2>
+        <p class="section-desc">Sunucu durumu — kimlik doğrulama gerekmez.</p>
+
+        <div class="card" data-search="get health status ok">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/health</span>
+            <span class="card-title">Liveness kontrolü</span>
+          </div>
+          <div class="card-body">
+            <div class="label">Yanıt 200</div>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "status": "ok",
+  "timestamp": "2026-05-25T12:00:00.000Z"
+}</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="connect">
+        <h2>Connect</h2>
+        <p class="section-desc">Mobil eşleştirme ve uzaktan erişim bilgisi.</p>
+
+        <div class="card" data-search="get connect.json ngrok apiKey host port">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/connect.json</span>
+            <span class="card-title">Mobil bağlantı manifesti (auth yok)</span>
+          </div>
+          <div class="card-body">
+            <div class="label">Yanıt 200</div>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "host": "abc123.ngrok-free.app",
+  "port": 443,
+  "secure": true,
+  "apiKey": "dev-key",
+  "source": "ngrok"
+}</pre>
+            </div>
+            <p>Tünel yoksa <code>503</code> ve <code>{ "error": "Ngrok tunnel not available" }</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="projects">
+        <h2>Projects</h2>
+        <p class="section-desc">Proje kaydı, repo yolu ve workflow şablonu ataması.</p>
+
+        <div class="card" data-search="get projects list">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/projects</span>
+            <span class="card-title">Tüm projeleri listele</span>
+          </div>
+          <div class="card-body">
+            <div class="label">Yanıt</div>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{ "projects": [{ "id": "my-app", "name": "My App", "repoPath": "C:\\repos\\my-app" }] }</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="post projects create workflowTemplateId">
+          <div class="card-header">
+            <span class="method post">POST</span>
+            <span class="path">/projects</span>
+            <span class="card-title">Yeni proje oluştur</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Alan</th><th>Tip</th><th>Zorunlu</th></tr></thead>
+              <tbody>
+                <tr><td><code>name</code></td><td>string</td><td>evet</td></tr>
+                <tr><td><code>repoPath</code></td><td>string</td><td>evet</td></tr>
+                <tr><td><code>id</code></td><td>string (kebab-case)</td><td>hayır</td></tr>
+                <tr><td><code>workflowTemplateId</code></td><td>string</td><td>hayır</td></tr>
+              </tbody>
+            </table>
+            <div class="label">Body</div>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "name": "Task Bridge",
+  "id": "task-bridge",
+  "repoPath": "C:\\Users\\dev\\task-bridge",
+  "workflowTemplateId": "default"
+}</pre>
+            </div>
+            <p><code>201</code> oluşturulan proje · <code>409</code> id çakışması</p>
+          </div>
+        </div>
+
+        <div class="card" data-search="put projects repo-path">
+          <div class="card-header">
+            <span class="method put">PUT</span>
+            <span class="path">/projects/:id/repo-path</span>
+            <span class="card-title">Repo yolunu güncelle</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{ "repoPath": "D:\\work\\task-bridge" }</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="epics-tasks">
+        <h2>Epics &amp; Tasks</h2>
+        <p class="section-desc">
+          Epikler (<code>parentId: null</code>) workflow köküdür. Alt görevler epik veya başka bir göreve bağlanır.
+          Detay yanıtında <code>isEpic</code>, <code>subtasks</code>, <code>comments</code> ve <code>stage</code> bulunur.
+        </p>
+
+        <div class="card" data-search="post epics create mobile text title">
+          <div class="card-header">
+            <span class="method post">POST</span>
+            <span class="path">/epics</span>
+            <span class="card-title">Epik oluştur (workflow otomatik spawn)</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Alan</th><th>Açıklama</th></tr></thead>
+              <tbody>
+                <tr><td><code>projectId</code></td><td>Hedef proje</td></tr>
+                <tr><td><code>title</code> / <code>text</code></td><td>En az biri zorunlu; <code>text</code> ilk satır başlık olur</td></tr>
+                <tr><td><code>description</code></td><td>İsteğe bağlı uzun metin</td></tr>
+              </tbody>
+            </table>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>curl -X POST http://localhost:3000/epics \
+  -H "X-Api-Key: dev-key" \
+  -H "Content-Type: application/json" \
+  -d '{"projectId":"task-bridge","title":"Yeni özellik","description":"Detay..."}'</pre>
+            </div>
+            <div class="label">Yanıt 201</div>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "id": 42,
+  "title": "Yeni özellik",
+  "createdAt": "2026-05-25T10:00:00.000Z",
+  "projectId": "task-bridge",
+  "projectName": "Task Bridge",
+  "parentId": null,
+  "stageId": "stage-1",
+  "assignee": "dev"
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="post tasks subtask parentId stageId">
+          <div class="card-header">
+            <span class="method post">POST</span>
+            <span class="path">/tasks</span>
+            <span class="card-title">Epik altına görev ekle</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Alan</th><th>Zorunlu</th></tr></thead>
+              <tbody>
+                <tr><td><code>parentId</code></td><td>evet — epik veya mevcut görev id</td></tr>
+                <tr><td><code>title</code></td><td>evet</td></tr>
+                <tr><td><code>description</code></td><td>hayır</td></tr>
+                <tr><td><code>stageId</code></td><td>hayır — workflow aşamasına yerleştirir</td></tr>
+              </tbody>
+            </table>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "parentId": 42,
+  "title": "API endpoint yaz",
+  "stageId": "implementation",
+  "description": "POST /tasks dokümante et"
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="get tasks list all">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/tasks</span>
+            <span class="card-title">Tüm bridge görevleri (ham liste)</span>
+          </div>
+          <div class="card-body">
+            <p><code>{ "items": [...] }</code> — id, title, projectId, parentId, stageId, events vb.</p>
+          </div>
+        </div>
+
+        <div class="card" data-search="get tasks id detail isEpic comments subtasks">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/tasks/:id</span>
+            <span class="card-title">Görev veya epik detayı</span>
+          </div>
+          <div class="card-body">
+            <div class="label">Örnek yanıt (kısaltılmış)</div>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "taskId": 42,
+  "title": "Yeni özellik",
+  "description": "Detay...",
+  "isEpic": true,
+  "stageId": "stage-2",
+  "stage": { "id": "stage-2", "title": "Implementation" },
+  "workStatus": null,
+  "status": "sent",
+  "subtasks": [
+    {
+      "taskId": 43,
+      "title": "API endpoint yaz",
+      "stageId": "implementation",
+      "workStatus": "todo",
+      "workStatusLabel": "To do"
+    }
+  ],
+  "comments": [
+    {
+      "id": "c1",
+      "authorType": "human",
+      "body": "Mobilden eklendi",
+      "at": "2026-05-25T11:00:00.000Z"
+    }
+  ],
+  "projectId": "task-bridge",
+  "libraryLinks": []
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="patch tasks comment description epic">
+          <div class="card-header">
+            <span class="method patch">PATCH</span>
+            <span class="path">/tasks/:id</span>
+            <span class="card-title">Yorum veya açıklama güncelle</span>
+          </div>
+          <div class="card-body">
+            <p><strong>Epik:</strong> <code>description</code> ve/veya <code>comment</code></p>
+            <p><strong>Alt görev:</strong> yalnızca <code>comment</code></p>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "comment": { "text": "İnceleme tamam", "by": "mobile" },
+  "description": "Güncellenmiş epic açıklaması"
+}</pre>
+            </div>
+            <p>Güncel detay döner (<code>mapTaskDetail</code>).</p>
+          </div>
+        </div>
+
+        <div class="card" data-search="patch work-status todo in_progress done">
+          <div class="card-header">
+            <span class="method patch">PATCH</span>
+            <span class="path">/tasks/:id/work-status</span>
+            <span class="card-title">Alt görev iş durumu</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{ "workStatus": "in_progress", "by": "web" }</pre>
+            </div>
+            <p>Değerler: <code>todo</code> · <code>in_progress</code> · <code>done</code>. Epiklerde <code>400</code>.</p>
+          </div>
+        </div>
+
+        <div class="card" data-search="get epics subtasks workflow projectId epicId">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/projects/:projectId/epics/:epicId/tasks</span>
+            <span class="card-title">Epik workflow özeti (mobil timeline)</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "epicId": 42,
+  "epicTitle": "Yeni özellik",
+  "stageId": "stage-2",
+  "stageTitle": "Implementation",
+  "tasks": [
+    {
+      "id": 43,
+      "title": "API endpoint yaz",
+      "stageId": "implementation",
+      "templateId": "tpl-1",
+      "workStatus": "todo",
+      "workStatusLabel": "To do"
+    }
+  ]
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="post claim unclaim answered agent-result">
+          <div class="card-header">
+            <span class="method post">POST</span>
+            <span class="path">/tasks/:id/claim · /unclaim · /answered · /agent-result</span>
+            <span class="card-title">Worker / ajan yaşam döngüsü</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Endpoint</th><th>Body</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><code>POST …/claim</code></td>
+                  <td><code>{ "claimedBy": "worker", "role": "dev" }</code></td>
+                </tr>
+                <tr>
+                  <td><code>POST …/unclaim</code></td>
+                  <td>body yok</td>
+                </tr>
+                <tr>
+                  <td><code>POST …/answered</code></td>
+                  <td><code>{ "answeredBy": "Cursor AI", "answer": "…" }</code></td>
+                </tr>
+                <tr>
+                  <td><code>POST …/agent-result</code></td>
+                  <td><code>action</code>, <code>description</code>, <code>aiSummary</code>, <code>comment</code></td>
+                </tr>
+              </tbody>
+            </table>
+            <p>Claim çakışması <code>409</code>. Başarılı claim tam task nesnesi döner.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="inbox">
+        <h2>Inbox</h2>
+        <p class="section-desc">Projeye göre filtrelenmiş, aktiviteye göre sıralı görev akışı.</p>
+
+        <div class="card" data-search="get inbox page limit commentsOnly epicsOnly">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/inbox</span>
+            <span class="card-title">Sayfalanmış inbox</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Query</th><th>Tip</th><th>Varsayılan</th></tr></thead>
+              <tbody>
+                <tr><td><code>projectId</code></td><td>string</td><td>—</td></tr>
+                <tr><td><code>commentsOnly</code></td><td>true/false</td><td>false — yalnızca <code>status: ready</code></td></tr>
+                <tr><td><code>epicsOnly</code></td><td>true/false</td><td>false</td></tr>
+                <tr><td><code>page</code></td><td>number</td><td>1</td></tr>
+                <tr><td><code>limit</code></td><td>number (max 100)</td><td>20</td></tr>
+              </tbody>
+            </table>
+            <div class="label">Yanıt</div>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "items": [
+    {
+      "taskId": 42,
+      "title": "Yeni özellik",
+      "preview": "AI özeti…",
+      "status": "ready",
+      "activityAt": "2026-05-25T12:00:00.000Z",
+      "done": false,
+      "parentId": null,
+      "projectId": "task-bridge",
+      "stageId": "stage-2",
+      "stageTitle": "Implementation"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20,
+  "totalPages": 1
+}</pre>
+            </div>
+            <p><code>status</code>: <code>sent</code> (bekleyen) veya <code>ready</code> (yanıt/hazır).</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="workflow">
+        <h2>Workflow</h2>
+        <p class="section-desc">Proje bazlı aşamalar, roller ve üye yönetimi.</p>
+
+        <div class="card" data-search="get workflow export stages members">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/projects/:projectId/workflow</span>
+            <span class="card-title">Workflow tanımını oku</span>
+          </div>
+          <div class="card-body">
+            <p>Stages, roles, members ve layout bilgisi içerir.</p>
+          </div>
+        </div>
+
+        <div class="card" data-search="get workflow export readable">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/projects/:projectId/workflow/export</span>
+            <span class="card-title">İnsan okunur workflow özeti</span>
+          </div>
+        </div>
+
+        <div class="card" data-search="put workflow replace stages roles">
+          <div class="card-header">
+            <span class="method put">PUT</span>
+            <span class="path">/projects/:projectId/workflow</span>
+            <span class="card-title">Workflow'u tamamen değiştir</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "stages": [
+    {
+      "id": "backlog",
+      "title": "Backlog",
+      "position": 0,
+      "taskTemplates": []
+    }
+  ],
+  "roles": ["dev", "reviewer"]
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="post apply-template workflowTemplateId">
+          <div class="card-header">
+            <span class="method post">POST</span>
+            <span class="path">/projects/:projectId/workflow/apply-template</span>
+            <span class="card-title">Şablonu projeye uygula</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{ "templateId": "default" }</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="members get post patch delete project">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/projects/:projectId/members</span>
+            <span class="card-title">Üyeler — CRUD</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Method</th><th>Path</th></tr></thead>
+              <tbody>
+                <tr><td><code>GET</code></td><td><code>/projects/:projectId/members</code></td></tr>
+                <tr><td><code>POST</code></td><td>body: <code>{ "name", "role" }</code></td></tr>
+                <tr><td><code>PATCH</code></td><td><code>/projects/:projectId/members/:memberId</code></td></tr>
+                <tr><td><code>DELETE</code></td><td><code>/projects/:projectId/members/:memberId</code> → <code>204</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="templates">
+        <h2>Workflow templates</h2>
+        <p class="section-desc">Yeniden kullanılabilir stage + task template tanımları.</p>
+
+        <div class="card" data-search="workflow-templates list create get put">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/workflow-templates</span>
+            <span class="card-title">Şablon listesi</span>
+          </div>
+          <div class="card-body">
+            <p><code>{ "items": [...] }</code></p>
+          </div>
+        </div>
+
+        <div class="card" data-search="post workflow-templates create title">
+          <div class="card-header">
+            <span class="method post">POST</span>
+            <span class="path">/workflow-templates</span>
+            <span class="card-title">Boş şablon oluştur</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{ "title": "Feature delivery", "description": "Standart akış" }</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="get put workflow-templates templateId stages">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/workflow-templates/:templateId</span>
+            <span class="card-title">Şablon detayı / güncelleme</span>
+          </div>
+          <div class="card-body">
+            <p><code>PUT</code> ile <code>stages</code> dizisi (id, title, position, taskTemplates, layoutX/Y…) gönderilir.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="worker">
+        <h2>Worker</h2>
+        <p class="section-desc">Otomasyon ajanları için kuyruk ve toplu claim.</p>
+
+        <div class="card" data-search="get worker pending role claimedBy">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/worker/pending</span>
+            <span class="card-title">Bekleyen görevler</span>
+          </div>
+          <div class="card-body">
+            <p>Query: <code>projectId</code>, <code>role</code>, <code>claimedBy</code> (isteğe bağlı)</p>
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>GET /worker/pending?projectId=task-bridge&amp;role=dev</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-search="post worker claim-next queue">
+          <div class="card-header">
+            <span class="method post">POST</span>
+            <span class="path">/worker/claim-next</span>
+            <span class="card-title">Sıradaki uygun görevi claim et</span>
+          </div>
+          <div class="card-body">
+            <div class="code-wrap">
+              <button type="button" class="copy-btn">Copy</button>
+              <pre>{
+  "claimedBy": "cursor-agent",
+  "role": "dev",
+  "projectId": "task-bridge"
+}</pre>
+            </div>
+            <p><code>404</code> uygun görev yok. Başarıda inbox item + <code>comments</code> döner.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="libraries">
+        <h2>Libraries</h2>
+        <p class="section-desc">Dokümantasyon kütüphaneleri ve görev bağlantıları.</p>
+
+        <div class="card" data-search="libraries documents links crud">
+          <div class="card-header">
+            <span class="method get">GET</span>
+            <span class="path">/libraries</span>
+            <span class="card-title">Kütüphane API özeti</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Method</th><th>Path</th><th>Açıklama</th></tr></thead>
+              <tbody>
+                <tr><td><code>GET</code></td><td><code>/libraries</code></td><td>Liste</td></tr>
+                <tr><td><code>POST</code></td><td><code>/libraries</code></td><td>Oluştur</td></tr>
+                <tr><td><code>GET</code></td><td><code>/libraries/:libraryId</code></td><td>Detay</td></tr>
+                <tr><td><code>PUT</code></td><td><code>/libraries/:libraryId</code></td><td>Güncelle</td></tr>
+                <tr><td><code>DELETE</code></td><td><code>/libraries/:libraryId</code></td><td>Sil</td></tr>
+                <tr><td><code>POST</code></td><td><code>/libraries/:id/documents</code></td><td>Doküman ekle</td></tr>
+                <tr><td><code>GET</code></td><td><code>/library-documents/:documentId</code></td><td>Doküman oku</td></tr>
+                <tr><td><code>PUT</code></td><td><code>/libraries/:id/documents/:documentId</code></td><td>Doküman güncelle</td></tr>
+                <tr><td><code>DELETE</code></td><td><code>/libraries/:id/documents/:documentId</code></td><td>Doküman sil</td></tr>
+                <tr><td><code>POST</code></td><td><code>/library-documents/:id/links</code></td><td>Göreve bağla</td></tr>
+                <tr><td><code>DELETE</code></td><td><code>/library-documents/:id/links/:taskId</code></td><td>Bağlantı kaldır</td></tr>
+                <tr><td><code>GET</code></td><td><code>/tasks/:taskId/library-links</code></td><td>Görevin linkleri</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 13px;">
+        Task Bridge · Kaynak: <a href="https://github.com/umudik/task-bridge">github.com/umudik/task-bridge</a>
+      </footer>
+    </main>
+  </div>
+  <script src="api.js"></script>
+</body>
+</html>
