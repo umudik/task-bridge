@@ -647,6 +647,48 @@ function ProgressStageColumn({
   const remainingSubtasks = hasTasks
     ? remainingStageSubtasks(stage.id, subtasks, renderedTaskIds, templatePlacedTaskIds)
     : [];
+  const epicRootNodes = epicRoots.map((subtask) =>
+    renderSubtaskBranch(
+      subtask,
+      0,
+      epicId,
+      subtasks,
+      templatePlacedTaskIds,
+      renderedTaskIds,
+      selectedTaskId,
+      onSelectTask,
+      onAddSubtask,
+      !subtask.templateId,
+    ),
+  );
+  const unplacedNodes = unplacedSubtasks.map((subtask) =>
+    renderSubtaskBranch(
+      subtask,
+      subtask.parentId === epicId ? 0 : 1,
+      epicId,
+      subtasks,
+      templatePlacedTaskIds,
+      renderedTaskIds,
+      selectedTaskId,
+      onSelectTask,
+      onAddSubtask,
+      !subtask.templateId,
+    ),
+  );
+  const remainingNodes = remainingSubtasks.map((subtask) =>
+    renderSubtaskBranch(
+      subtask,
+      subtask.parentId === epicId ? 0 : 1,
+      epicId,
+      subtasks,
+      templatePlacedTaskIds,
+      renderedTaskIds,
+      selectedTaskId,
+      onSelectTask,
+      onAddSubtask,
+      !subtask.templateId,
+    ),
+  );
 
   return (
     <div
@@ -668,48 +710,9 @@ function ProgressStageColumn({
           style={{ marginTop: STEP_TASK_GAP }}
         >
           {taskTreeNodes}
-          {epicRoots.map((subtask) =>
-            renderSubtaskBranch(
-              subtask,
-              0,
-              epicId,
-              subtasks,
-              templatePlacedTaskIds,
-              renderedTaskIds,
-              selectedTaskId,
-              onSelectTask,
-              onAddSubtask,
-              !subtask.templateId,
-            ),
-          )}
-          {unplacedSubtasks.map((subtask) =>
-            renderSubtaskBranch(
-              subtask,
-              subtask.parentId === epicId ? 0 : 1,
-              epicId,
-              subtasks,
-              templatePlacedTaskIds,
-              renderedTaskIds,
-              selectedTaskId,
-              onSelectTask,
-              onAddSubtask,
-              !subtask.templateId,
-            ),
-          )}
-          {remainingSubtasks.map((subtask) =>
-            renderSubtaskBranch(
-              subtask,
-              subtask.parentId === epicId ? 0 : 1,
-              epicId,
-              subtasks,
-              templatePlacedTaskIds,
-              renderedTaskIds,
-              selectedTaskId,
-              onSelectTask,
-              onAddSubtask,
-              !subtask.templateId,
-            ),
-          )}
+          {epicRootNodes}
+          {unplacedNodes}
+          {remainingNodes}
         </div>
       ) : null}
     </div>
