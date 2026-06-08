@@ -1,22 +1,30 @@
 services:
-  backend:
+  task-bridge:
+    image: ${TASK_BRIDGE_IMAGE:-taskbridge/task-bridge:latest}
     build:
       context: .
-      dockerfile: apps/backend/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${TASK_BRIDGE_VERSION:-0.1.0}
     environment:
       PORT: "3000"
-      BACKEND_API_KEY: ${BACKEND_API_KEY:-dev-key}
-      NGROK_INSPECTOR_URL: http://ngrok:4040
+      BACKEND_API_KEY: ${BACKEND_API_KEY:?Set BACKEND_API_KEY in .env}
       DATABASE_PATH: /app/data/bridge.db
-      BRIDGE_TASKS_PATH: /app/data/bridge-tasks.json
+      NGROK_INSPECTOR_URL: http://ngrok:4040
     volumes:
-      - bridge_data:/app/data
-      - ./data:/app/data
+      - task_bridge_data:/app/data
     ports:
-      - "3001:3000"
+      - "${TASK_BRIDGE_PORT:-3000}:3000"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   ngrok:
+    profiles: ["ngrok"]
     image: ngrok/ngrok:latest
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?Set NGROK_AUTHTOKEN in .env}
@@ -30,8 +38,9 @@ services:
     ports:
       - "4040:4040"
     depends_on:
-      - backend
+      task-bridge:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  bridge_data:
+  task_bridge_data:

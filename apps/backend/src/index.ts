@@ -18,16 +18,17 @@ import { resolveConnectTarget } from "./services/connect-target.js";
 const logger = createLogger("backend");
 
 async function logConnectInfo() {
+  const localUi = `http://localhost:${config.port}/app/login`;
   for (let attempt = 0; attempt < 15; attempt += 1) {
     const target = await resolveConnectTarget();
     if (target) {
-      logger.info(`Web UI: http://localhost:3001/app/login`);
+      logger.info(`Web UI: ${localUi}`);
       logger.info(`Ngrok URL: https://${target.host}`);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  logger.info("Web UI: http://localhost:3001/app/login");
+  logger.info(`Web UI: ${localUi}`);
 }
 
 async function main() {

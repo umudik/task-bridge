@@ -3,6 +3,6 @@ web_addr: 0.0.0.0:4040
 log: stdout
 log_level: info
 tunnels:
-  backend:
-    addr: backend:3000
+  task-bridge:
+    addr: task-bridge:3000
     proto: http

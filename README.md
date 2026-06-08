@@ -26,7 +26,7 @@ npm run dev:local
 
 Ngrok’u ayrı kapatmak için: `npm run dev:ngrok:down`
 
-## Docker (prod-like)
+## Docker (tek container — API + UI)
 
 ```powershell
 copy .env.example .env
@@ -36,14 +36,42 @@ npm run docker:up:d
 `.env`:
 
 ```env
-NGROK_AUTHTOKEN=ngrok_...
 BACKEND_API_KEY=dev-key
+TASK_BRIDGE_PORT=3000
 ```
 
 | Servis | URL |
 |--------|-----|
-| Backend + Web UI | http://localhost:3001/app/login |
-| Ngrok panel | http://localhost:4040 |
+| API + Web UI | http://localhost:3000/app/login |
+| Ngrok panel | http://localhost:4040 (opsiyonel) |
+
+Mobil QR / dış erişim için ngrok:
+
+```powershell
+npm run docker:up:ngrok
+```
+
+## Docker Hub
+
+Image build + push:
+
+```powershell
+# .env içine DOCKER_USER=your-dockerhub-user ekle
+npm run docker:publish
+# veya belirli tag: node scripts/docker-publish.mjs 0.1.0
+```
+
+Başka bir projede sadece pull ile çalıştır:
+
+```powershell
+cd deploy
+copy .env.example .env
+# TASK_BRIDGE_IMAGE ve BACKEND_API_KEY düzenle
+docker compose pull
+docker compose up -d
+```
+
+Detay: [deploy/README.md](deploy/README.md)
 
 ## Mobil
 

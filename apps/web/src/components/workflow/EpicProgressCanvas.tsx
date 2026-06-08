@@ -534,7 +534,6 @@ function buildProgressTaskTree({
 function renderSubtaskBranch(
   subtask: TaskSubtask,
   depth: number,
-  epicId: number,
   subtasks: TaskSubtask[],
   templatePlacedTaskIds: Set<number>,
   renderedTaskIds: Set<number>,
@@ -651,7 +650,6 @@ function ProgressStageColumn({
     renderSubtaskBranch(
       subtask,
       0,
-      epicId,
       subtasks,
       templatePlacedTaskIds,
       renderedTaskIds,
@@ -665,7 +663,6 @@ function ProgressStageColumn({
     renderSubtaskBranch(
       subtask,
       subtask.parentId === epicId ? 0 : 1,
-      epicId,
       subtasks,
       templatePlacedTaskIds,
       renderedTaskIds,
@@ -679,7 +676,6 @@ function ProgressStageColumn({
     renderSubtaskBranch(
       subtask,
       subtask.parentId === epicId ? 0 : 1,
-      epicId,
       subtasks,
       templatePlacedTaskIds,
       renderedTaskIds,

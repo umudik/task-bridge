@@ -1,0 +1,21 @@
+services:
+  task-bridge:
+    image: ${TASK_BRIDGE_IMAGE:?Set TASK_BRIDGE_IMAGE e.g. youruser/task-bridge:latest}
+    environment:
+      PORT: "3000"
+      BACKEND_API_KEY: ${BACKEND_API_KEY:?Set BACKEND_API_KEY}
+      DATABASE_PATH: /app/data/bridge.db
+    volumes:
+      - task_bridge_data:/app/data
+    ports:
+      - "${TASK_BRIDGE_PORT:-3000}:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  task_bridge_data:
