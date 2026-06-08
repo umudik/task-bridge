@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ChevronRight, Loader2, MessageSquare, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { LoadMore } from "@/components/LoadMore";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,18 +67,21 @@ export function InboxPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="page-toolbar">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-white">Inbox</h1>
-          <p className="text-xs text-muted-foreground">
-            {unreadOnPage > 0 ? `${unreadOnPage} unread` : "All caught up"}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading || loadingMore}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[
+          { label: "Projects", to: "/projects" },
+          { label: session?.projectName ?? projectId ?? "Project", to: `/projects/${projectId}/tasks` },
+          { label: "Inbox" },
+        ]}
+        title="Inbox"
+        subtitle={unreadOnPage > 0 ? `${unreadOnPage} unread` : "All caught up"}
+        actions={
+          <Button variant="outline" size="sm" onClick={refresh} disabled={loading || loadingMore}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Refresh
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-5">
       <Card>

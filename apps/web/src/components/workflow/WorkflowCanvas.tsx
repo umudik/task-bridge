@@ -29,6 +29,7 @@ import {
   TASK_NODE_WIDTH,
   TASK_TEMPLATE_HEIGHT,
   type DisplayStage,
+  bindCanvasWheelZoom,
   stageLayoutKey,
   stageStackHeight,
   stagesForDisplay,
@@ -532,35 +533,17 @@ export function WorkflowCanvas({
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
-
-    function onWheel(event: WheelEvent) {
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
-        const viewport = viewportRef.current;
-        if (!viewport) return;
-        const rect = viewport.getBoundingClientRect();
-        const pointerX = event.clientX - rect.left;
-        const pointerY = event.clientY - rect.top;
-        const currentZoom = zoomRef.current;
-        const currentPan = panRef.current;
-        const factor = event.deltaY < 0 ? 1.08 : 0.92;
-        const nextZoom = clamp(currentZoom * factor, MIN_ZOOM, MAX_ZOOM);
-        const scale = nextZoom / currentZoom;
-        setPan({
-          x: pointerX - (pointerX - currentPan.x) * scale,
-          y: pointerY - (pointerY - currentPan.y) * scale,
-        });
-        setZoom(nextZoom);
-        return;
-      }
-      setPan((current) => ({
-        x: current.x - event.deltaX,
-        y: current.y - event.deltaY,
-      }));
-    }
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    return bindCanvasWheelZoom(
+      el,
+      {
+        getZoom: () => zoomRef.current,
+        getPan: () => panRef.current,
+        setZoom,
+        setPan,
+      },
+      MIN_ZOOM,
+      MAX_ZOOM,
+    );
   }, []);
 
   function isInteractiveTarget(target: HTMLElement) {
@@ -591,7 +574,7 @@ export function WorkflowCanvas({
     <div className={cn("relative flex min-h-0 flex-col bg-[#080808]", className)}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-2">
         <p className="text-xs text-muted-foreground">
-          + adds tasks on canvas · Click node for details in sidebar · Drag to pan · Ctrl+scroll to zoom
+          Drag to pan · Ctrl+scroll to zoom · Click nodes for details
         </p>
         <div className="flex items-center gap-1">
           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setZoom((z) => clamp(z * 0.9, MIN_ZOOM, MAX_ZOOM))}>

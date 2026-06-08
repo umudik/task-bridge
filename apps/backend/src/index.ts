@@ -10,6 +10,7 @@ import { projectRoutes } from "./routes/projects.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { workflowRoutes } from "./routes/workflow.js";
 import { workflowTemplateRoutes } from "./routes/workflow-templates.js";
+import { libraryRoutes } from "./routes/library.js";
 import { webRoutes } from "./routes/web.js";
 import { refreshProjectRegistry, initProjectRegistry } from "./services/project-registry.js";
 import { resolveConnectTarget } from "./services/connect-target.js";
@@ -42,6 +43,7 @@ async function main() {
   await taskRoutes(app);
   await workflowRoutes(app);
   await workflowTemplateRoutes(app);
+  await libraryRoutes(app);
   await webRoutes(app);
 
   app.setErrorHandler((error, _request, reply) => {

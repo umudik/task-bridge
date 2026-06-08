@@ -18,6 +18,7 @@ import {
   moveStageBy,
   syncStageTemplates,
 } from "@/components/workflow/workflow-utils";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { TeamPanel } from "@/components/workflow/TeamPanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -262,24 +263,29 @@ export function WorkflowPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="page-toolbar flex-wrap">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Pipeline</h1>
-          <p className="text-xs text-muted-foreground">Pipeline steps and task templates · epics run this workflow</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {dirty ? (
-            <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
-              Unsaved changes
-            </span>
-          ) : null}
-          <Button onClick={() => void handleSaveStages()} disabled={saving || !dirty}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save workflow
-          </Button>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <PageHeader
+        breadcrumb={[
+          { label: "Projects", to: "/projects" },
+          { label: session?.projectName ?? projectId ?? "Project", to: `/projects/${projectId}/tasks` },
+          { label: "Pipeline" },
+        ]}
+        title="Pipeline"
+        subtitle="Pipeline steps and task templates · epics run this workflow"
+        actions={
+          <>
+            {dirty ? (
+              <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
+                Unsaved changes
+              </span>
+            ) : null}
+            <Button onClick={() => void handleSaveStages()} disabled={saving || !dirty}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save workflow
+            </Button>
+          </>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 border-b border-white/[0.06] px-5">

@@ -2,8 +2,12 @@
   "name": "task-bridge",
   "private": true,
   "scripts": {
-    "dev": "npm --prefix apps/backend run dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:local": "node scripts/dev.mjs --no-ngrok",
+    "dev:backend": "npm --prefix apps/backend run dev",
     "dev:web": "npm --prefix apps/web run dev",
+    "dev:ngrok": "docker compose -f docker-compose.dev.yml up -d --remove-orphans",
+    "dev:ngrok:down": "docker compose -f docker-compose.dev.yml down --remove-orphans",
     "build:web": "npm --prefix apps/web run build && node scripts/copy-web.mjs",
     "build": "npm run build:web && npm --prefix apps/backend run build",
     "test": "npm --prefix apps/backend run test",

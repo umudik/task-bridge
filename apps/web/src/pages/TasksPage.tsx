@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ChevronRight, Loader2, Plus, RefreshCw, SendHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { LoadMore } from "@/components/LoadMore";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,11 +41,11 @@ export function TasksPage() {
       try {
         const data = await fetchInbox(session, {
           projectId,
+          epicsOnly: true,
           page: pageNum,
           limit: PAGE_SIZE,
         });
-        const scoped = data.items.filter((item) => !item.parentId);
-        setItems((prev) => (append ? [...prev, ...scoped] : scoped));
+        setItems((prev) => (append ? [...prev, ...data.items] : data.items));
         setTotal(data.total);
         setPage(pageNum);
       } catch (error) {
@@ -92,24 +93,27 @@ export function TasksPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="page-toolbar">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-white">Epics</h1>
-          <p className="text-xs text-muted-foreground">
-            {total > 0 ? `${total} active` : "No epics yet"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={refresh} disabled={loading || loadingMore}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Refresh
-          </Button>
-          <Button size="sm" onClick={() => setShowComposer((value) => !value)}>
-            <Plus className="h-4 w-4" />
-            New epic
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={[
+          { label: "Projects", to: "/projects" },
+          { label: session?.projectName ?? projectId ?? "Project", to: `/projects/${projectId}/tasks` },
+          { label: "Epics" },
+        ]}
+        title="Epics"
+        subtitle={total > 0 ? `${total} active` : "No epics yet"}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={loading || loadingMore}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh
+            </Button>
+            <Button size="sm" onClick={() => setShowComposer((value) => !value)}>
+              <Plus className="h-4 w-4" />
+              New epic
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-5">
         {showComposer ? (

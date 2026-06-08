@@ -82,6 +82,7 @@ export type InboxResult = {
 export type InboxQuery = {
   projectId?: string;
   commentsOnly?: boolean;
+  epicsOnly?: boolean;
   page?: number;
   limit?: number;
 };
@@ -90,9 +91,11 @@ export type WorkStatus = "todo" | "in_progress" | "done";
 
 export type TaskSubtask = {
   taskId: number;
+  parentId?: number | null;
   title: string;
   stageId?: string | null;
   stageTitle?: string | null;
+  templateId?: string | null;
   assignee?: string | null;
   workStatus?: WorkStatus;
   workStatusLabel?: string;
@@ -140,6 +143,42 @@ export type TaskDetail = {
   workStatus?: WorkStatus | null;
   workStatusLabel?: string | null;
   comments?: TaskComment[];
+  libraryLinks?: LibraryDocumentLink[];
+};
+
+export type LibrarySummary = {
+  id: string;
+  title: string;
+  description: string;
+  documentCount: number;
+};
+
+export type LibraryDocumentSummary = {
+  id: string;
+  libraryId: string;
+  title: string;
+  description: string;
+};
+
+export type LibraryDetail = {
+  id: string;
+  title: string;
+  description: string;
+  documents: LibraryDocumentSummary[];
+};
+
+export type LibraryDocument = LibraryDocumentSummary & {
+  libraryTitle: string;
+  linkCount: number;
+};
+
+export type LibraryDocumentLink = {
+  documentId: string;
+  documentTitle: string;
+  libraryId: string;
+  libraryTitle: string;
+  taskId: number;
+  linkedAt: string;
 };
 
 export type ConnectConfig = {
@@ -343,6 +382,7 @@ export async function fetchInbox(session: Session, query: InboxQuery = {}) {
   const params = new URLSearchParams();
   if (query.projectId) params.set("projectId", query.projectId);
   if (query.commentsOnly) params.set("commentsOnly", "true");
+  if (query.epicsOnly) params.set("epicsOnly", "true");
   if (query.page) params.set("page", String(query.page));
   if (query.limit) params.set("limit", String(query.limit));
   const suffix = params.toString() ? `?${params.toString()}` : "";
@@ -358,6 +398,14 @@ export async function addTaskComment(session: Session, taskId: number, text: str
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ comment: { text, by: "web" } }),
+  });
+}
+
+export async function updateTaskDescription(session: Session, taskId: number, description: string) {
+  return request<TaskDetail>(session, `/tasks/${taskId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description }),
   });
 }
 
@@ -408,6 +456,116 @@ export async function updateMember(
 
 export async function deleteMember(session: Session, projectId: string, memberId: string) {
   await request<void>(session, `/projects/${projectId}/members/${memberId}`, { method: "DELETE" });
+}
+
+export async function fetchLibraries(session: Session) {
+  const data = await request<{ items: LibrarySummary[] }>(session, "/libraries");
+  return data.items ?? [];
+}
+
+export async function fetchLibrary(session: Session, libraryId: string) {
+  return request<LibraryDetail>(session, `/libraries/${libraryId}`);
+}
+
+export async function createLibrary(
+  session: Session,
+  input: { title: string; id?: string; description?: string },
+) {
+  return request<LibraryDetail>(session, "/libraries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function saveLibrary(
+  session: Session,
+  libraryId: string,
+  input: { title: string; description?: string },
+) {
+  return request<LibraryDetail>(session, `/libraries/${libraryId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteLibrary(session: Session, libraryId: string) {
+  await request<void>(session, `/libraries/${libraryId}`, { method: "DELETE" });
+}
+
+export async function createLibraryDocument(
+  session: Session,
+  libraryId: string,
+  input: { title: string; id?: string; description?: string },
+) {
+  return request<LibraryDocument>(session, `/libraries/${libraryId}/documents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchLibraryDocument(session: Session, documentId: string) {
+  return request<LibraryDocument>(session, `/library-documents/${documentId}`);
+}
+
+export async function saveLibraryDocument(
+  session: Session,
+  libraryId: string,
+  documentId: string,
+  input: { title: string; description?: string },
+) {
+  return request<LibraryDocument>(session, `/libraries/${libraryId}/documents/${documentId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteLibraryDocument(
+  session: Session,
+  libraryId: string,
+  documentId: string,
+) {
+  await request<void>(session, `/libraries/${libraryId}/documents/${documentId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function linkLibraryDocument(
+  session: Session,
+  documentId: string,
+  taskId: number,
+) {
+  const data = await request<{ items: LibraryDocumentLink[] }>(
+    session,
+    `/library-documents/${documentId}/links`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskId }),
+    },
+  );
+  return data.items ?? [];
+}
+
+export async function unlinkLibraryDocument(
+  session: Session,
+  documentId: string,
+  taskId: number,
+) {
+  await request<void>(session, `/library-documents/${documentId}/links/${taskId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchTaskLibraryLinks(session: Session, taskId: number) {
+  const data = await request<{ items: LibraryDocumentLink[] }>(
+    session,
+    `/tasks/${taskId}/library-links`,
+  );
+  return data.items ?? [];
 }
 
 export async function updateTaskWorkStatus(

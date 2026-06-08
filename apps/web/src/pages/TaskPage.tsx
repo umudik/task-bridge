@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { ExpandableMarkdown } from "@/components/ExpandableMarkdown";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { CreateTaskModal } from "@/components/CreateTaskModal";
+import { DescriptionEditorModal } from "@/components/DescriptionEditorModal";
+import { TaskLibraryLinks } from "@/components/TaskLibraryLinks";
+import { EpicProgressCanvas } from "@/components/workflow/EpicProgressCanvas";
+import { EpicTaskInspector } from "@/components/workflow/EpicTaskInspector";
 import { MarkdownView } from "@/components/MarkdownView";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +17,13 @@ import { useSession } from "@/hooks/useSession";
 import {
   addTaskComment,
   createTask,
+  fetchProjectWorkflow,
   fetchTask,
+  updateTaskDescription,
   updateTaskWorkStatus,
   type TaskComment,
   type TaskDetail,
+  type WorkflowStage,
   type WorkStatus,
 } from "@/lib/api";
 import { markTaskRead } from "@/lib/read-tasks";
@@ -38,16 +46,25 @@ function authorLabel(comment: TaskComment) {
 }
 
 export function TaskPage() {
-  const { projectId, taskId: taskIdParam } = useParams();
+  const { projectId = "", taskId: taskIdParam } = useParams();
   const taskId = Number(taskIdParam);
   const session = useSession();
   const [detail, setDetail] = useState<TaskDetail | null>(null);
+  const [workflowStages, setWorkflowStages] = useState<WorkflowStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
-  const [subtaskTitle, setSubtaskTitle] = useState("");
-  const [creatingSubtask, setCreatingSubtask] = useState(false);
+  const [updatingSubtaskStatus, setUpdatingSubtaskStatus] = useState(false);
+  const [addTaskTarget, setAddTaskTarget] = useState<{
+    parentId: number;
+    stageId: string | null;
+    label: string;
+  } | null>(null);
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [selectedSubtaskId, setSelectedSubtaskId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!session || !Number.isFinite(taskId)) return;
@@ -63,6 +80,13 @@ export function TaskPage() {
           markTaskRead(taskId);
         }
         setDetail(data);
+        if (data.isEpic) {
+          const workflowProjectId = data.projectId ?? projectId;
+          if (workflowProjectId) {
+            const workflow = await fetchProjectWorkflow(activeSession, workflowProjectId);
+            if (active) setWorkflowStages(workflow.stages);
+          }
+        }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load task");
       } finally {
@@ -81,6 +105,24 @@ export function TaskPage() {
     [detail?.comments],
   );
   const description = detail?.description?.trim() ? detail.description : null;
+  const subtasks = detail?.subtasks ?? [];
+  const selectedSubtask = useMemo(
+    () => subtasks.find((entry) => entry.taskId === selectedSubtaskId) ?? null,
+    [subtasks, selectedSubtaskId],
+  );
+  const epicProgress = useMemo(() => {
+    const total = subtasks.length;
+    const done = subtasks.filter((entry) => entry.done).length;
+    const active = subtasks.filter((entry) => entry.workStatus === "in_progress").length;
+    return { total, done, active };
+  }, [subtasks]);
+
+  async function reloadEpic() {
+    if (!session || !Number.isFinite(taskId)) return;
+    const data = await fetchTask(session, taskId);
+    setDetail(data);
+    return data;
+  }
 
   async function handleWorkStatus(workStatus: WorkStatus) {
     if (!session || !Number.isFinite(taskId)) return;
@@ -96,25 +138,64 @@ export function TaskPage() {
     }
   }
 
-  async function handleCreateSubtask() {
-    if (!session || !Number.isFinite(taskId)) return;
-    const title = subtaskTitle.trim();
-    if (!title) return;
-    setCreatingSubtask(true);
+  async function handleSubtaskStatus(subtaskId: number, workStatus: WorkStatus) {
+    if (!session) return;
+    setUpdatingSubtaskStatus(true);
     try {
-      await createTask(session, {
-        parentId: taskId,
-        title,
-        stageId: detail?.stageId ?? undefined,
-      });
-      const data = await fetchTask(session, taskId);
-      setDetail(data);
-      setSubtaskTitle("");
-      toast.success("Subtask created");
+      await updateTaskWorkStatus(session, subtaskId, workStatus);
+      const data = await reloadEpic();
+      if (data) {
+        const refreshed = data.subtasks?.find((entry) => entry.taskId === subtaskId);
+        if (refreshed) setSelectedSubtaskId(subtaskId);
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create subtask");
+      toast.error(error instanceof Error ? error.message : "Failed to update status");
     } finally {
-      setCreatingSubtask(false);
+      setUpdatingSubtaskStatus(false);
+    }
+  }
+
+  async function handleCreateTask(title: string, description: string) {
+    if (!session || !addTaskTarget) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    setCreatingTask(true);
+    try {
+      const created = await createTask(session, {
+        parentId: addTaskTarget.parentId,
+        title: trimmed,
+        description: description.trim() || undefined,
+        stageId: addTaskTarget.stageId ?? undefined,
+      });
+      const data = await reloadEpic();
+      const createdId = Number(created.id);
+      if (Number.isFinite(createdId)) {
+        setSelectedSubtaskId(createdId);
+      } else if (data?.subtasks?.length) {
+        const match = data.subtasks.find((entry) => entry.title === trimmed);
+        if (match) setSelectedSubtaskId(match.taskId);
+      }
+      toast.success(`Added to ${addTaskTarget.label}`);
+      setAddTaskTarget(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create task");
+    } finally {
+      setCreatingTask(false);
+    }
+  }
+
+  async function handleSaveDescription(next: string) {
+    if (!session || !Number.isFinite(taskId)) return;
+    setSavingDescription(true);
+    try {
+      const data = await updateTaskDescription(session, taskId, next);
+      setDetail(data);
+      setDescriptionOpen(false);
+      toast.success("Description saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save description");
+    } finally {
+      setSavingDescription(false);
     }
   }
 
@@ -136,102 +217,115 @@ export function TaskPage() {
     }
   }
 
-  return (
-    <div className="flex w-full flex-col gap-5 pb-10">
-      <Button variant="ghost" asChild className="w-fit px-0 text-muted-foreground hover:text-foreground">
-        <Link to={`/projects/${projectId}/tasks`}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to epics
-        </Link>
-      </Button>
+  const tasksPath = `/projects/${projectId}/tasks`;
+  const crumbs = [
+    { label: "Projects", to: "/projects" },
+    { label: session?.projectName ?? projectId ?? "Project", to: tasksPath },
+    { label: "Epics", to: tasksPath },
+  ];
+  if (detail?.parent) {
+    crumbs.push({ label: detail.parent.title, to: `${tasksPath}/${detail.parent.taskId}` });
+  }
 
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader
+        breadcrumb={crumbs}
+        title={loading ? "Loading…" : detail?.title ?? "Task"}
+      />
+
+      <div className="flex-1 overflow-y-auto px-8 py-5 pb-10">
+        <div className="flex flex-col gap-5">
       {loading ? (
         <Skeleton className="h-96 w-full rounded-xl" />
       ) : detail ? (
         <>
-          <header className="border-b border-border pb-4">
-            <h1 className="text-2xl font-semibold leading-snug tracking-tight">{detail.title}</h1>
-            <div className="mt-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
-              {detail.parent ? (
-                <Link
-                  to={`/projects/${projectId}/tasks/${detail.parent.taskId}`}
-                  className="rounded-full border px-2 py-0.5 hover:text-foreground"
-                >
-                  Parent: {detail.parent.title}
-                </Link>
-              ) : null}
-              {detail.isEpic && detail.stage?.title ? (
-                <span className="rounded-full border px-2 py-0.5 text-foreground">
-                  Stage: {detail.stage.title}
-                </span>
-              ) : null}
-              {!detail.isEpic && detail.workStatusLabel ? (
-                <span className="rounded-full border px-2 py-0.5 text-foreground">{detail.workStatusLabel}</span>
-              ) : null}
-              {detail.assignee ? <span>Assignee: {detail.assignee}</span> : null}
-            </div>
+          <header className="space-y-3 border-b border-border pb-4">
+                <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                  {detail.parent ? (
+                    <Link
+                      to={`/projects/${projectId}/tasks/${detail.parent.taskId}`}
+                      className="rounded-full border px-2 py-0.5 hover:text-foreground"
+                    >
+                      Parent: {detail.parent.title}
+                    </Link>
+                  ) : null}
+                  {detail.isEpic && detail.stage?.title ? (
+                    <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-primary">
+                      Active step: {detail.stage.title}
+                    </span>
+                  ) : null}
+                  {detail.isEpic && epicProgress.total > 0 ? (
+                    <span className="rounded-full border px-2 py-0.5 text-foreground">
+                      {epicProgress.done}/{epicProgress.total} tasks done
+                      {epicProgress.active > 0 ? ` · ${epicProgress.active} in progress` : ""}
+                    </span>
+                  ) : null}
+                  {!detail.isEpic && detail.workStatusLabel ? (
+                    <span className="rounded-full border px-2 py-0.5 text-foreground">{detail.workStatusLabel}</span>
+                  ) : null}
+                  {detail.assignee ? <span>Assignee: {detail.assignee}</span> : null}
+                </div>
           </header>
 
           {detail.isEpic ? (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Tasks</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                {(detail.subtasks ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No tasks spawned yet.</p>
+            <section className="panel-card p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-white">Description</h2>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setDescriptionOpen(true)}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                  {description ? "Edit" : "Add"}
+                </Button>
+              </div>
+              <div className="mt-3">
+                {description ? (
+                  <MarkdownView content={description} />
                 ) : (
-                  <ul className="space-y-2">
-                    {(detail.subtasks ?? []).map((subtask) => (
-                      <li key={subtask.taskId}>
-                        <Link
-                          to={`/projects/${projectId}/tasks/${subtask.taskId}`}
-                          className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:border-primary/30"
-                        >
-                          <span>{subtask.title}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {subtask.workStatusLabel ?? "Todo"} · {subtask.stageTitle ?? subtask.stageId ?? "—"}
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
+                  <p className="text-sm text-muted-foreground">
+                    No description yet — add goals, scope, or acceptance notes.
+                  </p>
                 )}
-                <div className="flex gap-2 border-t border-border pt-3">
-                  <input
-                    value={subtaskTitle}
-                    onChange={(event) => setSubtaskTitle(event.target.value)}
-                    placeholder="Add task to current stage"
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    disabled={creatingSubtask}
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={creatingSubtask || !subtaskTitle.trim()}
-                    onClick={() => void handleCreateSubtask()}
-                  >
-                    {creatingSubtask ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           ) : null}
 
-          {detail.isEpic && detail.stage ? (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Pipeline stage</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-0">
-                <p className="text-sm font-medium text-foreground">{detail.stage.title}</p>
-                {detail.stage.description ? (
-                  <ExpandableMarkdown content={detail.stage.description} collapsedMaxHeight={120} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">Computed from task progress across stages.</p>
-                )}
-              </CardContent>
-            </Card>
+          {session && detail.isEpic ? (
+            <TaskLibraryLinks
+              session={session}
+              taskId={taskId}
+              links={detail.libraryLinks ?? []}
+              onChange={(libraryLinks) =>
+                setDetail((current) => (current ? { ...current, libraryLinks } : current))
+              }
+            />
+          ) : null}
+
+          {detail.isEpic ? (
+            <div className="flex min-h-[min(72vh,680px)] overflow-hidden rounded-xl border border-white/[0.06] bg-[#080808]">
+              <EpicProgressCanvas
+                stages={workflowStages}
+                epicId={taskId}
+                epicStageId={detail.stageId ?? null}
+                subtasks={subtasks}
+                selectedTaskId={selectedSubtaskId}
+                onSelectTask={setSelectedSubtaskId}
+                onAddTaskToStage={(stageId, stageTitle) =>
+                  setAddTaskTarget({ parentId: taskId, stageId, label: `step "${stageTitle}"` })
+                }
+                onAddSubtask={(parentTaskId, parentTitle, stageId) =>
+                  setAddTaskTarget({ parentId: parentTaskId, stageId, label: `subtask of "${parentTitle}"` })
+                }
+              />
+              <EpicTaskInspector
+                projectId={projectId}
+                epicId={taskId}
+                subtasks={subtasks}
+                selected={selectedSubtask}
+                updatingStatus={updatingSubtaskStatus}
+                onClose={() => setSelectedSubtaskId(null)}
+                onStatusChange={(subtaskId, status) => void handleSubtaskStatus(subtaskId, status)}
+              />
+            </div>
           ) : null}
 
           {!detail.isEpic ? (
@@ -241,7 +335,7 @@ export function TaskPage() {
               </CardHeader>
               <CardContent className="space-y-3 pt-0">
                 <p className="text-sm text-muted-foreground">
-                  Stage: {detail.stage?.title ?? detail.stageId ?? "—"}
+                  Step: {detail.stage?.title ?? detail.stageId ?? "—"}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {(["todo", "in_progress", "done"] as WorkStatus[]).map((status) => (
@@ -260,18 +354,40 @@ export function TaskPage() {
             </Card>
           ) : null}
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Description</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {description?.trim() ? (
-                <ExpandableMarkdown content={description} />
-              ) : (
-                <p className="text-sm text-muted-foreground">No description yet.</p>
-              )}
-            </CardContent>
-          </Card>
+          {!detail.isEpic && description ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Description</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <MarkdownView content={description} />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {detail.isEpic ? (
+            <DescriptionEditorModal
+              open={descriptionOpen}
+              onOpenChange={setDescriptionOpen}
+              title="Epic description"
+              value={detail.description ?? ""}
+              onSave={(next) => void handleSaveDescription(next)}
+              placeholder="Goals, scope, links, acceptance notes…"
+              saving={savingDescription}
+            />
+          ) : null}
+
+          {detail.isEpic ? (
+            <CreateTaskModal
+              open={addTaskTarget !== null}
+              onOpenChange={(open) => {
+                if (!open) setAddTaskTarget(null);
+              }}
+              targetLabel={addTaskTarget?.label ?? null}
+              saving={creatingTask}
+              onCreate={(title, description) => void handleCreateTask(title, description)}
+            />
+          ) : null}
 
           {!detail.isEpic ? (
             <Card>
@@ -324,6 +440,8 @@ export function TaskPage() {
       ) : (
         <p className="text-sm text-muted-foreground">Task not found.</p>
       )}
+        </div>
+      </div>
     </div>
   );
 }

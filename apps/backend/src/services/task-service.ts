@@ -10,6 +10,7 @@ import {
   DONE_STAGE_ID,
   isDoneStage,
   mergeAcceptanceCriteria,
+  resolveEpicId,
   touchTask,
   type AgentWorkPayload,
   type AuthorType,
@@ -56,6 +57,7 @@ export async function upsertBridgeTask(input: {
   createdAt?: string;
   stageId?: string | null;
   assignee?: string | null;
+  assigneeRole?: string | null;
   parentId?: number | null;
   epicId?: number | null;
   templateId?: string | null;
@@ -74,12 +76,17 @@ export async function upsertBridgeTask(input: {
 
   const createdAt = input.createdAt ?? new Date().toISOString();
   const createdBy = input.createdBy ?? "mobile";
+  const existingTasks = listTaskRows();
+  const parentRow = input.parentId ? getTaskRow(input.parentId) : null;
+  const resolvedEpicId =
+    input.epicId ??
+    (parentRow ? resolveEpicId(existingTasks, parentRow) : null);
   const task: BridgeTask = {
     id: input.id,
     projectId: input.projectId,
     projectName: input.projectName,
     parentId: input.parentId ?? null,
-    epicId: input.epicId ?? (input.parentId ?? null),
+    epicId: resolvedEpicId,
     templateId: input.templateId ?? null,
     title: input.title,
     description: input.description,
@@ -99,6 +106,7 @@ export async function upsertBridgeTask(input: {
     stageId: input.stageId ?? null,
     workStatus: input.workStatus ?? (input.parentId ? "todo" : null),
     assignee: input.assignee ?? null,
+    assigneeRole: input.assigneeRole ?? null,
     comments: [],
     events: [{ type: "created", at: createdAt, by: createdBy }],
   };

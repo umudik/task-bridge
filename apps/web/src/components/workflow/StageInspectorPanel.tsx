@@ -1,5 +1,7 @@
-import { Trash2, X } from "lucide-react";
-import { DescriptionEditor } from "@/components/DescriptionEditor";
+import { useState } from "react";
+import { Pencil, Trash2, X } from "lucide-react";
+import { DescriptionEditorModal } from "@/components/DescriptionEditorModal";
+import { MarkdownView } from "@/components/MarkdownView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +29,49 @@ type StageInspectorPanelProps = {
 function nodeKindLabel(depth: number) {
   if (depth <= 0) return "Task";
   return "Subtask";
+}
+
+function DescriptionField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const trimmed = value.trim();
+
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="min-h-[4.5rem] rounded-lg border border-white/[0.08] bg-[#0f0f0f] px-3 py-2.5">
+        {trimmed ? (
+          <MarkdownView content={value} className="text-sm" />
+        ) : (
+          <p className="text-sm italic text-muted-foreground">No description yet.</p>
+        )}
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Pencil className="mr-2 h-3.5 w-3.5" />
+        Edit description
+      </Button>
+      <DescriptionEditorModal
+        open={open}
+        onOpenChange={setOpen}
+        title={label}
+        value={value}
+        onSave={(next) => {
+          onChange(next);
+          setOpen(false);
+        }}
+        placeholder={placeholder}
+      />
+    </div>
+  );
 }
 
 export function StageInspectorPanel({
@@ -95,14 +140,12 @@ export function StageInspectorPanel({
               onChange={(event) => patchTemplate(activeTemplate.id, { title: event.target.value })}
             />
           </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <DescriptionEditor
-              value={activeTemplate.description}
-              onChange={(next) => patchTemplate(activeTemplate.id, { description: next })}
-              placeholder="What should happen in this task?"
-            />
-          </div>
+          <DescriptionField
+            label="Description"
+            value={activeTemplate.description}
+            onChange={(next) => patchTemplate(activeTemplate.id, { description: next })}
+            placeholder="What should happen in this task?"
+          />
           <ProjectRoleSelect
             label="Assignee role"
             value={activeTemplate.assigneeRole ?? ""}
@@ -137,14 +180,12 @@ export function StageInspectorPanel({
               onChange={(event) => updateStage({ title: event.target.value })}
             />
           </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <DescriptionEditor
-              value={stage.description}
-              onChange={(next) => updateStage({ description: next })}
-              placeholder="Step context, expectations, notes…"
-            />
-          </div>
+          <DescriptionField
+            label="Description"
+            value={stage.description}
+            onChange={(next) => updateStage({ description: next })}
+            placeholder="Step context, expectations, notes…"
+          />
           <ProjectRoleSelect
             id="stage-auto-assign-role"
             label="Auto-assign role"

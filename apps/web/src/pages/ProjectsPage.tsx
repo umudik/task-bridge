@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { GitBranch, LogOut, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, FolderKanban, Loader2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { BrandMark } from "@/components/BrandMark";
 import { CreateProjectPanel } from "@/components/CreateProjectPanel";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/useSession";
 import { fetchProjects, type Project } from "@/lib/api";
-import { clearSession, setSelectedProject } from "@/lib/session";
+import { clearSelectedProject, setSelectedProject } from "@/lib/session";
+
 export function ProjectsPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,6 +35,10 @@ export function ProjectsPage() {
   }, [session]);
 
   useEffect(() => {
+    clearSelectedProject();
+  }, []);
+
+  useEffect(() => {
     void reload();
   }, [reload, location.key]);
 
@@ -43,12 +48,8 @@ export function ProjectsPage() {
     navigate(`/projects/${project.id}/tasks`);
   }
 
-  function signOut() {
-    clearSession();
-    navigate("/login", { replace: true });
-  }
-
   function handleCreated(project: Project) {
+    setCreateOpen(false);
     void reload();
     toast.success(`Project "${project.name}" created`);
     openProject(project);
@@ -57,106 +58,95 @@ export function ProjectsPage() {
   if (!session) return null;
 
   return (
-    <div className="app-shell">
-      <aside className="app-sidebar">
-        <div className="flex h-14 shrink-0 items-center border-b border-white/[0.06] px-4">
-          <BrandMark compact />
-        </div>
-
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Projects</p>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {loading ? (
-            <>
-              <Skeleton className="h-10 w-full rounded-lg" />
-              <Skeleton className="h-10 w-full rounded-lg" />
-            </>
-          ) : error ? (
-            <div className="space-y-2 p-2">
-              <p className="text-xs text-destructive">{error}</p>
-              <Button variant="outline" size="sm" className="w-full" onClick={() => void reload()}>
-                <RefreshCw className="h-4 w-4" />
-                Retry
-              </Button>
-            </div>
-          ) : projects.length === 0 ? (
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
-            >
-              <Plus className="h-4 w-4" />
-              Create project
-            </button>
-          ) : (
-            projects.map((project) => (
-              <button
-                key={project.id}
-                type="button"
-                onClick={() => openProject(project)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/[0.04]"
-              >
-                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                <span className="min-w-0 flex-1 truncate font-medium">{project.name}</span>
-              </button>
-            ))
-          )}
-        </div>
-
-        <div className="shrink-0 border-t border-white/[0.06] p-2">
-          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Global
-          </p>
-          <div className="space-y-0.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 w-full justify-start rounded-lg text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
-            onClick={() => navigate("/workflow-templates")}
-          >
-            <GitBranch className="h-4 w-4" />
-            Workflow templates
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 w-full justify-start rounded-lg text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
-            onClick={signOut}
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </Button>
-          </div>
-        </div>
-      </aside>
-
-      <main className="app-main flex items-center justify-center p-8">
-        {createOpen ? (
+    <div className="flex h-full min-h-0 flex-col">
+      {createOpen ? (
+        <div className="flex-1 overflow-y-auto p-8">
           <CreateProjectPanel
             session={session}
             onCreated={handleCreated}
             onCancel={() => setCreateOpen(false)}
           />
-        ) : (
-          <div className="w-full max-w-md text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">Select a project</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Pick a workspace from the sidebar or create a new one.
-            </p>
-            {!loading && projects.length === 0 ? (
-              <Button className="mt-6" onClick={() => setCreateOpen(true)}>
-                <Plus className="h-4 w-4" />
-                New project
-              </Button>
-            ) : null}
+        </div>
+      ) : (
+        <>
+          <PageHeader
+            title="Projects"
+            subtitle={
+              loading
+                ? "Loading workspaces…"
+                : projects.length > 0
+                  ? `${projects.length} workspace${projects.length === 1 ? "" : "s"}`
+                  : "Create your first workspace to get started"
+            }
+            actions={
+              <>
+                <Button variant="outline" size="sm" onClick={() => void reload()} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Refresh
+                </Button>
+                <Button size="sm" onClick={() => setCreateOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  New project
+                </Button>
+              </>
+            }
+          />
+
+          <div className="flex-1 overflow-y-auto p-5">
+              {loading && projects.length === 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <Skeleton className="h-28 rounded-2xl" />
+                  <Skeleton className="h-28 rounded-2xl" />
+                  <Skeleton className="h-28 rounded-2xl" />
+                </div>
+              ) : error ? (
+                <div className="panel-card mx-auto max-w-md space-y-4 p-6 text-center">
+                  <p className="text-sm text-destructive">{error}</p>
+                  <Button variant="outline" size="sm" onClick={() => void reload()}>
+                    <RefreshCw className="h-4 w-4" />
+                    Retry
+                  </Button>
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="panel-card flex flex-col items-center justify-center px-6 py-16 text-center">
+                  <FolderKanban className="mb-4 h-10 w-10 text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground">No projects yet. Create one to start building epics.</p>
+                  <Button className="mt-4" size="sm" onClick={() => setCreateOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    New project
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {projects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      onClick={() => openProject(project)}
+                      className="panel-card group flex min-h-[7rem] flex-col justify-between p-4 text-left transition-colors hover:border-white/[0.14] hover:bg-[#141414]"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                          <span className="text-[11px] text-muted-foreground">{project.id}</span>
+                        </div>
+                        <p className="line-clamp-2 text-sm font-semibold text-white group-hover:text-primary">
+                          {project.name}
+                        </p>
+                        {project.repoPath ? (
+                          <p className="line-clamp-1 text-xs text-muted-foreground">{project.repoPath}</p>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex items-center justify-end text-xs text-muted-foreground">
+                        <ChevronRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
           </div>
-        )}
-      </main>
+        </>
+      )}
     </div>
   );
 }

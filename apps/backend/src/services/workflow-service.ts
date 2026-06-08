@@ -22,6 +22,7 @@ import {
   resolveEpicDescription,
   resolveStageTaskTemplates,
   serializeTaskTemplates,
+  stageHasActionableTemplates,
 } from "../domain/workflow-stage.js";
 import { isDoneStage, listSubtasks, type BridgeTask } from "../domain/task.js";
 import { AppError } from "../errors/app-error.js";
@@ -207,8 +208,20 @@ export async function applyWorkflowTemplateToProject(
 
 export async function getFirstStageId(projectId: string): Promise<string | null> {
   await ensureProjectWorkflow(projectId);
-  const rows = listWorkflowStageRows(projectId);
+  const rows = listWorkflowStageRows(projectId).sort((a, b) => a.position - b.position);
   if (rows.length === 0) return null;
+  for (const row of rows) {
+    if (
+      stageHasActionableTemplates({
+        taskTemplatesJson: row.task_templates_json,
+        spawnTaskCount: row.spawn_task_count ?? 0,
+        stageId: row.id,
+        stageTitle: row.title,
+      })
+    ) {
+      return row.id;
+    }
+  }
   return rows[0]?.id ?? null;
 }
 

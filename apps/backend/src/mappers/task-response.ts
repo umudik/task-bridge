@@ -2,12 +2,15 @@ import {
   canonicalDescription,
   isDoneStage,
   isTaskClaimed,
+  listEpicWorkflowTasks,
   listSubtasks,
+  resolveTaskStageId,
   type BridgeTask,
   type TaskComment,
 } from "../domain/task.js";
 import { resolveWorkStatus, workStatusLabel } from "../domain/work-status.js";
 import { syncEpicStage } from "../services/epic-service.js";
+import { listTaskLibraryLinks } from "../services/library-service.js";
 import { getStageSnapshot, getStageTitleLookup } from "../services/workflow-service.js";
 import { listBridgeTasks } from "../services/task-service.js";
 
@@ -59,14 +62,21 @@ function previewForTask(task: BridgeTask): string | null {
   return text.length > 160 ? `${text.slice(0, 157)}...` : text;
 }
 
-function mapSubtaskSummary(task: BridgeTask, stageTitles: Map<string, string>) {
-  const stageKey = task.stageId ? `${task.projectId}:${task.stageId}` : null;
+function mapSubtaskSummary(
+  task: BridgeTask,
+  stageTitles: Map<string, string>,
+  allTasks: BridgeTask[],
+) {
+  const stageId = resolveTaskStageId(allTasks, task) ?? task.stageId;
+  const stageKey = stageId ? `${task.projectId}:${stageId}` : null;
   const workStatus = resolveWorkStatus(task);
   return {
     taskId: task.id,
+    parentId: task.parentId,
     title: task.title,
-    stageId: task.stageId,
-    stageTitle: stageKey ? (stageTitles.get(stageKey) ?? task.stageId) : null,
+    stageId,
+    stageTitle: stageKey ? (stageTitles.get(stageKey) ?? stageId) : null,
+    templateId: task.templateId,
     assignee: task.assignee,
     workStatus,
     workStatusLabel: workStatusLabel(workStatus),
@@ -90,9 +100,11 @@ export async function mapTaskDetail(task: BridgeTask) {
   const stage = await getStageSnapshot(task.projectId, task.stageId);
   const allTasks = await listBridgeTasks();
   const stageTitles = getStageTitleLookup(task.projectId);
-  const subtasks = listSubtasks(allTasks, task.id).map((entry) =>
-    mapSubtaskSummary(entry, stageTitles),
-  );
+  const workflowSubtasks =
+    task.parentId === null
+      ? listEpicWorkflowTasks(allTasks, task.id)
+      : listSubtasks(allTasks, task.id);
+  const subtasks = workflowSubtasks.map((entry) => mapSubtaskSummary(entry, stageTitles, allTasks));
   const parent =
     task.parentId !== null
       ? allTasks.find((entry) => entry.id === task.parentId) ?? null
@@ -136,6 +148,7 @@ export async function mapTaskDetail(task: BridgeTask) {
     claimedBy: task.claimedBy,
     events: task.events,
     comments: mapComments(task),
+    libraryLinks: listTaskLibraryLinks(task.id),
   };
 }
 
@@ -164,6 +177,7 @@ function sortInboxByActivity<
 export async function buildInboxItems(query: {
   projectId?: string;
   commentsOnly?: boolean;
+  epicsOnly?: boolean;
   page: number;
   limit: number;
 }) {
@@ -207,6 +221,9 @@ export async function buildInboxItems(query: {
   }
   if (query.commentsOnly) {
     items = items.filter((item) => item.status === "ready");
+  }
+  if (query.epicsOnly) {
+    items = items.filter((item) => item.parentId === null);
   }
 
   items = sortInboxByActivity(items);

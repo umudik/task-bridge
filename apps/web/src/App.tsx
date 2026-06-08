@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { ProjectLayout } from "@/components/layout/ProjectLayout";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
@@ -8,6 +9,7 @@ import { TasksPage } from "@/pages/TasksPage";
 import { TaskPage } from "@/pages/TaskPage";
 import { WorkflowPage } from "@/pages/WorkflowPage";
 import { WorkflowTemplatesPage } from "@/pages/WorkflowTemplatesPage";
+import { LibraryPage } from "@/pages/LibraryPage";
 import { loadSession } from "@/lib/session";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -22,36 +24,24 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
-        path="/projects"
         element={
           <RequireAuth>
-            <ProjectsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/workflow-templates"
-        element={
-          <RequireAuth>
-            <WorkflowTemplatesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/projects/:projectId"
-        element={
-          <RequireAuth>
-            <ProjectLayout />
+            <AppLayout />
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="tasks" replace />} />
-        <Route path="board" element={<Navigate to="tasks" replace />} />
-        <Route path="tasks" element={<TasksPage />} />
-        <Route path="tasks/:taskId" element={<TaskPage />} />
-        <Route path="inbox" element={<InboxPage />} />
-        <Route path="mobile" element={<MobilePage />} />
-        <Route path="workflow" element={<WorkflowPage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/workflow-templates" element={<WorkflowTemplatesPage />} />
+        <Route path="/library" element={<LibraryPage />} />
+        <Route path="/projects/:projectId" element={<ProjectLayout />}>
+          <Route index element={<Navigate to="tasks" replace />} />
+          <Route path="board" element={<Navigate to="tasks" replace />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="tasks/:taskId" element={<TaskPage />} />
+          <Route path="inbox" element={<InboxPage />} />
+          <Route path="mobile" element={<MobilePage />} />
+          <Route path="workflow" element={<WorkflowPage />} />
+        </Route>
       </Route>
       <Route path="/" element={<RootRedirect />} />
       <Route path="*" element={<RootRedirect />} />

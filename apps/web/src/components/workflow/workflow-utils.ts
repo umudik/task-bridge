@@ -183,3 +183,37 @@ export function screenToCanvas(
     y: (screenY - rect.top - pan.y) / zoom,
   };
 }
+
+type CanvasPanZoomRefs = {
+  getZoom: () => number;
+  getPan: () => { x: number; y: number };
+  setZoom: (zoom: number) => void;
+  setPan: (pan: { x: number; y: number }) => void;
+};
+
+export function bindCanvasWheelZoom(
+  element: HTMLElement,
+  refs: CanvasPanZoomRefs,
+  minZoom: number,
+  maxZoom: number,
+) {
+  function onWheel(event: WheelEvent) {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const rect = element.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const currentZoom = refs.getZoom();
+    const currentPan = refs.getPan();
+    const factor = event.deltaY < 0 ? 1.08 : 0.92;
+    const nextZoom = Math.min(maxZoom, Math.max(minZoom, currentZoom * factor));
+    const scale = nextZoom / currentZoom;
+    refs.setPan({
+      x: pointerX - (pointerX - currentPan.x) * scale,
+      y: pointerY - (pointerY - currentPan.y) * scale,
+    });
+    refs.setZoom(nextZoom);
+  }
+  element.addEventListener("wheel", onWheel, { passive: false });
+  return () => element.removeEventListener("wheel", onWheel);
+}

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, LogOut, Plus, Save } from "lucide-react";
+import { Loader2, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
-import { BrandMark } from "@/components/BrandMark";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { StageInspectorPanel } from "@/components/workflow/StageInspectorPanel";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 import {
@@ -22,12 +21,10 @@ import {
   type WorkflowStage,
   type WorkflowTemplateSummary,
 } from "@/lib/api";
-import { clearSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export function WorkflowTemplatesPage() {
   const session = useSession();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -164,12 +161,8 @@ export function WorkflowTemplatesPage() {
   if (!session) return null;
 
   return (
-    <div className="app-shell">
-      <aside className="app-sidebar">
-        <div className="flex h-14 shrink-0 items-center border-b border-white/[0.06] px-4">
-          <BrandMark compact />
-        </div>
-
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <aside className="flex w-[240px] shrink-0 flex-col border-r border-white/[0.07] bg-black">
         <div className="space-y-2 border-b border-white/[0.06] px-3 py-3">
           <p className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Templates</p>
           <div className="flex gap-2">
@@ -217,51 +210,26 @@ export function WorkflowTemplatesPage() {
           ))}
         </div>
 
-        <div className="shrink-0 space-y-1 border-t border-white/[0.06] p-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 w-full justify-start text-muted-foreground hover:text-foreground"
-            onClick={() => navigate("/projects")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Projects
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 w-full justify-start text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              clearSession();
-              navigate("/login", { replace: true });
-            }}
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </Button>
-        </div>
       </aside>
 
-      <main className="app-main flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-3">
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">
-              {templates.find((item) => item.id === selectedId)?.title ?? "Template"}
-            </h1>
-            <p className="text-xs text-muted-foreground">Stages and task templates</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {dirty ? (
-              <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
-                Unsaved
-              </span>
-            ) : null}
-            <Button onClick={() => void handleSave()} disabled={saving || !dirty || !selectedId}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save
-            </Button>
-          </div>
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <PageHeader
+          title={templates.find((item) => item.id === selectedId)?.title ?? "Template"}
+          subtitle="Stages and task templates"
+          actions={
+            <>
+              {dirty ? (
+                <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
+                  Unsaved
+                </span>
+              ) : null}
+              <Button onClick={() => void handleSave()} disabled={saving || !dirty || !selectedId}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save
+              </Button>
+            </>
+          }
+        />
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
@@ -315,7 +283,7 @@ export function WorkflowTemplatesPage() {
             </aside>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

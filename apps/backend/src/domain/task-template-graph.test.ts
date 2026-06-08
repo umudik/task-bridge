@@ -98,7 +98,29 @@ describe("task template graph", () => {
     );
   });
 
-  it("spawns parallel children when parent task exists", () => {
+  it("does not spawn children until parent task is done", () => {
+    const roots: StageTaskTemplate[] = [
+      {
+        id: "parent",
+        title: "Parent",
+        description: "",
+        execution: "parallel",
+        children: [
+          { id: "c1", title: "Child 1", description: "" },
+          { id: "c2", title: "Child 2", description: "" },
+        ],
+      },
+    ];
+    const pending = collectSpawnableTemplates(
+      roots,
+      ctx({
+        spawnedTemplateIds: new Set(["parent"]),
+      }),
+    );
+    assert.deepEqual(pending, []);
+  });
+
+  it("spawns parallel children when parent task is done", () => {
     const roots: StageTaskTemplate[] = [
       {
         id: "parent",
@@ -115,6 +137,7 @@ describe("task template graph", () => {
       roots,
       ctx({
         spawnedTemplateIds: new Set(["parent"]),
+        doneTemplateIds: new Set(["parent"]),
       }),
     );
     assert.deepEqual(

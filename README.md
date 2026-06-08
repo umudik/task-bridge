@@ -2,7 +2,31 @@
 
 Mobil + web UI + backend task manager.
 
-## Docker
+## Dev (watch mode)
+
+```powershell
+copy .env.example .env
+npm install
+npm run dev
+```
+
+Backend (`tsx watch`) + web (`vite` HMR) aynı anda açılır. Docker image build yok.
+
+| Servis | URL |
+|--------|-----|
+| Web UI | http://localhost:5173/app/login |
+| API | http://localhost:3000 |
+| Ngrok panel | http://localhost:4040 |
+
+Ngrok container Ctrl+C sonrası da ayakta kalır (mobil QR için). Sadece local:
+
+```powershell
+npm run dev:local
+```
+
+Ngrok’u ayrı kapatmak için: `npm run dev:ngrok:down`
+
+## Docker (prod-like)
 
 ```powershell
 copy .env.example .env

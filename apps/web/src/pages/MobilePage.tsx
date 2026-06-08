@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Loader2, RefreshCw, Smartphone, Wifi } from "lucide-react";
 import { toast } from "sonner";
+import { useParams } from "react-router-dom";
 import { SensitiveField, SensitiveReveal } from "@/components/SensitiveField";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/useSession";
@@ -10,6 +12,7 @@ import { ApiError, buildMobileConnectUri, fetchConnectConfig } from "@/lib/api";
 import { defaultBaseUrl } from "@/lib/session";
 
 export function MobilePage() {
+  const { projectId } = useParams();
   const session = useSession();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,16 +52,21 @@ export function MobilePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="page-toolbar">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-white">Mobile</h1>
-          <p className="text-xs text-muted-foreground">Android pairing</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb={[
+          { label: "Projects", to: "/projects" },
+          { label: session?.projectName ?? projectId ?? "Project", to: `/projects/${projectId}/tasks` },
+          { label: "Mobile" },
+        ]}
+        title="Mobile"
+        subtitle="Android pairing"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Refresh
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-8">
         <div className="mx-auto max-w-xl space-y-8">

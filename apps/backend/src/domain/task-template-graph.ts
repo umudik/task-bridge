@@ -124,6 +124,7 @@ export function collectSpawnableTemplates(
     }
 
     if (node.children?.length) {
+      if (!ctx.doneTemplateIds.has(node.id)) continue;
       result.push(
         ...collectSpawnableTemplates(
           node.children,

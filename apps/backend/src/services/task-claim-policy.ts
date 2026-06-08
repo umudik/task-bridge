@@ -1,8 +1,29 @@
-import { listWorkflowStageRows } from "../db/workflow-db.js";
+import {
+  getWorkflowStageRow,
+  listProjectMemberRows,
+  listWorkflowStageRows,
+} from "../db/workflow-db.js";
+import { flattenTemplateNodes } from "../domain/task-template-graph.js";
 import type { AuthorType, BridgeTask, TaskComment } from "../domain/task.js";
 import { isWorkDone, resolveWorkStatus } from "../domain/work-status.js";
 import { listEpicWorkflowTasks } from "../domain/task.js";
+import { parseStageRolesJson, resolveStageTaskTemplates } from "../domain/workflow-stage.js";
+import { emptyToNull, roleKey } from "../lib/strings.js";
 import { computeEpicStageId } from "./epic-service.js";
+
+export type ClaimActor = {
+  claimedBy: string;
+  role: string;
+};
+
+export function normalizeClaimActor(actor: ClaimActor): ClaimActor {
+  return {
+    claimedBy: emptyToNull(actor.claimedBy) ?? "",
+    role: emptyToNull(actor.role) ?? "",
+  };
+}
+
+const AI_CLAIM_ROLES = new Set(["ai", "cursor-ai", "cursor ai"]);
 
 function latestCommentByAuthor(comments: TaskComment[], authorType: AuthorType) {
   for (let index = comments.length - 1; index >= 0; index -= 1) {
@@ -25,6 +46,68 @@ export function userAwaitingReply(task: BridgeTask): boolean {
   return humanAt > aiAt;
 }
 
+export function aiAwaitingHumanReply(task: BridgeTask): boolean {
+  const lastHuman = latestCommentByAuthor(task.comments, "human");
+  const lastAi = latestCommentByAuthor(task.comments, "ai");
+  if (!lastAi) return false;
+  if (!lastHuman) return true;
+
+  const humanAt = Date.parse(lastHuman.at);
+  const aiAt = Date.parse(lastAi.at);
+  if (Number.isNaN(humanAt) || Number.isNaN(aiAt)) return true;
+  return aiAt > humanAt;
+}
+
+export function isAiClaimRole(role: string): boolean {
+  const key = roleKey(role);
+  return key ? AI_CLAIM_ROLES.has(key) : false;
+}
+
+export function rolesMatch(actorRole: string, requiredRole: string | null | undefined): boolean {
+  const required = roleKey(requiredRole);
+  if (!required) return true;
+  return roleKey(actorRole) === required;
+}
+
+export function resolveTaskClaimRole(task: BridgeTask): string | null {
+  if (task.parentId === null) return null;
+
+  if (task.assigneeRole) return task.assigneeRole;
+
+  if (task.templateId) {
+    for (const row of listWorkflowStageRows(task.projectId)) {
+      const roots = resolveStageTaskTemplates({
+        taskTemplatesJson: row.task_templates_json,
+        spawnTaskCount: row.spawn_task_count ?? 0,
+        stageId: row.id,
+        stageTitle: row.title,
+      });
+      for (const node of flattenTemplateNodes(roots)) {
+        if (node.id === task.templateId && node.assigneeRole) {
+          return node.assigneeRole;
+        }
+      }
+    }
+  }
+
+  if (task.assignee) {
+    const member = listProjectMemberRows(task.projectId).find((row) => row.name === task.assignee);
+    const directRole = emptyToNull(member?.role);
+    if (directRole) return directRole;
+    const legacyRoles = parseStageRolesJson(member?.stage_roles_json ?? "{}");
+    const legacy = Object.values(legacyRoles).map(emptyToNull).find(Boolean);
+    if (legacy) return legacy;
+  }
+
+  if (task.stageId) {
+    const row = getWorkflowStageRow(task.projectId, task.stageId);
+    const autoRole = emptyToNull(row?.auto_assign_role);
+    if (autoRole) return autoRole;
+  }
+
+  return null;
+}
+
 export type EpicClaimIndex = {
   activeStageByEpic: Map<number, string | null>;
   stagePositionByProject: Map<string, Map<string, number>>;
@@ -43,10 +126,9 @@ export function buildEpicClaimIndex(tasks: BridgeTask[]): EpicClaimIndex {
       }
       stagePositionByProject.set(epic.projectId, positions);
     }
-    const positions = stagePositionByProject.get(epic.projectId) ?? new Map<string, number>();
-    const stages = [...positions.entries()].map(([id, position]) => ({ id, position }));
+    const stageRows = listWorkflowStageRows(epic.projectId).sort((a, b) => a.position - b.position);
     const subtasks = listEpicWorkflowTasks(tasks, epic.id);
-    activeStageByEpic.set(epic.id, computeEpicStageId(stages, subtasks));
+    activeStageByEpic.set(epic.id, computeEpicStageId(stageRows, subtasks));
   }
 
   return { activeStageByEpic, stagePositionByProject };
@@ -66,10 +148,39 @@ export function passesWorkflowClaimGate(task: BridgeTask, index: EpicClaimIndex)
   return isTaskOnEpicActiveStage(task, index);
 }
 
-export function isWorkflowClaimable(task: BridgeTask, index: EpicClaimIndex): boolean {
-  if (userAwaitingReply(task)) return task.parentId !== null && !isWorkDone(task);
+export function canActorClaimTask(
+  task: BridgeTask,
+  index: EpicClaimIndex,
+  actor: ClaimActor,
+): boolean {
+  if (task.parentId === null || isWorkDone(task)) return false;
+
+  if (userAwaitingReply(task)) {
+    return isAiClaimRole(actor.role);
+  }
+
+  if (aiAwaitingHumanReply(task)) {
+    if (isAiClaimRole(actor.role)) return false;
+    return rolesMatch(actor.role, resolveTaskClaimRole(task));
+  }
+
   if (task.claimedBy) return false;
-  return passesWorkflowClaimGate(task, index);
+  if (!passesWorkflowClaimGate(task, index)) return false;
+
+  return rolesMatch(actor.role, resolveTaskClaimRole(task));
+}
+
+export function isWorkflowClaimable(
+  task: BridgeTask,
+  index: EpicClaimIndex,
+  actor?: ClaimActor,
+): boolean {
+  if (!actor) {
+    if (userAwaitingReply(task)) return task.parentId !== null && !isWorkDone(task);
+    if (task.claimedBy) return false;
+    return passesWorkflowClaimGate(task, index);
+  }
+  return canActorClaimTask(task, index, actor);
 }
 
 function activeStageSortKey(task: BridgeTask, index: EpicClaimIndex): number {
@@ -121,9 +232,40 @@ export function sortWorkflowClaimCandidates(tasks: BridgeTask[], index: EpicClai
   return [...tasks].sort((a, b) => compareWorkflowClaimPriority(a, b, index));
 }
 
-export function workflowClaimBlockReason(task: BridgeTask, index: EpicClaimIndex): string | null {
+export function workflowClaimBlockReason(
+  task: BridgeTask,
+  index: EpicClaimIndex,
+  actor?: ClaimActor,
+): string | null {
   if (task.parentId === null) return "Epics cannot be claimed";
   if (isWorkDone(task)) return "Task is already done";
+
+  if (actor) {
+    if (userAwaitingReply(task) && !isAiClaimRole(actor.role)) {
+      return "Task is waiting for an AI reply";
+    }
+    if (aiAwaitingHumanReply(task) && isAiClaimRole(actor.role)) {
+      return "Task is waiting for a human team member";
+    }
+    const requiredRole = resolveTaskClaimRole(task);
+    if (aiAwaitingHumanReply(task) && requiredRole && !rolesMatch(actor.role, requiredRole)) {
+      return `Task requires role "${requiredRole}"`;
+    }
+    if (!userAwaitingReply(task) && !aiAwaitingHumanReply(task)) {
+      if (task.claimedBy) return "Task is already claimed";
+      if (!isTaskOnEpicActiveStage(task, index)) {
+        const epicId = task.epicId ?? task.parentId;
+        const activeStageId = epicId ? index.activeStageByEpic.get(epicId) : null;
+        if (!activeStageId) return "Epic has no active pipeline step";
+        return `Task is on a later pipeline step; epic is at "${activeStageId}"`;
+      }
+      if (requiredRole && !rolesMatch(actor.role, requiredRole)) {
+        return `Task requires role "${requiredRole}"`;
+      }
+    }
+    return null;
+  }
+
   if (!isTaskOnEpicActiveStage(task, index)) {
     const epicId = task.epicId ?? task.parentId;
     const activeStageId = epicId ? index.activeStageByEpic.get(epicId) : null;

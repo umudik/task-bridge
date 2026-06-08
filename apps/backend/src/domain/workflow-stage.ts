@@ -174,3 +174,24 @@ export function resolveStageTaskTemplateRoots(input: {
 }): StageTaskTemplate[] {
   return resolveStageTaskTemplates(input);
 }
+
+function templateTreeHasTasks(nodes: StageTaskTemplate[]): boolean {
+  for (const node of nodes) {
+    if (node.kind === "group") {
+      if (templateTreeHasTasks(node.children ?? [])) return true;
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+export function stageHasActionableTemplates(input: {
+  taskTemplatesJson: string | null | undefined;
+  spawnTaskCount: number;
+  stageId: string;
+  stageTitle: string;
+}): boolean {
+  const roots = resolveStageTaskTemplateRoots(input);
+  return templateTreeHasTasks(roots);
+}

@@ -70,6 +70,9 @@ function migrate(database: Database.Database) {
   if (!columnExists(database, "tasks", "template_id")) {
     database.exec(`ALTER TABLE tasks ADD COLUMN template_id TEXT`);
   }
+  if (!columnExists(database, "tasks", "assignee_role")) {
+    database.exec(`ALTER TABLE tasks ADD COLUMN assignee_role TEXT`);
+  }
   if (!columnExists(database, "tasks", "epic_id")) {
     database.exec(`ALTER TABLE tasks ADD COLUMN epic_id INTEGER`);
     database.exec(`
@@ -106,6 +109,10 @@ function rowToTask(row: Record<string, unknown>): BridgeTask {
     priority: row.priority === null || row.priority === undefined ? null : String(row.priority),
     labels: JSON.parse(String(row.labels_json)) as string[],
     assignee: row.assignee === null || row.assignee === undefined ? null : String(row.assignee),
+    assigneeRole:
+      row.assignee_role === null || row.assignee_role === undefined
+        ? null
+        : String(row.assignee_role),
     aiContext: row.ai_context === null || row.ai_context === undefined ? null : String(row.ai_context),
     aiSummary: row.ai_summary === null || row.ai_summary === undefined ? null : String(row.ai_summary),
     createdBy: String(row.created_by),
@@ -139,6 +146,7 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
     priority: task.priority,
     labels_json: JSON.stringify(task.labels),
     assignee: task.assignee,
+    assignee_role: task.assigneeRole,
     ai_context: task.aiContext,
     ai_summary: task.aiSummary,
     created_by: task.createdBy,
@@ -242,11 +250,11 @@ export function upsertTaskRow(task: BridgeTask): void {
       `
       INSERT INTO tasks (
         id, project_id, project_name, parent_id, epic_id, template_id, title, description, priority, labels_json,
-        assignee, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
+        assignee, assignee_role, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
         claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
       ) VALUES (
         @id, @project_id, @project_name, @parent_id, @epic_id, @template_id, @title, @description, @priority, @labels_json,
-        @assignee, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
+        @assignee, @assignee_role, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
         @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
       )
       ON CONFLICT(id) DO UPDATE SET
@@ -260,6 +268,7 @@ export function upsertTaskRow(task: BridgeTask): void {
         priority = excluded.priority,
         labels_json = excluded.labels_json,
         assignee = excluded.assignee,
+        assignee_role = excluded.assignee_role,
         ai_context = excluded.ai_context,
         ai_summary = excluded.ai_summary,
         created_by = excluded.created_by,

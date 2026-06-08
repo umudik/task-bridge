@@ -45,6 +45,7 @@ export type BridgeTask = {
   priority: string | null;
   labels: string[];
   assignee: string | null;
+  assigneeRole: string | null;
   aiContext: string | null;
   aiSummary: string | null;
   createdBy: string;
@@ -90,8 +91,27 @@ export function listSubtasks(tasks: BridgeTask[], parentId: number): BridgeTask[
   return sortTasks(tasks.filter((task) => task.parentId === parentId));
 }
 
+export function listDescendantIds(tasks: BridgeTask[], parentId: number): number[] {
+  const ids: number[] = [];
+  for (const child of listSubtasks(tasks, parentId)) {
+    ids.push(child.id);
+    ids.push(...listDescendantIds(tasks, child.id));
+  }
+  return ids;
+}
+
 export function listEpicWorkflowTasks(tasks: BridgeTask[], epicId: number): BridgeTask[] {
-  return sortTasks(tasks.filter((task) => task.epicId === epicId));
+  return sortTasks(
+    tasks.filter((task) => (task.epicId ?? resolveEpicId(tasks, task)) === epicId),
+  );
+}
+
+export function resolveTaskStageId(tasks: BridgeTask[], task: BridgeTask): string | null {
+  if (task.stageId) return task.stageId;
+  if (!task.parentId) return null;
+  const parent = tasks.find((entry) => entry.id === task.parentId);
+  if (!parent) return null;
+  return resolveTaskStageId(tasks, parent);
 }
 
 export function resolveEpicId(tasks: BridgeTask[], task: BridgeTask): number | null {
@@ -105,6 +125,20 @@ export function resolveEpicId(tasks: BridgeTask[], task: BridgeTask): number | n
 
 export function incompleteSubtasks(tasks: BridgeTask[], parentId: number): BridgeTask[] {
   return listSubtasks(tasks, parentId).filter((task) => !isWorkDone(task));
+}
+
+export function assertCanAdvanceWorkStatus(
+  tasks: BridgeTask[],
+  task: BridgeTask,
+  nextStatus: WorkStatus,
+): void {
+  if (nextStatus === "todo") return;
+  if (!task.parentId) return;
+  const parent = tasks.find((entry) => entry.id === task.parentId);
+  if (!parent || parent.parentId === null) return;
+  if (!isWorkDone(parent)) {
+    throw new AppError("Parent task must be done first", 409);
+  }
 }
 
 export function assertCanCompleteTask(tasks: BridgeTask[], task: BridgeTask): void {
@@ -193,6 +227,7 @@ export function normalizeTask(task: RawTask): BridgeTask {
   task.labels = Array.isArray(task.labels) ? task.labels : [];
   task.priority = emptyToNull(task.priority);
   task.assignee = emptyToNull(task.assignee);
+  task.assigneeRole = emptyToNull(task.assigneeRole);
   task.stageId = emptyToNull(task.stageId);
   task.aiContext = emptyToNull(task.aiContext);
   task.aiSummary = emptyToNull(task.aiSummary);
