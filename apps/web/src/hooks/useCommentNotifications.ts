@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { fetchInbox, type InboxItem } from "@/lib/api";
+import { fetchAllInbox, type InboxItem } from "@/lib/api";
 import { markCommentNotified, wasCommentNotified } from "@/lib/read-tasks";
 import type { Session } from "@/lib/session";
 
@@ -13,14 +13,13 @@ export function useCommentNotifications(session: Session | null, projectId: stri
     if (!session || !projectId) return;
     setLoading(true);
     try {
-      const data = await fetchInbox(session, {
+      const commentItems = await fetchAllInbox(session, {
         projectId,
         commentsOnly: true,
-        page: 1,
         limit: 100,
       });
 
-      for (const item of data.items) {
+      for (const item of commentItems) {
         if (!initializedRef.current) {
           markCommentNotified(item.taskId);
           continue;
@@ -34,8 +33,8 @@ export function useCommentNotifications(session: Session | null, projectId: stri
       }
       initializedRef.current = true;
 
-      const all = await fetchInbox(session, { projectId, page: 1, limit: 100 });
-      setItems(all.items);
+      const all = await fetchAllInbox(session, { projectId, limit: 100 });
+      setItems(all);
     } finally {
       setLoading(false);
     }

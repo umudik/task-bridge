@@ -6,18 +6,14 @@ import {
   upsertTaskRow,
 } from "../db/tasks-db.js";
 import {
-  assertCanCompleteTask,
-  DONE_STAGE_ID,
   isDoneStage,
   mergeAcceptanceCriteria,
   resolveEpicId,
   touchTask,
-  type AgentWorkPayload,
   type AuthorType,
   type BridgeTask,
 } from "../domain/task.js";
 import { isWorkDone, type WorkStatus } from "../domain/work-status.js";
-import { syncEpicStage } from "./epic-service.js";
 import { emptyToNull } from "../lib/strings.js";
 
 export {
@@ -28,7 +24,6 @@ export {
   isTaskClaimed,
   listSubtasks,
   sortTasks,
-  type AgentWorkPayload,
   type AuthorType,
   type BridgeTask,
   type TaskComment,
@@ -93,8 +88,6 @@ export async function upsertBridgeTask(input: {
     acceptanceCriteria: null,
     priority: null,
     labels: [],
-    aiContext: null,
-    aiSummary: null,
     createdBy,
     createdAt,
     updatedAt: createdAt,
@@ -120,7 +113,6 @@ export async function transitionBridgeTask(
     stageId: string;
     assignee?: string | null;
     by: string;
-    answeredAt?: string | null;
   },
 ): Promise<BridgeTask | null> {
   return mutateTaskRow(id, (task) => {
@@ -133,7 +125,6 @@ export async function transitionBridgeTask(
     if (isDoneStage(input.stageId)) {
       task.claimedBy = null;
       task.claimedAt = null;
-      task.answeredAt = input.answeredAt ?? task.answeredAt ?? at;
     }
     task.events.push({
       type: "stage_changed",
@@ -176,8 +167,6 @@ export async function updateBridgeTaskSpec(
   input: {
     description?: string;
     acceptanceCriteria?: string;
-    aiSummary?: string;
-    aiContext?: string;
     title?: string;
     by: string;
   },
@@ -191,13 +180,6 @@ export async function updateBridgeTaskSpec(
       }
       task.description = desc;
       task.acceptanceCriteria = null;
-    }
-    if (input.aiSummary !== undefined) {
-      task.aiSummary = emptyToNull(input.aiSummary);
-      task.answer = task.aiSummary;
-    }
-    if (input.aiContext !== undefined) {
-      task.aiContext = emptyToNull(input.aiContext);
     }
     const at = new Date().toISOString();
     task.events.push({ type: "spec_updated", at, by: input.by });
@@ -264,85 +246,3 @@ export async function addBridgeTaskUserComment(
   });
 }
 
-export async function applyAgentWorkResult(
-  id: number,
-  payload: AgentWorkPayload,
-): Promise<BridgeTask | null> {
-  const tasks = listTaskRows();
-  const current = getTaskRow(id);
-  if (!current) return null;
-
-  if (payload.action === "task.complete") {
-    assertCanCompleteTask(tasks, current);
-  }
-
-  const result = mutateTaskRow(id, (task) => {
-    if (payload.description !== undefined || payload.acceptanceCriteria !== undefined) {
-      let desc = payload.description !== undefined ? payload.description : task.description;
-      if (payload.acceptanceCriteria !== undefined) {
-        desc = mergeAcceptanceCriteria(desc, payload.acceptanceCriteria);
-      }
-      task.description = desc;
-      task.acceptanceCriteria = null;
-    }
-    if (payload.aiSummary !== undefined) {
-      task.aiSummary = emptyToNull(payload.aiSummary);
-      task.answer = task.aiSummary;
-    }
-    if (payload.aiContext !== undefined) {
-      task.aiContext = emptyToNull(payload.aiContext);
-    }
-
-    const commentBody = emptyToNull(payload.comment?.body);
-    if (commentBody) {
-      task.comments.push({
-        id: `ai-${id}-${Date.now()}`,
-        authorType: "ai",
-        authorId: "cursor-ai",
-        tags: payload.comment?.tags ?? [],
-        body: commentBody,
-        at: new Date().toISOString(),
-        metadata: payload.comment?.metadata,
-      });
-    }
-
-    if (payload.action === "task.complete") {
-      const answeredAt = new Date().toISOString();
-      if (task.parentId !== null) {
-        task.workStatus = "done";
-      } else {
-        task.stageId = DONE_STAGE_ID;
-      }
-      task.claimedBy = null;
-      task.claimedAt = null;
-      task.answeredBy = "Cursor AI";
-      task.answeredAt = answeredAt;
-      task.events.push({ type: "answered", at: answeredAt, by: "Cursor AI" });
-      task.events.push({ type: "done", at: answeredAt, by: "Cursor AI" });
-    } else if (payload.action === "task.start") {
-      task.claimedBy = "cursor-ai";
-      task.claimedAt = new Date().toISOString();
-    }
-
-    task.events.push({ type: "spec_updated", at: new Date().toISOString(), by: "cursor-ai" });
-    touchTask(task);
-  });
-
-  if (result?.parentId && payload.action === "task.complete") {
-    await syncEpicStage(result.parentId);
-  }
-
-  return result;
-}
-
-export async function markBridgeTaskAnswered(
-  id: number,
-  _answeredBy: string,
-  answer?: string,
-): Promise<BridgeTask | null> {
-  return applyAgentWorkResult(id, {
-    action: "task.complete",
-    aiSummary: answer,
-    comment: answer ? { body: answer } : undefined,
-  });
-}

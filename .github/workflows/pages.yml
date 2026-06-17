@@ -6,6 +6,8 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
+      - "apps/web/src/index.css"
+      - "apps/web/tailwind.config.js"
   workflow_dispatch:
 
 permissions:
@@ -25,6 +27,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: npm ci
+        working-directory: docs
+      - run: npm run build
+        working-directory: docs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

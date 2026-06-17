@@ -37,8 +37,6 @@ function makeSubtask(overrides: Partial<BridgeTask> & { id: number }): BridgeTas
     priority: null,
     labels: [],
     assignee: null,
-    aiContext: null,
-    aiSummary: null,
     createdBy: "test",
     createdAt: now,
     updatedAt: now,

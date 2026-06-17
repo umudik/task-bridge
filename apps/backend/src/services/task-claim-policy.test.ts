@@ -3,9 +3,7 @@ import { describe, it } from "node:test";
 import type { BridgeTask } from "../domain/task.js";
 import type { EpicClaimIndex } from "./task-claim-policy.js";
 import {
-  aiAwaitingHumanReply,
   canActorClaimTask,
-  isAiClaimRole,
   isWorkflowClaimable,
   rolesMatch,
   sortWorkflowClaimCandidates,
@@ -44,8 +42,6 @@ function makeTask(overrides: Partial<BridgeTask> & { id: number }): BridgeTask {
     labels: [],
     assignee: null,
     assigneeRole: null,
-    aiContext: null,
-    aiSummary: null,
     createdBy: "test",
     createdAt: now,
     updatedAt: now,
@@ -98,29 +94,24 @@ describe("task claim policy", () => {
     assert.equal(sorted[0]?.id, 11);
   });
 
-  it("detects ai roles", () => {
-    assert.equal(isAiClaimRole("ai"), true);
-    assert.equal(isAiClaimRole("cursor-ai"), true);
-    assert.equal(isAiClaimRole("developer"), false);
-  });
-
   it("matches roles case-insensitively", () => {
     assert.equal(rolesMatch("Developer", "developer"), true);
-    assert.equal(rolesMatch("ai", "developer"), false);
+    assert.equal(rolesMatch("product", "developer"), false);
     assert.equal(rolesMatch("developer", null), true);
   });
 
-  it("lets only ai claim when a human is waiting for a reply", () => {
+  it("lets matching role claim when a human is waiting for a reply", () => {
     const task = makeTask({
       id: 10,
       parentId: 1,
+      assigneeRole: "developer",
       comments: [
         {
-          id: "ai-1",
-          authorType: "ai",
-          authorId: "cursor-ai",
+          id: "system-1",
+          authorType: "system",
+          authorId: "system",
           tags: [],
-          body: "answer",
+          body: "update",
           at: "2026-01-01T00:00:00.000Z",
         },
         {
@@ -136,11 +127,11 @@ describe("task claim policy", () => {
     const index = makeIndex("stage-1");
     assert.equal(userAwaitingReply(task), true);
     assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "cursor-ai", role: "ai" }),
+      canActorClaimTask(task, index, { claimedBy: "Dev", role: "developer" }),
       true,
     );
     assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "Seyit", role: "developer" }),
+      canActorClaimTask(task, index, { claimedBy: "PM", role: "product" }),
       false,
     );
   });
@@ -157,47 +148,8 @@ describe("task claim policy", () => {
       true,
     );
     assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "cursor-ai", role: "ai" }),
-      false,
-    );
-    assert.equal(
       canActorClaimTask(task, index, { claimedBy: "PM", role: "product" }),
       false,
-    );
-  });
-
-  it("blocks ai when ai is waiting for a human follow-up", () => {
-    const task = makeTask({
-      id: 10,
-      parentId: 1,
-      comments: [
-        {
-          id: "human-1",
-          authorType: "human",
-          authorId: "user",
-          tags: [],
-          body: "please add docs",
-          at: "2026-01-01T00:00:00.000Z",
-        },
-        {
-          id: "ai-1",
-          authorType: "ai",
-          authorId: "cursor-ai",
-          tags: [],
-          body: "please upload documentation",
-          at: "2026-01-02T00:00:00.000Z",
-        },
-      ],
-    });
-    const index = makeIndex("stage-1");
-    assert.equal(aiAwaitingHumanReply(task), true);
-    assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "cursor-ai", role: "ai" }),
-      false,
-    );
-    assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "Seyit", role: "developer" }),
-      true,
     );
   });
 });

@@ -140,34 +140,42 @@ class TaskRepository(
 
     suspend fun fetchEpics(
         projectId: String,
-        page: Int = 1,
         limit: Int = 100,
     ): EpicPageResult = withContext(Dispatchers.IO) {
         val encodedProject = java.net.URLEncoder.encode(projectId, Charsets.UTF_8.name())
-        val json = getJson("/inbox?projectId=$encodedProject&epicsOnly=true&page=$page&limit=$limit")
-        val items = json.optJSONArray("items") ?: JSONArray()
-        EpicPageResult(
-            items = buildList {
-                for (index in 0 until items.length()) {
-                    val item = items.getJSONObject(index)
-                    val taskId = when {
-                        item.has("taskId") -> item.optInt("taskId")
-                        else -> item.optString("taskId").toIntOrNull() ?: continue
-                    }
-                    add(
-                        EpicListItem(
-                            taskId = taskId,
-                            title = item.optString("title"),
-                            stageTitle = item.optString("stageTitle").ifBlank { null },
-                            preview = item.optString("preview").ifBlank { null },
-                            updatedAt = item.optString("updatedAt").ifBlank { null },
-                        ),
-                    )
+        val allItems = mutableListOf<EpicListItem>()
+        var cursor: String? = null
+        var hasMore = true
+        var pageLimit = limit
+        while (hasMore) {
+            val cursorParam = cursor?.let { "&cursor=${java.net.URLEncoder.encode(it, Charsets.UTF_8.name())}" } ?: ""
+            val json = getJson("/inbox?projectId=$encodedProject&epicsOnly=true&limit=$limit$cursorParam")
+            val items = json.optJSONArray("items") ?: JSONArray()
+            for (index in 0 until items.length()) {
+                val item = items.getJSONObject(index)
+                val taskId = when {
+                    item.has("taskId") -> item.optInt("taskId")
+                    else -> item.optString("taskId").toIntOrNull() ?: continue
                 }
-            },
-            total = json.optInt("total", items.length()),
-            page = json.optInt("page", page),
-            limit = json.optInt("limit", limit),
+                allItems.add(
+                    EpicListItem(
+                        taskId = taskId,
+                        title = item.optString("title"),
+                        stageTitle = item.optString("stageTitle").ifBlank { null },
+                        preview = item.optString("preview").ifBlank { null },
+                        updatedAt = item.optString("updatedAt").ifBlank { null },
+                    ),
+                )
+            }
+            pageLimit = json.optInt("limit", limit)
+            cursor = json.optString("nextCursor").ifBlank { null }
+            hasMore = json.optBoolean("hasMore", false) && cursor != null
+        }
+        EpicPageResult(
+            items = allItems,
+            limit = pageLimit,
+            nextCursor = null,
+            hasMore = false,
         )
     }
 
@@ -194,7 +202,6 @@ class TaskRepository(
                         status = item.optString("status", "pending"),
                         updatedAt = item.optString("updatedAt").ifBlank { null },
                         createdAt = item.optString("createdAt").ifBlank { null },
-                        answeredAt = item.optString("answeredAt").ifBlank { null },
                         projectId = item.optString("projectId").ifBlank { null },
                         projectName = item.optString("projectName").ifBlank { null },
                         stageTitle = item.optString("stageTitle").ifBlank { null },
@@ -223,15 +230,10 @@ class TaskRepository(
             request = json.optString("request"),
             description = json.optString("description").ifBlank { null },
             acceptanceCriteria = json.optString("acceptanceCriteria").ifBlank { null },
-            aiSummary = json.optString("aiSummary").ifBlank { null },
-            answer = json.optString("aiSummary").ifBlank { json.optString("answer").ifBlank { null } },
             status = json.optString("status", "pending"),
             createdAt = json.optString("createdAt").ifBlank { null },
             updatedAt = json.optString("updatedAt").ifBlank { null },
-            answeredAt = json.optString("answeredAt").ifBlank { null },
-            durationMs = if (json.has("durationMs") && !json.isNull("durationMs")) json.getLong("durationMs") else null,
             createdBy = json.optString("createdBy", "You"),
-            answeredBy = json.optString("answeredBy").ifBlank { null },
             projectId = json.optString("projectId").ifBlank { null },
             projectName = json.optString("projectName").ifBlank { null },
             stageId = json.optString("stageId").ifBlank { null },
@@ -293,7 +295,7 @@ class TaskRepository(
                 val authorType = item.optString("authorType")
                 val role = when {
                     authorType == "human" -> "user"
-                    authorType == "ai" -> "assistant"
+                    authorType == "system" || authorType == "ai" -> "system"
                     else -> item.optString("role", "user")
                 }
                 val tags = buildList {

@@ -15,7 +15,6 @@ export type InboxItem = {
   activityAt?: string | null;
   updatedAt?: string | null;
   createdAt?: string | null;
-  answeredAt?: string | null;
   projectId?: string | null;
   projectName?: string | null;
   assignee?: string | null;
@@ -73,17 +72,16 @@ export type TaskStageSnapshot = {
 
 export type InboxResult = {
   items: InboxItem[];
-  total: number;
-  page: number;
   limit: number;
-  totalPages: number;
+  nextCursor: string | null;
+  hasMore: boolean;
 };
 
 export type InboxQuery = {
   projectId?: string;
   commentsOnly?: boolean;
   epicsOnly?: boolean;
-  page?: number;
+  cursor?: string;
   limit?: number;
 };
 
@@ -104,7 +102,7 @@ export type TaskSubtask = {
 
 export type TaskComment = {
   id: string;
-  authorType?: "human" | "ai" | "system";
+  authorType?: "human" | "system";
   authorId?: string;
   tags?: string[];
   body?: string;
@@ -112,7 +110,7 @@ export type TaskComment = {
   metadata?: Record<string, unknown> | null;
   by?: string;
   text?: string;
-  role?: "user" | "assistant";
+  role?: "user" | "system";
 };
 
 export type TaskDetail = {
@@ -121,19 +119,13 @@ export type TaskDetail = {
   request: string;
   description?: string;
   acceptanceCriteria?: string | null;
-  aiSummary?: string | null;
-  aiContext?: string | null;
-  answer?: string | null;
   status: string;
   parentId?: number | null;
   parent?: { taskId: number; title: string; stageId?: string | null } | null;
   subtasks?: TaskSubtask[];
   createdAt?: string | null;
   updatedAt?: string | null;
-  answeredAt?: string | null;
-  durationMs?: number | null;
   createdBy?: string;
-  answeredBy?: string | null;
   projectId?: string | null;
   projectName?: string | null;
   assignee?: string | null;
@@ -383,10 +375,21 @@ export async function fetchInbox(session: Session, query: InboxQuery = {}) {
   if (query.projectId) params.set("projectId", query.projectId);
   if (query.commentsOnly) params.set("commentsOnly", "true");
   if (query.epicsOnly) params.set("epicsOnly", "true");
-  if (query.page) params.set("page", String(query.page));
+  if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit) params.set("limit", String(query.limit));
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return request<InboxResult>(session, `/inbox${suffix}`);
+}
+
+export async function fetchAllInbox(session: Session, query: Omit<InboxQuery, "cursor"> = {}) {
+  const items: InboxItem[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await fetchInbox(session, { ...query, cursor, limit: query.limit ?? 100 });
+    items.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+  return items;
 }
 
 export async function fetchTask(session: Session, taskId: number) {

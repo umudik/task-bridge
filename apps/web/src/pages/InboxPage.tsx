@@ -18,13 +18,13 @@ export function InboxPage() {
   const { projectId } = useParams();
   const session = useSession();
   const [items, setItems] = useState<InboxItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(
-    async (pageNum: number, append: boolean) => {
+    async (cursor: string | undefined, append: boolean) => {
       if (!session || !projectId) return;
       if (append) setLoadingMore(true);
       else setLoading(true);
@@ -32,12 +32,12 @@ export function InboxPage() {
         const data = await fetchInbox(session, {
           projectId,
           commentsOnly: true,
-          page: pageNum,
+          cursor,
           limit: PAGE_SIZE,
         });
         setItems((prev) => (append ? [...prev, ...data.items] : data.items));
-        setTotal(data.total);
-        setPage(pageNum);
+        setNextCursor(data.nextCursor);
+        setHasMore(data.hasMore);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load inbox");
       } finally {
@@ -49,11 +49,11 @@ export function InboxPage() {
   );
 
   const refresh = useCallback(() => {
-    void load(1, false);
+    void load(undefined, false);
   }, [load]);
 
   useEffect(() => {
-    void load(1, false);
+    void load(undefined, false);
   }, [load]);
 
   useEffect(() => {
@@ -63,7 +63,6 @@ export function InboxPage() {
   }, [refresh]);
 
   const unreadOnPage = items.filter((item) => !isTaskRead(item.taskId)).length;
-  const hasMore = items.length < total;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -127,7 +126,7 @@ export function InboxPage() {
                       <p className="line-clamp-1 text-xs text-muted-foreground">{item.preview}</p>
                     ) : null}
                     <p className="text-xs text-muted-foreground">
-                      {formatWhen(item.activityAt ?? item.answeredAt ?? item.updatedAt ?? item.createdAt)}
+                      {formatWhen(item.activityAt ?? item.updatedAt ?? item.createdAt)}
                     </p>
                   </div>
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -137,10 +136,9 @@ export function InboxPage() {
           )}
           <LoadMore
             loaded={items.length}
-            total={total}
             hasMore={hasMore}
             loading={loadingMore}
-            onLoadMore={() => void load(page + 1, true)}
+            onLoadMore={() => void load(nextCursor ?? undefined, true)}
           />
         </CardContent>
       </Card>

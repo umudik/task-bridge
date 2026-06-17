@@ -10,11 +10,9 @@ import { getProjectById, refreshProjectRegistry } from "../services/project-regi
 import {
   addBridgeTaskUserComment,
   allocateTaskId,
-  applyAgentWorkResult,
   claimBridgeTask,
   getBridgeTask,
   listBridgeTasks,
-  markBridgeTaskAnswered,
   releaseBridgeTask,
   updateBridgeTaskSpec,
   upsertBridgeTask,
@@ -126,11 +124,6 @@ const claimNextBodySchema = z.object({
   projectId: z.string().min(1).optional(),
 });
 
-const answeredTaskBodySchema = z.object({
-  answeredBy: z.string().min(1).default("Cursor AI"),
-  answer: z.string().optional(),
-});
-
 const patchTaskBodySchema = z
   .object({
     comment: z
@@ -155,21 +148,6 @@ const workStatusBodySchema = z.object({
   by: z.string().min(1).default("web"),
 });
 
-const agentResultBodySchema = z.object({
-  action: z.enum(["task.start", "task.complete"]).optional(),
-  description: z.string().optional(),
-  acceptanceCriteria: z.string().optional(),
-  aiSummary: z.string().optional(),
-  aiContext: z.string().optional(),
-  comment: z
-    .object({
-      tags: z.array(z.string().min(1)).optional(),
-      body: z.string().min(1),
-      metadata: z.record(z.unknown()).optional(),
-    })
-    .optional(),
-});
-
 const inboxQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   commentsOnly: z
@@ -180,7 +158,7 @@ const inboxQuerySchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((value) => value === "true"),
-  page: z.coerce.number().int().positive().optional().default(1),
+  cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
 });
 
@@ -283,7 +261,6 @@ export async function taskRoutes(app: FastifyInstance) {
         createdAt: task.createdAt,
         claimedBy: task.claimedBy,
         claimedAt: task.claimedAt,
-        answeredAt: task.answeredAt,
         events: task.events,
       })),
     };
@@ -339,28 +316,6 @@ export async function taskRoutes(app: FastifyInstance) {
       claimedAt: task.claimedAt,
       comments: mapComments(task),
     };
-  });
-
-  app.post("/tasks/:id/answered", async (request, reply) => {
-    assertBackendAuth(request);
-    const { id } = taskIdParamsSchema.parse(request.params);
-    const body = answeredTaskBodySchema.parse(request.body ?? {});
-    const task = await markBridgeTaskAnswered(id, body.answeredBy, body.answer);
-    if (!task) {
-      return reply.status(404).send({ error: "Task not found" });
-    }
-    return task;
-  });
-
-  app.post("/tasks/:id/agent-result", async (request, reply) => {
-    assertBackendAuth(request);
-    const { id } = taskIdParamsSchema.parse(request.params);
-    const body = agentResultBodySchema.parse(request.body ?? {});
-    const task = await applyAgentWorkResult(id, body);
-    if (!task) {
-      return reply.status(404).send({ error: "Task not found" });
-    }
-    return await mapTaskDetail(task);
   });
 
   app.patch("/tasks/:id/work-status", async (request, reply) => {

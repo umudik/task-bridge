@@ -27,14 +27,14 @@ export function TasksPage() {
   const [description, setDescription] = useState("");
   const [sending, setSending] = useState(false);
   const [items, setItems] = useState<InboxItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
 
   const load = useCallback(
-    async (pageNum: number, append: boolean) => {
+    async (cursor: string | undefined, append: boolean) => {
       if (!session || !projectId) return;
       if (append) setLoadingMore(true);
       else setLoading(true);
@@ -42,12 +42,12 @@ export function TasksPage() {
         const data = await fetchInbox(session, {
           projectId,
           epicsOnly: true,
-          page: pageNum,
+          cursor,
           limit: PAGE_SIZE,
         });
         setItems((prev) => (append ? [...prev, ...data.items] : data.items));
-        setTotal(data.total);
-        setPage(pageNum);
+        setNextCursor(data.nextCursor);
+        setHasMore(data.hasMore);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load tasks");
       } finally {
@@ -59,11 +59,11 @@ export function TasksPage() {
   );
 
   const refresh = useCallback(() => {
-    void load(1, false);
+    void load(undefined, false);
   }, [load]);
 
   useEffect(() => {
-    void load(1, false);
+    void load(undefined, false);
   }, [load]);
 
   async function submit() {
@@ -89,8 +89,6 @@ export function TasksPage() {
     }
   }
 
-  const hasMore = items.length < total;
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
@@ -100,7 +98,7 @@ export function TasksPage() {
           { label: "Epics" },
         ]}
         title="Epics"
-        subtitle={total > 0 ? `${total} active` : "No epics yet"}
+        subtitle={items.length > 0 ? `${items.length}${hasMore ? "+" : ""} active` : "No epics yet"}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={refresh} disabled={loading || loadingMore}>
@@ -192,10 +190,9 @@ export function TasksPage() {
 
         <LoadMore
           loaded={items.length}
-          total={total}
           hasMore={hasMore}
           loading={loadingMore}
-          onLoadMore={() => void load(page + 1, true)}
+          onLoadMore={() => void load(nextCursor ?? undefined, true)}
         />
       </div>
     </div>

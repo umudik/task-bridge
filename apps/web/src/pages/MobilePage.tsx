@@ -152,20 +152,8 @@ export function MobilePage() {
             </div>
           </div>
 
-          <div className="panel-card space-y-4 p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15">
-                <Download className="h-5 w-5 text-emerald-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">Android app</p>
-                <p className="text-sm text-muted-foreground">
-                  Install the APK, then scan the QR code above to connect.
-                </p>
-              </div>
-            </div>
-
-            {apkRelease?.available && apkRelease.downloadUrl ? (
+          {apkRelease?.available && apkRelease.downloadUrl ? (
+            <div className="panel-card space-y-4 p-6">
               <div className="flex flex-wrap items-center gap-3">
                 <Button asChild>
                   <a href={`${defaultBaseUrl()}${apkRelease.downloadUrl}`} download={apkRelease.fileName}>
@@ -179,13 +167,8 @@ export function MobilePage() {
                   </span>
                 ) : null}
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                APK not bundled. Build with <code className="text-foreground">npm run docker:mobile:build</code> before
-                publishing the Docker image.
-              </p>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

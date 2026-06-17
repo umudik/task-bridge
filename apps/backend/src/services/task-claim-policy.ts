@@ -23,8 +23,6 @@ export function normalizeClaimActor(actor: ClaimActor): ClaimActor {
   };
 }
 
-const AI_CLAIM_ROLES = new Set(["ai", "cursor-ai", "cursor ai"]);
-
 function latestCommentByAuthor(comments: TaskComment[], authorType: AuthorType) {
   for (let index = comments.length - 1; index >= 0; index -= 1) {
     const entry = comments[index];
@@ -36,31 +34,14 @@ function latestCommentByAuthor(comments: TaskComment[], authorType: AuthorType) 
 
 export function userAwaitingReply(task: BridgeTask): boolean {
   const lastHuman = latestCommentByAuthor(task.comments, "human");
-  const lastAi = latestCommentByAuthor(task.comments, "ai");
   if (!lastHuman) return false;
-  if (!lastAi) return true;
+  const lastSystem = latestCommentByAuthor(task.comments, "system");
+  if (!lastSystem) return true;
 
   const humanAt = Date.parse(lastHuman.at);
-  const aiAt = Date.parse(lastAi.at);
-  if (Number.isNaN(humanAt) || Number.isNaN(aiAt)) return true;
-  return humanAt > aiAt;
-}
-
-export function aiAwaitingHumanReply(task: BridgeTask): boolean {
-  const lastHuman = latestCommentByAuthor(task.comments, "human");
-  const lastAi = latestCommentByAuthor(task.comments, "ai");
-  if (!lastAi) return false;
-  if (!lastHuman) return true;
-
-  const humanAt = Date.parse(lastHuman.at);
-  const aiAt = Date.parse(lastAi.at);
-  if (Number.isNaN(humanAt) || Number.isNaN(aiAt)) return true;
-  return aiAt > humanAt;
-}
-
-export function isAiClaimRole(role: string): boolean {
-  const key = roleKey(role);
-  return key ? AI_CLAIM_ROLES.has(key) : false;
+  const systemAt = Date.parse(lastSystem.at);
+  if (Number.isNaN(humanAt) || Number.isNaN(systemAt)) return true;
+  return humanAt > systemAt;
 }
 
 export function rolesMatch(actorRole: string, requiredRole: string | null | undefined): boolean {
@@ -156,11 +137,6 @@ export function canActorClaimTask(
   if (task.parentId === null || isWorkDone(task)) return false;
 
   if (userAwaitingReply(task)) {
-    return isAiClaimRole(actor.role);
-  }
-
-  if (aiAwaitingHumanReply(task)) {
-    if (isAiClaimRole(actor.role)) return false;
     return rolesMatch(actor.role, resolveTaskClaimRole(task));
   }
 
@@ -241,17 +217,11 @@ export function workflowClaimBlockReason(
   if (isWorkDone(task)) return "Task is already done";
 
   if (actor) {
-    if (userAwaitingReply(task) && !isAiClaimRole(actor.role)) {
-      return "Task is waiting for an AI reply";
-    }
-    if (aiAwaitingHumanReply(task) && isAiClaimRole(actor.role)) {
-      return "Task is waiting for a human team member";
-    }
     const requiredRole = resolveTaskClaimRole(task);
-    if (aiAwaitingHumanReply(task) && requiredRole && !rolesMatch(actor.role, requiredRole)) {
+    if (userAwaitingReply(task) && requiredRole && !rolesMatch(actor.role, requiredRole)) {
       return `Task requires role "${requiredRole}"`;
     }
-    if (!userAwaitingReply(task) && !aiAwaitingHumanReply(task)) {
+    if (!userAwaitingReply(task)) {
       if (task.claimedBy) return "Task is already claimed";
       if (!isTaskOnEpicActiveStage(task, index)) {
         const epicId = task.epicId ?? task.parentId;

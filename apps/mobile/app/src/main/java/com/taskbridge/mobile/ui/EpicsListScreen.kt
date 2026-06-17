@@ -75,7 +75,7 @@ fun EpicsListScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Epics", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
                         Text(
-                            text = "${state.epics.size} of ${state.epicsTotal}",
+                            text = "${state.epics.size} epics",
                             style = MaterialTheme.typography.labelMedium,
                             color = TextMuted,
                         )

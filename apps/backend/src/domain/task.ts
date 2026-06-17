@@ -20,7 +20,7 @@ export type TaskEvent = {
   note?: string;
 };
 
-export type AuthorType = "human" | "ai" | "system";
+export type AuthorType = "human" | "system";
 
 export type TaskComment = {
   id: string;
@@ -46,8 +46,6 @@ export type BridgeTask = {
   labels: string[];
   assignee: string | null;
   assigneeRole: string | null;
-  aiContext: string | null;
-  aiSummary: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -191,17 +189,18 @@ export function migrateComment(
 
   const role = typeof raw.role === "string" ? raw.role : "";
   const authorId = String(raw.by ?? raw.authorId ?? "unknown").trim() || "unknown";
+  const rawAuthorType = raw.authorType === "ai" ? "system" : raw.authorType;
   const authorType: AuthorType =
-    raw.authorType === "human" || raw.authorType === "ai" || raw.authorType === "system"
-      ? raw.authorType
+    rawAuthorType === "human" || rawAuthorType === "system"
+      ? rawAuthorType
       : role === "user"
         ? "human"
-        : "ai";
+        : "system";
 
   return {
     id: String(raw.id ?? `legacy-${taskId}-${index}`),
     authorType,
-    authorId: authorId === "unknown" && authorType === "ai" ? "cursor-ai" : authorId,
+    authorId,
     tags: parseTags(raw.tags, raw.type),
     body,
     at: String(raw.at ?? new Date().toISOString()),
@@ -229,8 +228,6 @@ export function normalizeTask(task: RawTask): BridgeTask {
   task.assignee = emptyToNull(task.assignee);
   task.assigneeRole = emptyToNull(task.assigneeRole);
   task.stageId = emptyToNull(task.stageId);
-  task.aiContext = emptyToNull(task.aiContext);
-  task.aiSummary = emptyToNull(task.aiSummary);
   task.answer = emptyToNull(task.answer);
   task.claimedBy = emptyToNull(task.claimedBy);
   task.updatedAt = task.updatedAt || task.createdAt;
@@ -247,8 +244,8 @@ export function normalizeTask(task: RawTask): BridgeTask {
     if (task.answer && task.answeredAt) {
       task.comments.push({
         id: `assistant-${task.id}-initial`,
-        authorType: "ai",
-        authorId: "cursor-ai",
+        authorType: "system",
+        authorId: "system",
         tags: [],
         body: task.answer,
         at: task.answeredAt,
@@ -271,15 +268,3 @@ export function mergeAcceptanceCriteria(
   return mergeAcceptanceIntoDescription(description, acceptanceCriteria);
 }
 
-export type AgentWorkPayload = {
-  action?: "task.start" | "task.complete";
-  description?: string;
-  acceptanceCriteria?: string;
-  aiSummary?: string;
-  aiContext?: string;
-  comment?: {
-    tags?: string[];
-    body: string;
-    metadata?: Record<string, unknown>;
-  };
-};

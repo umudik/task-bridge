@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { TeamPanel } from "@/components/workflow/TeamPanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession } from "@/hooks/useSession";
+import { cn } from "@/lib/utils";
 import {
   createMember,
   deleteMember,
@@ -299,9 +300,8 @@ export function WorkflowPage() {
           </TabsList>
         </div>
 
-        {activeTab === "stages" ? (
-          <div className="flex min-h-0 flex-1">
-            <WorkflowCanvas
+        <div className={cn("flex min-h-0 flex-1", activeTab !== "stages" && "hidden")}>
+          <WorkflowCanvas
               className="min-h-0 flex-1"
               stages={stages}
               selectedStageId={editingStage?.id ?? null}
@@ -344,10 +344,9 @@ export function WorkflowPage() {
                 />
               ) : null}
             </WorkflowInspectorSidebar>
-          </div>
-        ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <TeamPanel
+        </div>
+        <div className={cn("min-h-0 flex-1 overflow-y-auto", activeTab !== "members" && "hidden")}>
+          <TeamPanel
               roles={roles}
               members={members}
               onRolesChange={(nextRoles) => {
@@ -411,8 +410,7 @@ export function WorkflowPage() {
                 }
               }}
             />
-          </div>
-        )}
+        </div>
       </Tabs>
     </div>
   );

@@ -4,11 +4,17 @@ Mobil + web UI + backend task manager.
 
 ## API docs (GitHub Pages)
 
-Statik referans: [docs/index.html](docs/index.html) — yerelde `docs/index.html` dosyasını tarayıcıda aç.
+Static reference: [docs/index.html](docs/index.html) — same Tailwind/shadcn design tokens as the web app.
 
-Yayınlamak için repo **Settings → Pages → Build and deployment → GitHub Actions** seçili olsun; `main`/`master` push’unda [Deploy API docs](.github/workflows/pages.yml) workflow’u çalışır.
+```powershell
+npm run build:docs
+```
 
-Canlı URL (Pages açıldıktan sonra): `https://umudik.github.io/task-bridge/`
+Open `docs/index.html` locally after building (or run `npm run dev` in `docs/` for CSS watch).
+
+To publish: **Settings → Pages → Build and deployment → GitHub Actions**; pushes to `main`/`master` run [Deploy API docs](.github/workflows/pages.yml).
+
+Live URL (after Pages is enabled): `https://umudik.github.io/task-bridge/`
 
 ## Dev (watch mode)
 

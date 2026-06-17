@@ -646,7 +646,7 @@ private fun commentAuthor(comment: TaskComment): String {
 
     if (name.isNotEmpty()) return name
 
-    return if (comment.isUser) "User" else "Cursor AI"
+    return if (comment.isUser) "User" else comment.by.ifBlank { "System" }
 
 }
 

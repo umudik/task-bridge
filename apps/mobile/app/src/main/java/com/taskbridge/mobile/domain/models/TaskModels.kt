@@ -10,9 +10,9 @@ data class EpicListItem(
 
 data class EpicPageResult(
     val items: List<EpicListItem>,
-    val total: Int,
-    val page: Int,
     val limit: Int,
+    val nextCursor: String? = null,
+    val hasMore: Boolean = false,
 )
 
 data class WorkflowStageItem(
@@ -44,7 +44,6 @@ data class InboxItem(
     val status: String = "pending",
     val updatedAt: String?,
     val createdAt: String? = null,
-    val answeredAt: String? = null,
     val projectId: String? = null,
     val projectName: String? = null,
     val stageTitle: String? = null,
@@ -80,15 +79,10 @@ data class AnswerDetail(
     val request: String,
     val description: String? = null,
     val acceptanceCriteria: String? = null,
-    val aiSummary: String? = null,
-    val answer: String?,
     val status: String,
     val createdAt: String?,
     val updatedAt: String? = null,
-    val answeredAt: String?,
-    val durationMs: Long?,
     val createdBy: String,
-    val answeredBy: String?,
     val projectId: String? = null,
     val projectName: String? = null,
     val stageId: String? = null,

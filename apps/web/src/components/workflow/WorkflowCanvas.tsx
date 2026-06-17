@@ -442,6 +442,7 @@ export function WorkflowCanvas({
   const fitView = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport || displayStages.length === 0) return;
+    if (viewport.clientWidth === 0 || viewport.clientHeight === 0) return;
 
     let minX = Infinity;
     let minY = Infinity;
@@ -474,6 +475,7 @@ export function WorkflowCanvas({
   const reflowPan = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport || displayStages.length === 0) return;
+    if (viewport.clientWidth === 0 || viewport.clientHeight === 0) return;
 
     let minX = Infinity;
     let minY = Infinity;
@@ -496,15 +498,32 @@ export function WorkflowCanvas({
   }, [displayStages]);
 
   const didInitialFitRef = useRef(false);
+  const lastViewportSizeRef = useRef({ width: 0, height: 0 });
 
   useEffect(() => {
-    if (displayStages.length === 0) return;
-    if (!didInitialFitRef.current) {
-      didInitialFitRef.current = true;
-      fitView();
-      return;
+    const viewport = viewportRef.current;
+    if (!viewport || displayStages.length === 0) return;
+
+    function applyViewportFit() {
+      const width = viewport!.clientWidth;
+      const height = viewport!.clientHeight;
+      if (width === 0 || height === 0) return;
+
+      const wasHidden = lastViewportSizeRef.current.width === 0 || lastViewportSizeRef.current.height === 0;
+      lastViewportSizeRef.current = { width, height };
+
+      if (!didInitialFitRef.current || wasHidden) {
+        didInitialFitRef.current = true;
+        fitView();
+        return;
+      }
+      reflowPan();
     }
-    reflowPan();
+
+    const observer = new ResizeObserver(() => applyViewportFit());
+    observer.observe(viewport);
+    applyViewportFit();
+    return () => observer.disconnect();
   }, [layoutKey, displayStages.length, fitView, reflowPan]);
 
   useEffect(() => {

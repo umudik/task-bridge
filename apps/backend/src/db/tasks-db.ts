@@ -113,8 +113,6 @@ function rowToTask(row: Record<string, unknown>): BridgeTask {
       row.assignee_role === null || row.assignee_role === undefined
         ? null
         : String(row.assignee_role),
-    aiContext: row.ai_context === null || row.ai_context === undefined ? null : String(row.ai_context),
-    aiSummary: row.ai_summary === null || row.ai_summary === undefined ? null : String(row.ai_summary),
     createdBy: String(row.created_by),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -147,8 +145,8 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
     labels_json: JSON.stringify(task.labels),
     assignee: task.assignee,
     assignee_role: task.assigneeRole,
-    ai_context: task.aiContext,
-    ai_summary: task.aiSummary,
+    ai_context: null,
+    ai_summary: null,
     created_by: task.createdBy,
     created_at: task.createdAt,
     updated_at: task.updatedAt,

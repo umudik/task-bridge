@@ -51,7 +51,6 @@ data class AppUiState(
     val recentTasks: List<RecentTask> = emptyList(),
     val inboxItems: List<InboxItem> = emptyList(),
     val epics: List<EpicListItem> = emptyList(),
-    val epicsTotal: Int = 0,
     val answerEntries: List<AnswerEntry> = emptyList(),
     val inboxError: String? = null,
     val epicsError: String? = null,
@@ -342,7 +341,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         isLoadingEpics = false,
                         epics = result.items,
-                        epicsTotal = result.total,
                         epicsError = null,
                     )
                 }
@@ -460,13 +458,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 taskId = taskId,
                                 title = recent.title,
                                 request = recent.title,
-                                answer = null,
                                 status = "sent",
                                 createdAt = null,
-                                answeredAt = null,
-                                durationMs = null,
                                 createdBy = "You",
-                                answeredBy = null,
                                 projectId = recent.projectId,
                                 projectName = recent.projectName,
                             ),

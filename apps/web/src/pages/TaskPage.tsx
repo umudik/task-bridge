@@ -42,7 +42,8 @@ function sortComments(comments: TaskComment[]) {
 function authorLabel(comment: TaskComment) {
   if (comment.authorId?.trim()) return comment.authorId.trim();
   if (comment.by?.trim()) return comment.by.trim();
-  return comment.authorType === "ai" ? "Cursor AI" : "User";
+  if (comment.authorType === "system") return comment.authorId?.trim() || "System";
+  return comment.authorId?.trim() || comment.by?.trim() || "User";
 }
 
 export function TaskPage() {
@@ -76,7 +77,7 @@ export function TaskPage() {
       try {
         const data = await fetchTask(activeSession, taskId);
         if (!active) return;
-        if (data.answer?.trim() || data.status === "ready") {
+        if (data.status === "ready") {
           markTaskRead(taskId);
         }
         setDetail(data);

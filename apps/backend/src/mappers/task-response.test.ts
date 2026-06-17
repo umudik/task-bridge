@@ -18,8 +18,6 @@ function makeTask(overrides: Partial<BridgeTask>): BridgeTask {
     priority: null,
     labels: [],
     assignee: null,
-    aiContext: null,
-    aiSummary: null,
     createdBy: "test",
     createdAt: now,
     updatedAt: now,
@@ -41,21 +39,21 @@ describe("task response mapper", () => {
     assert.equal(status, "sent");
   });
 
-  it("returns ready when ai output exists and task is not claimed", () => {
-    const status = consumerStatus(makeTask({ aiSummary: "done work" }));
+  it("returns ready when task is done", () => {
+    const status = consumerStatus(makeTask({ workStatus: "done" }));
     assert.equal(status, "ready");
   });
 
-  it("returns sent when user commented after ai", () => {
+  it("returns sent when user commented after system", () => {
     const status = consumerStatus(
       makeTask({
         comments: [
           {
-            id: "ai-1",
-            authorType: "ai",
-            authorId: "cursor-ai",
+            id: "system-1",
+            authorType: "system",
+            authorId: "system",
             tags: [],
-            body: "answer",
+            body: "update",
             at: "2026-01-01T00:00:00.000Z",
           },
           {

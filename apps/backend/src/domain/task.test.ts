@@ -32,8 +32,6 @@ function makeTask(overrides: Partial<BridgeTask> & Pick<BridgeTask, "id" | "titl
     priority: null,
     labels: [],
     assignee: null,
-    aiContext: null,
-    aiSummary: null,
     createdBy: "test",
     createdAt: now,
     updatedAt: now,
