@@ -1,3 +1,4 @@
+import { parseActorKind } from "../domain/workflow-stage.js";
 import { getProjectsDb } from "./projects-db.js";
 
 export type WorkflowStageRow = {
@@ -24,6 +25,7 @@ export type ProjectMemberRow = {
   available: number;
   stage_roles_json: string;
   role: string;
+  actor_kind: string;
 };
 
 export type ProjectWorkflowSettingsRow = {
@@ -96,6 +98,9 @@ export function migrateWorkflowTables() {
   }
   if (!memberNames.has("role")) {
     db.exec("ALTER TABLE project_members ADD COLUMN role TEXT NOT NULL DEFAULT ''");
+  }
+  if (!memberNames.has("actor_kind")) {
+    db.exec("ALTER TABLE project_members ADD COLUMN actor_kind TEXT NOT NULL DEFAULT 'human'");
   }
 
   db.exec("DROP TABLE IF EXISTS project_decisions");
@@ -179,7 +184,7 @@ export function listProjectMemberRows(projectId: string): ProjectMemberRow[] {
   migrateWorkflowTables();
   return getProjectsDb()
     .prepare(
-      `SELECT id, project_id, name, available, stage_roles_json, role FROM project_members WHERE project_id = ? ORDER BY name COLLATE NOCASE ASC`,
+      `SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE project_id = ? ORDER BY name COLLATE NOCASE ASC`,
     )
     .all(projectId.trim()) as ProjectMemberRow[];
 }
@@ -187,7 +192,7 @@ export function listProjectMemberRows(projectId: string): ProjectMemberRow[] {
 export function getProjectMemberRow(id: string): ProjectMemberRow | undefined {
   migrateWorkflowTables();
   return getProjectsDb()
-    .prepare(`SELECT id, project_id, name, available, stage_roles_json, role FROM project_members WHERE id = ?`)
+    .prepare(`SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE id = ?`)
     .get(id.trim()) as ProjectMemberRow | undefined;
 }
 
@@ -196,30 +201,33 @@ export function insertProjectMemberRow(row: {
   projectId: string;
   name: string;
   role: string;
+  actorKind: "human" | "ai";
 }) {
   migrateWorkflowTables();
   getProjectsDb()
     .prepare(
-      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, updated_at)
-       VALUES (?, ?, ?, 1, '{}', ?, datetime('now'))`,
+      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, actor_kind, updated_at)
+       VALUES (?, ?, ?, 1, '{}', ?, ?, datetime('now'))`,
     )
-    .run(row.id.trim(), row.projectId.trim(), row.name.trim(), row.role.trim());
+    .run(row.id.trim(), row.projectId.trim(), row.name.trim(), row.role.trim(), row.actorKind);
 }
 
 export function updateProjectMemberRow(
   id: string,
-  patch: { name?: string; role?: string },
+  patch: { name?: string; role?: string; actorKind?: "human" | "ai" },
 ): boolean {
   migrateWorkflowTables();
   const existing = getProjectMemberRow(id);
   if (!existing) return false;
   const name = patch.name !== undefined ? patch.name.trim() : existing.name;
   const role = patch.role !== undefined ? patch.role.trim() : existing.role;
+  const actorKind =
+    patch.actorKind !== undefined ? patch.actorKind : parseActorKind(existing.actor_kind);
   const result = getProjectsDb()
     .prepare(
-      `UPDATE project_members SET name = ?, role = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE project_members SET name = ?, role = ?, actor_kind = ?, updated_at = datetime('now') WHERE id = ?`,
     )
-    .run(name, role, id.trim());
+    .run(name, role, actorKind, id.trim());
   return result.changes > 0;
 }
 

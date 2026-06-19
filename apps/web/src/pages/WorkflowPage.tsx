@@ -161,9 +161,9 @@ export function WorkflowPage() {
     setSidebarOpen(false);
   }
 
-  async function handleCreateMember(name: string) {
-    if (!session || !name.trim()) return;
-    const member = await createMember(session, projectId, { name: name.trim() });
+  async function handleCreateMember(input: { name: string; role: string; actorKind: ProjectMember["actorKind"] }) {
+    if (!session) return;
+    const member = await createMember(session, projectId, input);
     setMembers((current) => [...current, member].sort((a, b) => a.name.localeCompare(b.name)));
     toast.success("Member added");
   }
@@ -383,9 +383,9 @@ export function WorkflowPage() {
                 setRoles(nextRoles);
                 setDirty(true);
               }}
-              onCreateMember={async (name) => {
+              onCreateMember={async (input) => {
                 try {
-                  await handleCreateMember(name);
+                  await handleCreateMember(input);
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : "Failed to add member");
                 }

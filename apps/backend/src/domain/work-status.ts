@@ -3,7 +3,7 @@ import { isDoneStage, type BridgeTask } from "./task.js";
 export const WORK_STATUSES = ["todo", "in_progress", "done"] as const;
 export type WorkStatus = (typeof WORK_STATUSES)[number];
 
-export function isWorkStatus(value: string | null | undefined): value is WorkStatus {
+export function isWorkStatus(value: string | undefined): value is WorkStatus {
   return WORK_STATUSES.includes(value as WorkStatus);
 }
 
@@ -11,7 +11,7 @@ export function resolveWorkStatus(task: BridgeTask): WorkStatus {
   if (task.workStatus && isWorkStatus(task.workStatus)) {
     return task.workStatus;
   }
-  if (task.parentId === null) {
+  if (task.parentId === undefined) {
     return "todo";
   }
   if (isDoneStage(task.stageId)) {

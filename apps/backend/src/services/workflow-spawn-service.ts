@@ -47,7 +47,13 @@ function buildSpawnContext(
 async function spawnTemplateTask(input: {
   epic: BridgeTask;
   stageRow: WorkflowStageRow;
-  template: { id: string; title: string; description?: string; assigneeRole?: string };
+  template: {
+    id: string;
+    title: string;
+    description?: string;
+    assigneeRole?: string;
+    assigneeKind?: StageTaskTemplate["assigneeKind"];
+  };
   parentTaskId: number;
 }): Promise<BridgeTask> {
   const assigneeRole =
@@ -70,6 +76,7 @@ async function spawnTemplateTask(input: {
     stageId: input.stageRow.id,
     assignee,
     assigneeRole,
+    assigneeKind: input.template.assigneeKind ?? null,
     workStatus: "todo",
   });
 }

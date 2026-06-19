@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronRight, FolderKanban, Loader2, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, FolderKanban, Loader2, MoreVertical, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { CreateProjectPanel } from "@/components/CreateProjectPanel";
+import { EditProjectModal } from "@/components/EditProjectModal";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ export function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const reload = useCallback(async () => {
     if (!session) return;
@@ -42,8 +44,12 @@ export function ProjectsPage() {
     void reload();
   }, [reload, location.key]);
 
+  if (!session) return null;
+
+  const activeSession = session;
+  const canEdit = activeSession.userRole === "admin" || activeSession.userRole === "read-write";
+
   function openProject(project: Project) {
-    if (!session) return;
     setSelectedProject(project.id, project.name);
     navigate(`/projects/${project.id}/tasks`);
   }
@@ -55,14 +61,21 @@ export function ProjectsPage() {
     openProject(project);
   }
 
-  if (!session) return null;
+  function handleProjectSaved(project: Project) {
+    setProjects((current) =>
+      current.map((item) => (item.id === project.id ? project : item)),
+    );
+    if (activeSession.projectId === project.id) {
+      setSelectedProject(project.id, project.name);
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {createOpen ? (
         <div className="flex-1 overflow-y-auto p-8">
           <CreateProjectPanel
-            session={session}
+            session={activeSession}
             onCreated={handleCreated}
             onCancel={() => setCreateOpen(false)}
           />
@@ -93,37 +106,54 @@ export function ProjectsPage() {
           />
 
           <div className="flex-1 overflow-y-auto p-5">
-              {loading && projects.length === 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <Skeleton className="h-28 rounded-2xl" />
-                  <Skeleton className="h-28 rounded-2xl" />
-                  <Skeleton className="h-28 rounded-2xl" />
-                </div>
-              ) : error ? (
-                <div className="panel-card mx-auto max-w-md space-y-4 p-6 text-center">
-                  <p className="text-sm text-destructive">{error}</p>
-                  <Button variant="outline" size="sm" onClick={() => void reload()}>
-                    <RefreshCw className="h-4 w-4" />
-                    Retry
-                  </Button>
-                </div>
-              ) : projects.length === 0 ? (
-                <div className="panel-card flex flex-col items-center justify-center px-6 py-16 text-center">
-                  <FolderKanban className="mb-4 h-10 w-10 text-muted-foreground/60" />
-                  <p className="text-sm text-muted-foreground">No projects yet. Create one to start building epics.</p>
-                  <Button className="mt-4" size="sm" onClick={() => setCreateOpen(true)}>
-                    <Plus className="h-4 w-4" />
-                    New project
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {projects.map((project) => (
+            {loading && projects.length === 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-28 rounded-2xl" />
+              </div>
+            ) : error ? (
+              <div className="panel-card mx-auto max-w-md space-y-4 p-6 text-center">
+                <p className="text-sm text-destructive">{error}</p>
+                <Button variant="outline" size="sm" onClick={() => void reload()}>
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="panel-card flex flex-col items-center justify-center px-6 py-16 text-center">
+                <FolderKanban className="mb-4 h-10 w-10 text-muted-foreground/60" />
+                <p className="text-sm text-muted-foreground">No projects yet. Create one to start building epics.</p>
+                <Button className="mt-4" size="sm" onClick={() => setCreateOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  New project
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {projects.map((project) => (
+                  <article
+                    key={project.id}
+                    className="panel-card group relative transition-colors hover:border-white/[0.14] hover:bg-[#141414]"
+                  >
+                    {canEdit ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-2 z-10 h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditingProject(project);
+                        }}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    ) : null}
                     <button
-                      key={project.id}
                       type="button"
                       onClick={() => openProject(project)}
-                      className="panel-card group flex min-h-[7rem] flex-col justify-between p-4 text-left transition-colors hover:border-white/[0.14] hover:bg-[#141414]"
+                      className="flex min-h-[7rem] w-full flex-col justify-between p-4 pr-12 text-left"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -136,15 +166,31 @@ export function ProjectsPage() {
                         {project.repoPath ? (
                           <p className="line-clamp-1 text-xs text-muted-foreground">{project.repoPath}</p>
                         ) : null}
+                        {project.description?.trim() ? (
+                          <p className="line-clamp-2 text-xs text-muted-foreground/80">
+                            {project.description.trim()}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="mt-3 flex items-center justify-end text-xs text-muted-foreground">
                         <ChevronRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
                       </div>
                     </button>
-                  ))}
-                </div>
-              )}
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
+
+          <EditProjectModal
+            session={activeSession}
+            project={editingProject}
+            open={editingProject !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditingProject(null);
+            }}
+            onSaved={handleProjectSaved}
+          />
         </>
       )}
     </div>

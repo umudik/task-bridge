@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { assertBackendAuth } from "../middleware/auth.js";
+import { assertAuth } from "../middleware/auth.js";
 import {
   buildInboxItems,
   mapComments,
@@ -33,6 +33,8 @@ import {
   listPendingTasks,
   validateTaskClaim,
 } from "../services/task-queue.js";
+import { resolveClaimActor, type ClaimActor } from "../services/task-claim-policy.js";
+import { AppError } from "../errors/app-error.js";
 
 const createEpicBodySchema = z
   .object({
@@ -114,13 +116,11 @@ const taskIdParamsSchema = z.object({
 });
 
 const claimTaskBodySchema = z.object({
-  claimedBy: z.string().min(1).default("worker"),
-  role: z.string().min(1),
+  claimedBy: z.string().min(1),
 });
 
 const claimNextBodySchema = z.object({
-  claimedBy: z.string().min(1).default("worker"),
-  role: z.string().min(1),
+  claimedBy: z.string().min(1),
   projectId: z.string().min(1).optional(),
 });
 
@@ -145,7 +145,7 @@ const patchTaskBodySchema = z
 
 const workStatusBodySchema = z.object({
   workStatus: z.enum(["todo", "in_progress", "done"]),
-  by: z.string().min(1).default("web"),
+  claimedBy: z.string().min(1),
 });
 
 const inboxQuerySchema = z.object({
@@ -164,7 +164,7 @@ const inboxQuerySchema = z.object({
 
 export async function taskRoutes(app: FastifyInstance) {
   app.post("/epics", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const body = createEpicBodySchema.parse(request.body);
     await refreshProjectRegistry();
 
@@ -197,7 +197,7 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const body = createTaskBodySchema.parse(request.body);
     await refreshProjectRegistry();
 
@@ -246,7 +246,7 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/tasks", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const bridgeTasks = await listBridgeTasks();
     return {
       items: bridgeTasks.map((task) => ({
@@ -267,13 +267,19 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks/:id/claim", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const body = claimTaskBodySchema.parse(request.body ?? {});
-    const blockReason = await validateTaskClaim(id, {
-      claimedBy: body.claimedBy,
-      role: body.role,
-    });
+    const existing = await getBridgeTask(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    const claimedBy = body.claimedBy;
+    const actor = resolveClaimActor(existing.projectId, claimedBy);
+    if (!actor) {
+      return reply.status(404).send({ error: "Project member not found" });
+    }
+    const blockReason = await validateTaskClaim(id, actor);
     if (blockReason) {
       const existing = await getBridgeTask(id);
       if (!existing) {
@@ -289,7 +295,7 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks/:id/unclaim", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const task = await releaseBridgeTask(id);
     if (!task) {
@@ -299,12 +305,16 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/worker/claim-next", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const body = claimNextBodySchema.parse(request.body ?? {});
-    const claimed = await claimNextTask(
-      { claimedBy: body.claimedBy, role: body.role },
-      { projectId: body.projectId },
-    );
+    if (!body.projectId) {
+      return reply.status(400).send({ error: "projectId is required" });
+    }
+    const actor = resolveClaimActor(body.projectId, body.claimedBy);
+    if (!actor) {
+      return reply.status(404).send({ error: "Project member not found" });
+    }
+    const claimed = await claimNextTask(actor, { projectId: body.projectId });
     if (!claimed) {
       return reply.status(404).send({ error: "No tasks available" });
     }
@@ -319,25 +329,39 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.patch("/tasks/:id/work-status", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const body = workStatusBodySchema.parse(request.body ?? {});
     if (!isWorkStatus(body.workStatus)) {
       return reply.status(400).send({ error: "Invalid work status" });
     }
-    const updated = await updateTaskWorkStatus(id, body.workStatus, body.by);
-    if (!updated) {
-      const existing = await getBridgeTask(id);
-      if (!existing) {
+    const existing = await getBridgeTask(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    const actor = resolveClaimActor(existing.projectId, body.claimedBy);
+    if (!actor) {
+      return reply.status(404).send({ error: "Project member not found" });
+    }
+    try {
+      const updated = await updateTaskWorkStatus(id, body.workStatus, actor.claimedBy, actor);
+      if (!updated) {
+        if (existing.parentId === null) {
+          return reply.status(400).send({ error: "Only subtasks support work status" });
+        }
         return reply.status(404).send({ error: "Task not found" });
       }
-      return reply.status(400).send({ error: "Only subtasks support work status" });
+      return await mapTaskDetail(updated);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return reply.status(error.statusCode).send({ error: error.message });
+      }
+      throw error;
     }
-    return await mapTaskDetail(updated);
   });
 
   app.get("/projects/:projectId/epics/:epicId/tasks", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const params = z
       .object({
         projectId: z.string().min(1),
@@ -371,7 +395,7 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/tasks/:id", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const task = await getBridgeTask(id);
     if (!task) {
@@ -381,7 +405,7 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   app.patch("/tasks/:id", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const body = patchTaskBodySchema.parse(request.body ?? {});
     const existing = await getBridgeTask(id);
@@ -422,27 +446,30 @@ export async function taskRoutes(app: FastifyInstance) {
     return await mapTaskDetail(task);
   });
 
-  app.get("/worker/pending", async (request) => {
-    assertBackendAuth(request);
+  app.get("/worker/pending", async (request, reply) => {
+    assertAuth(request);
     const query = z
       .object({
         projectId: z.string().min(1).optional(),
-        role: z.string().min(1).optional(),
         claimedBy: z.string().min(1).optional(),
       })
       .parse(request.query);
-    const actor =
-      query.role && query.claimedBy
-        ? { role: query.role, claimedBy: query.claimedBy }
-        : query.role
-          ? { role: query.role, claimedBy: query.role }
-          : undefined;
+    let actor: ClaimActor | undefined;
+    if (query.claimedBy) {
+      if (!query.projectId) {
+        return reply.status(400).send({ error: "projectId is required when filtering by claimedBy" });
+      }
+      actor = resolveClaimActor(query.projectId, query.claimedBy) ?? undefined;
+      if (!actor) {
+        return reply.status(404).send({ error: "Project member not found" });
+      }
+    }
     const items = await listPendingTasks(query.projectId, actor);
     return { items };
   });
 
   app.get("/inbox", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const query = inboxQuerySchema.parse(request.query);
     return buildInboxItems(query);
   });

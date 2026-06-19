@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { assertBackendAuth } from "../middleware/auth.js";
+import { assertAuth } from "../middleware/auth.js";
 import {
   createLibrary,
   createLibraryDocument,
@@ -56,19 +56,19 @@ const linkDocumentSchema = z.object({
 
 export async function libraryRoutes(app: FastifyInstance) {
   app.get("/libraries", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     return { items: listLibraries() };
   });
 
   app.post("/libraries", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const body = createLibrarySchema.parse(request.body ?? {});
     const library = createLibrary(body);
     return reply.status(201).send(library);
   });
 
   app.get("/libraries/:libraryId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
     const library = getLibrary(libraryId);
     if (!library) return reply.status(404).send({ error: "Library not found" });
@@ -76,21 +76,21 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.put("/libraries/:libraryId", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
     const body = updateLibrarySchema.parse(request.body ?? {});
     return updateLibrary(libraryId, body);
   });
 
   app.delete("/libraries/:libraryId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
     removeLibrary(libraryId);
     return reply.status(204).send();
   });
 
   app.post("/libraries/:libraryId/documents", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
     const body = createDocumentSchema.parse(request.body ?? {});
     const document = createLibraryDocument(libraryId, body);
@@ -98,7 +98,7 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.get("/library-documents/:documentId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
     const document = getLibraryDocument(documentId);
     if (!document) return reply.status(404).send({ error: "Document not found" });
@@ -106,7 +106,7 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.put("/libraries/:libraryId/documents/:documentId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { libraryId, documentId } = libraryDocumentParamsSchema.parse(request.params);
     const body = updateLibrarySchema.parse(request.body ?? {});
     const existing = getLibraryDocument(documentId);
@@ -117,7 +117,7 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.delete("/libraries/:libraryId/documents/:documentId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { libraryId, documentId } = libraryDocumentParamsSchema.parse(request.params);
     const existing = getLibraryDocument(documentId);
     if (!existing || existing.libraryId !== libraryId) {
@@ -128,7 +128,7 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.post("/library-documents/:documentId/links", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
     const body = linkDocumentSchema.parse(request.body ?? {});
     const links = linkDocumentToTask(documentId, body.taskId);
@@ -136,7 +136,7 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.delete("/library-documents/:documentId/links/:taskId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
     const { taskId } = taskIdParamsSchema.parse(request.params);
     unlinkDocumentFromTask(documentId, taskId);
@@ -144,7 +144,7 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.get("/tasks/:taskId/library-links", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { taskId } = taskIdParamsSchema.parse(request.params);
     return { items: listTaskLibraryLinks(taskId) };
   });

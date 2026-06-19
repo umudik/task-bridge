@@ -1,24 +1,28 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 
 /**
  * Banned patterns — zero tolerance.
  *
- * Banned everywhere (including DB files):
- *   ?? ??=              — use explicit if / ternary
- *   ?. ?.()             — guard with an explicit undefined check
- *   ?: on properties/methods/params — use T | undefined union
- *
- * Banned in application code (relaxed in src/db/** — SQLite boundary):
- *   null (type + literal) — use undefined
- *
- * Why DB files are exempt from null:
- *   better-sqlite3 returns SQL NULL as JavaScript null.
- *   The DB layer is the boundary; it converts nulls to undefined
- *   before handing values to application code.
+ * Banned:
+ *   null (type + literal)      — use undefined
+ *   ?? and ??=                  — use explicit if / ternary
+ *   ?. and ?.() optional chain  — guard with explicit undefined check
+ *   ?: optional property / method / class field / parameter
+ *                               — use T | undefined union
  */
+const BANNED = [
+  // ── null ──────────────────────────────────────────────────────────────────
+  {
+    selector: "TSNullKeyword",
+    message: "null type is banned. Use undefined.",
+  },
+  {
+    selector: "Literal[raw='null']",
+    message: "null literal is banned. Use undefined.",
+  },
 
-const BANNED_OPTIONALITY = [
   // ── ?? and ??= ────────────────────────────────────────────────────────────
   {
     selector: "LogicalExpression[operator='??']",
@@ -42,7 +46,7 @@ const BANNED_OPTIONALITY = [
   // ── optional ?: on types / classes / params ──────────────────────────────
   {
     selector: "TSPropertySignature[optional=true]",
-    message: "Optional property (?:) is banned. Use 'T | undefined' in the property type.",
+    message: "Optional property (?:) is banned. Use '| undefined' in the property type.",
   },
   {
     selector: "TSMethodSignature[optional=true]",
@@ -58,28 +62,17 @@ const BANNED_OPTIONALITY = [
   },
 ];
 
-const BANNED_NULL = [
-  {
-    selector: "TSNullKeyword",
-    message: "null type is banned. Use undefined.",
-  },
-  {
-    selector: "Literal[raw='null']",
-    message: "null literal is banned. Use undefined.",
-  },
-];
-
 export default tseslint.config(
   eslint.configs.recommended,
-  // recommendedTypeChecked: type-aware rules without the noisy no-unsafe-* rules
-  // that fire on every untyped better-sqlite3 result row.
   ...tseslint.configs.recommendedTypeChecked,
   {
-    ignores: ["dist/**"],
+    ignores: ["dist/**", "*.config.*"],
   },
   {
-    // All TypeScript source files
-    files: ["src/**/*.ts"],
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: {
+      "react-hooks": reactHooks,
+    },
     languageOptions: {
       parserOptions: {
         project: true,
@@ -88,14 +81,18 @@ export default tseslint.config(
     },
     rules: {
       // ── Turn off rules that conflict with our banned patterns ─────────────
-      // We ban ?? so we don't want ESLint telling us to USE ??.
+      // We ban ?? — don't tell us to USE ??.
       "@typescript-eslint/prefer-nullish-coalescing": "off",
-      // We ban ?. so we don't want ESLint telling us to USE ?..
+      // We ban ?. — don't tell us to USE ?..
       "@typescript-eslint/prefer-optional-chain": "off",
-      // type aliases are fine (we use them extensively).
+      // type aliases are used extensively — allow both type and interface.
       "@typescript-eslint/consistent-type-definitions": "off",
 
-      // ── TypeScript strict additions ───────────────────────────────────────
+      // ── React hooks ──────────────────────────────────────────────────────
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+
+      // ── TypeScript strict extras ─────────────────────────────────────────
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
@@ -108,27 +105,12 @@ export default tseslint.config(
       ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
 
-      // ── General ───────────────────────────────────────────────────────────
+      // ── General strictness ───────────────────────────────────────────────
       "no-empty": ["error", { allowEmptyCatch: false }],
       eqeqeq: ["error", "always"],
 
-      // ── Banned: optionality patterns (apply everywhere) ───────────────────
-      "no-restricted-syntax": ["error", ...BANNED_OPTIONALITY, ...BANNED_NULL],
-    },
-  },
-  {
-    // DB boundary files: null is allowed (SQLite returns null for SQL NULL).
-    // All other bans (??  ?.  ?:) still apply.
-    files: ["src/db/**/*.ts"],
-    rules: {
-      "no-restricted-syntax": ["error", ...BANNED_OPTIONALITY],
-      // SQLite query results are Record<string,unknown>-ish — relax unsafe rules
-      // at the DB layer only.
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off",
-      "@typescript-eslint/no-unsafe-return": "off",
-      "@typescript-eslint/no-unsafe-argument": "off",
-      "@typescript-eslint/no-explicit-any": "off",
+      // ── Banned patterns ──────────────────────────────────────────────────
+      "no-restricted-syntax": ["error", ...BANNED],
     },
   },
 );

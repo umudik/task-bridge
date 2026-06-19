@@ -3,26 +3,12 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:local": "node scripts/dev.mjs --no-ngrok",
-    "dev:backend": "npm --prefix apps/backend run dev",
-    "dev:web": "npm --prefix apps/web run dev",
-    "dev:ngrok": "docker compose -f docker-compose.dev.yml up -d --remove-orphans",
-    "dev:ngrok:down": "docker compose -f docker-compose.dev.yml down --remove-orphans",
-    "build:docs": "npm --prefix docs run build",
-    "build:web": "npm --prefix apps/web run build && node scripts/copy-web.mjs",
-    "build": "npm run build:web && npm --prefix apps/backend run build",
+    "build": "npm --prefix apps/web run build && node scripts/copy-web.mjs && npm --prefix apps/backend run build",
     "test": "npm --prefix apps/backend run test",
-    "docker:build": "docker compose build task-bridge",
-    "docker:mobile:build": "node scripts/docker-mobile-build.mjs",
-    "docker:up": "docker compose up --build --remove-orphans",
-    "docker:up:d": "docker compose up --build -d --remove-orphans",
-    "docker:up:ngrok": "docker compose --profile ngrok up --build -d --remove-orphans",
+    "lint": "npm --prefix apps/backend run lint && cd apps/mobile && gradlew.bat detekt",
+    "docker:up": "docker compose up --build -d --remove-orphans",
     "docker:down": "docker compose down --remove-orphans",
-    "docker:logs": "docker compose logs -f task-bridge",
     "docker:publish": "node scripts/docker-publish.mjs",
-    "docker:publish:all": "node scripts/docker-publish.mjs latest 0.1.0 --mobile",
-    "lint": "npm run lint:backend && npm run lint:mobile",
-    "lint:backend": "npm --prefix apps/backend run lint",
-    "lint:mobile": "cd apps/mobile && gradlew.bat detekt"
+    "mobile:build": "node scripts/docker-mobile-build.mjs"
   }
 }

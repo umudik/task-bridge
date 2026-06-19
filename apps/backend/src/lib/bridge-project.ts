@@ -5,14 +5,16 @@ export function withProjectMarker(projectId: string, description: string): strin
   return body ? `[project:${projectId}]\n\n${body}` : `[project:${projectId}]`;
 }
 
-export function extractProjectId(description?: string | null): string | null {
-  if (!description) return null;
+export function extractProjectId(description: string | undefined): string | undefined {
+  if (!description) return undefined;
   const match = description.match(PROJECT_TAG_PATTERN);
-  return match?.[1]?.trim() || null;
+  if (!match) return undefined;
+  const id = match[1];
+  return id ? id.trim() || undefined : undefined;
 }
 
-export function stripProjectMarker(description?: string | null): string | null {
-  if (!description) return null;
+export function stripProjectMarker(description: string | undefined): string | undefined {
+  if (!description) return undefined;
   const stripped = description.replace(PROJECT_TAG_PATTERN, "").trim();
-  return stripped || null;
+  return stripped || undefined;
 }

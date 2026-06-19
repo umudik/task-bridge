@@ -1,26 +1,47 @@
 import {
   getWorkflowStageRow,
-  listProjectMemberRows,
   listWorkflowStageRows,
 } from "../db/workflow-db.js";
 import { flattenTemplateNodes } from "../domain/task-template-graph.js";
-import type { AuthorType, BridgeTask, TaskComment } from "../domain/task.js";
+import { findProjectMember } from "../domain/project-member.js";
+import type { AssigneeKind, AuthorType, BridgeTask, TaskComment } from "../domain/task.js";
 import { isWorkDone, resolveWorkStatus } from "../domain/work-status.js";
 import { listEpicWorkflowTasks } from "../domain/task.js";
-import { parseStageRolesJson, resolveStageTaskTemplates } from "../domain/workflow-stage.js";
+import { resolveStageTaskTemplates } from "../domain/workflow-stage.js";
 import { emptyToNull, roleKey } from "../lib/strings.js";
 import { computeEpicStageId } from "./epic-service.js";
 
 export type ClaimActor = {
   claimedBy: string;
   role: string;
+  actorKind: AssigneeKind;
 };
+
+export function resolveClaimActor(projectId: string, memberName: string): ClaimActor | null {
+  const member = findProjectMember(projectId, memberName);
+  if (!member) return null;
+  return {
+    claimedBy: member.name,
+    role: member.role,
+    actorKind: member.actorKind,
+  };
+}
 
 export function normalizeClaimActor(actor: ClaimActor): ClaimActor {
   return {
-    claimedBy: emptyToNull(actor.claimedBy) ?? "",
-    role: emptyToNull(actor.role) ?? "",
+    claimedBy: actor.claimedBy.trim(),
+    role: actor.role.trim(),
+    actorKind: actor.actorKind,
   };
+}
+
+export function actorKindMatches(
+  required: AssigneeKind | null | undefined,
+  actor: AssigneeKind | null | undefined,
+): boolean {
+  if (!required) return true;
+  if (!actor) return false;
+  return required === actor;
 }
 
 function latestCommentByAuthor(comments: TaskComment[], authorType: AuthorType) {
@@ -72,12 +93,8 @@ export function resolveTaskClaimRole(task: BridgeTask): string | null {
   }
 
   if (task.assignee) {
-    const member = listProjectMemberRows(task.projectId).find((row) => row.name === task.assignee);
-    const directRole = emptyToNull(member?.role);
-    if (directRole) return directRole;
-    const legacyRoles = parseStageRolesJson(member?.stage_roles_json ?? "{}");
-    const legacy = Object.values(legacyRoles).map(emptyToNull).find(Boolean);
-    if (legacy) return legacy;
+    const memberRole = findProjectMember(task.projectId, task.assignee)?.role;
+    if (memberRole) return memberRole;
   }
 
   if (task.stageId) {
@@ -86,6 +103,37 @@ export function resolveTaskClaimRole(task: BridgeTask): string | null {
     if (autoRole) return autoRole;
   }
 
+  return null;
+}
+
+export function resolveTaskAssigneeKind(task: BridgeTask): AssigneeKind | null {
+  if (task.assigneeKind === "human" || task.assigneeKind === "ai") {
+    return task.assigneeKind;
+  }
+  if (task.templateId) {
+    for (const row of listWorkflowStageRows(task.projectId)) {
+      const roots = resolveStageTaskTemplates({
+        taskTemplatesJson: row.task_templates_json,
+        spawnTaskCount: row.spawn_task_count ?? 0,
+        stageId: row.id,
+        stageTitle: row.title,
+      });
+      for (const node of flattenTemplateNodes(roots)) {
+        if (node.id === task.templateId && (node.assigneeKind === "human" || node.assigneeKind === "ai")) {
+          return node.assigneeKind;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function actorKindBlockReason(task: BridgeTask, actor: ClaimActor): string | null {
+  const required = resolveTaskAssigneeKind(task);
+  if (!actorKindMatches(required, actor.actorKind)) {
+    if (required === "human") return "Human-only task";
+    if (required === "ai") return "AI-only task";
+  }
   return null;
 }
 
@@ -135,6 +183,7 @@ export function canActorClaimTask(
   actor: ClaimActor,
 ): boolean {
   if (task.parentId === null || isWorkDone(task)) return false;
+  if (actorKindBlockReason(task, actor)) return false;
 
   if (userAwaitingReply(task)) {
     return rolesMatch(actor.role, resolveTaskClaimRole(task));
@@ -144,6 +193,44 @@ export function canActorClaimTask(
   if (!passesWorkflowClaimGate(task, index)) return false;
 
   return rolesMatch(actor.role, resolveTaskClaimRole(task));
+}
+
+export function canActorUpdateWorkStatus(
+  task: BridgeTask,
+  index: EpicClaimIndex,
+  actor: ClaimActor,
+): boolean {
+  if (task.parentId === null || isWorkDone(task)) return false;
+  if (actorKindBlockReason(task, actor)) return false;
+  if (!isTaskOnEpicActiveStage(task, index)) return false;
+  if (task.claimedBy && task.claimedBy !== actor.claimedBy) return false;
+  if (!task.claimedBy && resolveTaskAssigneeKind(task)) return false;
+  return rolesMatch(actor.role, resolveTaskClaimRole(task));
+}
+
+export function workflowUpdateBlockReason(
+  task: BridgeTask,
+  index: EpicClaimIndex,
+  actor: ClaimActor,
+): string | null {
+  if (task.parentId === null) return "Epics cannot be updated";
+  if (isWorkDone(task)) return "Task is already done";
+  const kindReason = actorKindBlockReason(task, actor);
+  if (kindReason) return kindReason;
+  if (!isTaskOnEpicActiveStage(task, index)) {
+    return "Task is not on the active pipeline step";
+  }
+  if (task.claimedBy && task.claimedBy !== actor.claimedBy) {
+    return "Task is claimed by another member";
+  }
+  if (!task.claimedBy && resolveTaskAssigneeKind(task)) {
+    return "Claim this task before updating status";
+  }
+  const requiredRole = resolveTaskClaimRole(task);
+  if (requiredRole && !rolesMatch(actor.role, requiredRole)) {
+    return `Task requires role "${requiredRole}"`;
+  }
+  return null;
 }
 
 export function isWorkflowClaimable(
@@ -217,6 +304,8 @@ export function workflowClaimBlockReason(
   if (isWorkDone(task)) return "Task is already done";
 
   if (actor) {
+    const kindReason = actorKindBlockReason(task, actor);
+    if (kindReason) return kindReason;
     const requiredRole = resolveTaskClaimRole(task);
     if (userAwaitingReply(task) && requiredRole && !rolesMatch(actor.role, requiredRole)) {
       return `Task requires role "${requiredRole}"`;

@@ -3,6 +3,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ProjectLayout } from "@/components/layout/ProjectLayout";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { AdminSetupPage } from "@/pages/AdminSetupPage";
+import { AdminUsersPage } from "@/pages/AdminUsersPage";
 import { MobilePage } from "@/pages/MobilePage";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { TasksPage } from "@/pages/TasksPage";
@@ -18,34 +20,50 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const session = loadSession();
+  if (!session) return <Navigate to="/login" replace />;
+  if (session.userRole !== "admin") return <Navigate to="/projects" replace />;
+  return <>{children}</>;
+}
+
 export function App() {
   return (
     <div className="h-full">
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        element={
-          <RequireAuth>
-            <AppLayout />
-          </RequireAuth>
-        }
-      >
-        <Route path="/projects" element={<ProjectsPage />} />
-        <Route path="/workflow-templates" element={<WorkflowTemplatesPage />} />
-        <Route path="/library" element={<LibraryPage />} />
-        <Route path="/projects/:projectId" element={<ProjectLayout />}>
-          <Route index element={<Navigate to="tasks" replace />} />
-          <Route path="board" element={<Navigate to="tasks" replace />} />
-          <Route path="tasks" element={<TasksPage />} />
-          <Route path="tasks/:taskId" element={<TaskPage />} />
-          <Route path="inbox" element={<InboxPage />} />
-          <Route path="mobile" element={<MobilePage />} />
-          <Route path="workflow" element={<WorkflowPage />} />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/setup" element={<AdminSetupPage />} />
+        <Route
+          element={
+            <RequireAuth>
+              <AppLayout />
+            </RequireAuth>
+          }
+        >
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/workflow-templates" element={<WorkflowTemplatesPage />} />
+          <Route path="/library" element={<LibraryPage />} />
+          <Route
+            path="/admin/users"
+            element={
+              <RequireAdmin>
+                <AdminUsersPage />
+              </RequireAdmin>
+            }
+          />
+          <Route path="/projects/:projectId" element={<ProjectLayout />}>
+            <Route index element={<Navigate to="tasks" replace />} />
+            <Route path="board" element={<Navigate to="tasks" replace />} />
+            <Route path="tasks" element={<TasksPage />} />
+            <Route path="tasks/:taskId" element={<TaskPage />} />
+            <Route path="inbox" element={<InboxPage />} />
+            <Route path="mobile" element={<MobilePage />} />
+            <Route path="workflow" element={<WorkflowPage />} />
+          </Route>
         </Route>
-      </Route>
-      <Route path="/" element={<RootRedirect />} />
-      <Route path="*" element={<RootRedirect />} />
-    </Routes>
+        <Route path="/" element={<RootRedirect />} />
+        <Route path="*" element={<RootRedirect />} />
+      </Routes>
     </div>
   );
 }

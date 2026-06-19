@@ -4,6 +4,7 @@ import {
 } from "../db/workflow-db.js";
 import { randomUUID } from "node:crypto";
 import {
+  deleteWorkflowTemplateRow,
   deleteWorkflowTemplateStages,
   getWorkflowTemplateRow,
   insertWorkflowTemplateRow,
@@ -172,6 +173,48 @@ export function replaceWorkflowTemplate(
     throw new AppError("Workflow template not found", 404);
   }
   return updated;
+}
+
+export function importWorkflowTemplate(input: {
+  id?: string;
+  title: string;
+  description?: string;
+  stages: WorkflowStage[];
+}): WorkflowTemplate {
+  ensureDefaultWorkflowTemplates();
+  const title = input.title.trim();
+  if (!title) throw new AppError("Title is required", 400);
+
+  // Resolve a unique ID (use hint if provided, otherwise slugify title)
+  const baseId = input.id?.trim() || slugify(title) || `template-${randomUUID().slice(0, 8)}`;
+  let id = baseId;
+  let suffix = 2;
+  while (getWorkflowTemplateRow(id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+
+  insertWorkflowTemplateRow({
+    id,
+    title,
+    description: input.description?.trim() ?? "",
+  });
+
+  return replaceWorkflowTemplate(id, input.stages);
+}
+
+const PROTECTED_WORKFLOW_TEMPLATE_IDS = new Set(["ai-sdlc"]);
+
+export function deleteWorkflowTemplate(templateId: string): void {
+  ensureDefaultWorkflowTemplates();
+  const id = templateId.trim();
+  if (PROTECTED_WORKFLOW_TEMPLATE_IDS.has(id)) {
+    throw new AppError("Built-in template cannot be deleted", 403);
+  }
+  if (!getWorkflowTemplateRow(id)) {
+    throw new AppError("Workflow template not found", 404);
+  }
+  deleteWorkflowTemplateRow(id);
 }
 
 export function copyTemplateStagesToProject(projectId: string, templateId: string): WorkflowStage[] {

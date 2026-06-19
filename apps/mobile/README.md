@@ -5,7 +5,7 @@ Android client (Kotlin + Compose).
 ## Docker APK build
 
 ```powershell
-npm run docker:mobile:build
+npm run mobile:build
 ```
 
 Output: `artifacts/task-bridge.apk`

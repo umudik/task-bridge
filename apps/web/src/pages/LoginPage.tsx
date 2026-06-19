@@ -1,54 +1,66 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronUp, KeyRound, Loader2, LogIn } from "lucide-react";
-import { toast } from "sonner";
+import { Loader2, LogIn, Mail, KeyRound } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { validateSession } from "@/lib/api";
-import {
-  buildBaseUrl,
-  defaultBaseUrl,
-  loadSession,
-  parseHostPort,
-  saveSession,
-  sessionFromOrigin,
-  type Session,
-} from "@/lib/session";
+import { checkAuthStatus, loginUser } from "@/lib/api";
+import { loadSession, saveSession, type UserRole } from "@/lib/session";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const existing = loadSession();
-  const parsed = existing ? parseHostPort(existing.baseUrl) : parseHostPort(defaultBaseUrl());
-
-  const [apiKey, setApiKey] = useState(existing?.apiKey ?? "dev-key");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [host, setHost] = useState(parsed.host);
-  const [port, setPort] = useState(parsed.port === "443" || parsed.port === "80" ? "3001" : parsed.port);
-  const [useHttps, setUseHttps] = useState(parsed.useHttps);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
 
-  async function signIn() {
+  useEffect(() => {
+    const session = loadSession();
+    if (session) {
+      navigate(session.projectId ? `/projects/${session.projectId}/tasks` : "/projects", {
+        replace: true,
+      });
+      return;
+    }
+    checkAuthStatus()
+      .then(({ hasUsers }) => {
+        if (!hasUsers) navigate("/setup", { replace: true });
+      })
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, [navigate]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
     setLoading(true);
     try {
-      const session: Session = showAdvanced
-        ? {
-            baseUrl: buildBaseUrl(host, port, useHttps),
-            apiKey: apiKey.trim(),
-            useHttps,
-          }
-        : sessionFromOrigin(apiKey);
-      await validateSession(session);
-      saveSession(session);
-      toast.success("Signed in");
+      const result = await loginUser({ email, password });
+      saveSession({
+        token: result.token,
+        userId: result.user.id,
+        userName: result.user.name,
+        userEmail: result.user.email,
+        userRole: result.user.role as UserRole,
+        isSystemAdmin: result.user.isSystemAdmin,
+      });
       navigate("/projects", { replace: true });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Sign in failed — check API key");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   return (
@@ -60,69 +72,63 @@ export function LoginPage() {
           </div>
           <div>
             <CardTitle className="text-2xl">Sign in</CardTitle>
-            <CardDescription className="mt-2">
-              Web dashboard — same bridge as mobile, without voice.
-            </CardDescription>
+            <CardDescription className="mt-2">Enter your email and password to continue</CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-center text-sm text-muted-foreground">
-            Server: <span className="font-medium text-foreground">{defaultBaseUrl()}</span>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="apiKey">API key</Label>
-            <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id="apiKey"
-                type="password"
-                className="pl-10"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="dev-key"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void signIn();
-                }}
-              />
-            </div>
-          </div>
-
-          <Button className="h-11 w-full" disabled={loading || !apiKey.trim()} onClick={() => void signIn()}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-            Sign in
-          </Button>
-
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => setShowAdvanced((value) => !value)}
-          >
-            {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            {showAdvanced ? "Hide remote server" : "Remote server settings"}
-          </button>
-
-          {showAdvanced ? (
-            <div className="grid gap-3 rounded-xl border bg-background/60 p-4">
-              <div className="grid gap-2">
-                <Label htmlFor="host">Host</Label>
-                <Input id="host" value={host} onChange={(event) => setHost(event.target.value)} />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="port">Port</Label>
-                <Input id="port" value={port} onChange={(event) => setPort(event.target.value)} />
-              </div>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useHttps}
-                  onChange={(event) => setUseHttps(event.target.checked)}
-                  className="rounded border-input"
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  className="pl-10"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  disabled={loading}
                 />
-                HTTPS
-              </label>
+              </div>
             </div>
-          ) : null}
+
+            <div className="grid gap-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  className="pl-10"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  disabled={loading}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleSubmit(e as unknown as React.FormEvent);
+                  }}
+                />
+              </div>
+            </div>
+
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" className="h-11 w-full" disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogIn className="h-4 w-4" />
+              )}
+              Sign in
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>

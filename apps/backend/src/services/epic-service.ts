@@ -13,6 +13,13 @@ import {
   type BridgeTask,
 } from "../domain/task.js";
 import { stageHasActionableTemplates } from "../domain/workflow-stage.js";
+import {
+  buildEpicClaimIndex,
+  normalizeClaimActor,
+  type ClaimActor,
+  workflowUpdateBlockReason,
+} from "./task-claim-policy.js";
+import { AppError } from "../errors/app-error.js";
 import { getBridgeTask, listBridgeTasks, transitionBridgeTask } from "./task-service.js";
 import { mutateTaskRow } from "../db/tasks-db.js";
 import { touchTask } from "../domain/task.js";
@@ -165,6 +172,7 @@ export async function updateTaskWorkStatus(
   taskId: number,
   workStatus: WorkStatus,
   by: string,
+  actor: ClaimActor,
 ): Promise<BridgeTask | null> {
   const existing = await getBridgeTask(taskId);
   if (!existing || existing.parentId === null) {
@@ -172,6 +180,13 @@ export async function updateTaskWorkStatus(
   }
   const tasksForPolicy = await listBridgeTasks();
   assertCanAdvanceWorkStatus(tasksForPolicy, existing, workStatus);
+
+  const normalized = normalizeClaimActor(actor);
+  const index = buildEpicClaimIndex(tasksForPolicy);
+  const blockReason = workflowUpdateBlockReason(existing, index, normalized);
+  if (blockReason) {
+    throw new AppError(blockReason, 409);
+  }
 
   const updated = mutateTaskRow(taskId, (task) => {
     if (task.parentId === null) return;

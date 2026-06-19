@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AppError } from "../errors/app-error.js";
-import { assertBackendAuth } from "../middleware/auth.js";
+import { assertAuth } from "../middleware/auth.js";
 import { getProjectById } from "../services/project-registry.js";
 import {
   createProjectMember,
@@ -29,6 +29,7 @@ const taskTemplateSchema: z.ZodTypeAny = z.lazy(() =>
     title: z.string().min(1),
     description: z.string().optional().default(""),
     assigneeRole: z.string().optional().default(""),
+    assigneeKind: z.enum(["human", "ai"]).optional(),
     kind: z.enum(["task", "group"]).optional().default("task"),
     execution: z.enum(["parallel", "sequential"]).optional().default("parallel"),
     dependsOn: z.array(z.string()).optional().default([]),
@@ -59,12 +60,14 @@ const applyTemplateSchema = z.object({
 
 const createMemberSchema = z.object({
   name: z.string().min(1),
-  role: z.string().optional().default(""),
+  role: z.string().min(1),
+  actorKind: z.enum(["human", "ai"]),
 });
 
 const updateMemberSchema = z.object({
   name: z.string().min(1).optional(),
   role: z.string().optional(),
+  actorKind: z.enum(["human", "ai"]).optional(),
 });
 
 async function assertProject(projectId: string) {
@@ -78,21 +81,21 @@ async function assertProject(projectId: string) {
 
 export async function workflowRoutes(app: FastifyInstance) {
   app.get("/projects/:projectId/workflow", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     return getProjectWorkflow(projectId);
   });
 
   app.get("/projects/:projectId/workflow/export", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     return exportWorkflowReadable(projectId);
   });
 
   app.post("/projects/:projectId/workflow/apply-template", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     const body = applyTemplateSchema.parse(request.body ?? {});
@@ -101,7 +104,7 @@ export async function workflowRoutes(app: FastifyInstance) {
   });
 
   app.put("/projects/:projectId/workflow", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     const body = replaceWorkflowSchema.parse(request.body ?? {});
@@ -119,7 +122,7 @@ export async function workflowRoutes(app: FastifyInstance) {
   });
 
   app.get("/projects/:projectId/members", async (request) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     const workflow = await getProjectWorkflow(projectId);
@@ -127,20 +130,25 @@ export async function workflowRoutes(app: FastifyInstance) {
   });
 
   app.post("/projects/:projectId/members", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     const body = createMemberSchema.parse(request.body ?? {});
+    const workflow = await getProjectWorkflow(projectId);
+    if (!workflow.roles.includes(body.role)) {
+      return reply.status(400).send({ error: "Unknown project role" });
+    }
     const member = await createProjectMember({
       projectId,
       name: body.name,
       role: body.role,
+      actorKind: body.actorKind,
     });
     return reply.status(201).send(member);
   });
 
   app.patch("/projects/:projectId/members/:memberId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId, memberId } = memberIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     const body = updateMemberSchema.parse(request.body ?? {});
@@ -152,7 +160,7 @@ export async function workflowRoutes(app: FastifyInstance) {
   });
 
   app.delete("/projects/:projectId/members/:memberId", async (request, reply) => {
-    assertBackendAuth(request);
+    assertAuth(request);
     const { projectId, memberId } = memberIdParamsSchema.parse(request.params);
     await assertProject(projectId);
     const removed = await removeProjectMember(memberId);

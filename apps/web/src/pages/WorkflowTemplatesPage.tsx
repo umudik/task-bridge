@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, Save } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StageInspectorPanel } from "@/components/workflow/StageInspectorPanel";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
+import {
+  addChildTemplate,
+  createStageTaskTemplate,
+  createSubtaskTemplate,
+  findTemplateInTree,
+  moveTemplateAmongSiblings,
+} from "@/components/workflow/template-graph-utils";
 import {
   createEmptyStage,
   insertStageAt,
@@ -11,22 +18,28 @@ import {
   syncStageTemplates,
 } from "@/components/workflow/workflow-utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useSession } from "@/hooks/useSession";
 import {
   createWorkflowTemplate,
+  deleteWorkflowTemplate,
+  exportWorkflowTemplate,
   fetchWorkflowTemplate,
   fetchWorkflowTemplates,
+  importWorkflowTemplate,
+  PROTECTED_WORKFLOW_TEMPLATE_IDS,
   saveWorkflowTemplate,
   type WorkflowStage,
   type WorkflowTemplateSummary,
 } from "@/lib/api";
+import { useConfirm } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
 
 export function WorkflowTemplatesPage() {
   const session = useSession();
+  const { confirmDestructive } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -35,6 +48,8 @@ export function WorkflowTemplatesPage() {
   const [selectedTaskTemplateId, setSelectedTaskTemplateId] = useState<string | null>(null);
   const [newTemplateTitle, setNewTemplateTitle] = useState("");
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const loadTemplates = useCallback(async () => {
     if (!session) return;
@@ -127,6 +142,70 @@ export function WorkflowTemplatesPage() {
     }
   }
 
+  async function handleExport() {
+    if (!session || !selectedId) return;
+    try {
+      await exportWorkflowTemplate(session, selectedId);
+    } catch {
+      toast.error("Export failed");
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    if (!session) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const data: unknown = JSON.parse(text);
+      const template = await importWorkflowTemplate(session, data);
+      setTemplates((current) =>
+        [...current, { id: template.id, title: template.title, description: template.description }].sort(
+          (a, b) => a.title.localeCompare(b.title),
+        ),
+      );
+      setSelectedId(template.id);
+      setStages(template.stages);
+      setDirty(false);
+      setEditorIndex(null);
+      setSelectedTaskTemplateId(null);
+      toast.success(`Imported "${template.title}"`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Import failed — check file format");
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
+  async function handleDeleteTemplate(template: WorkflowTemplateSummary) {
+    if (!session || PROTECTED_WORKFLOW_TEMPLATE_IDS.has(template.id)) return;
+    if (!(await confirmDestructive(`Delete template "${template.title}"? This cannot be undone.`))) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteWorkflowTemplate(session, template.id);
+      const remaining = templates.filter((item) => item.id !== template.id);
+      setTemplates(remaining);
+      if (selectedId === template.id) {
+        setSelectedId(remaining[0]?.id ?? null);
+        setStages([]);
+        setDirty(false);
+        setEditorIndex(null);
+        setSelectedTaskTemplateId(null);
+      }
+      toast.success(`Deleted "${template.title}"`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete template");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const selectedTemplate = templates.find((item) => item.id === selectedId) ?? null;
+  const canDeleteSelected =
+    selectedTemplate !== null && !PROTECTED_WORKFLOW_TEMPLATE_IDS.has(selectedTemplate.id);
+
   async function handleSave() {
     if (!session || !selectedId) return;
     setSaving(true);
@@ -158,6 +237,64 @@ export function WorkflowTemplatesPage() {
     setSelectedTaskTemplateId(taskTemplateId);
   }
 
+  function stageAtSortedIndex(sortedIndex: number) {
+    const sorted = [...stages].sort((a, b) => a.position - b.position);
+    const stage = sorted[sortedIndex];
+    if (!stage) return null;
+    const index = stages.findIndex((item) => item.id === stage.id);
+    if (index < 0) return null;
+    return { stage, index };
+  }
+
+  function addStageTask(sortedIndex: number) {
+    const entry = stageAtSortedIndex(sortedIndex);
+    if (!entry) return;
+    const templates = entry.stage.taskTemplates ?? [];
+    const created = createStageTaskTemplate(entry.stage.title, templates.length);
+    const next = stages.map((item, idx) =>
+      idx === entry.index
+        ? syncStageTemplates({ ...item, taskTemplates: [...templates, created] })
+        : item,
+    );
+    selectNewStage(next, entry.index, created.id);
+  }
+
+  function moveTaskTemplate(sortedIndex: number, templateId: string, delta: -1 | 1) {
+    const entry = stageAtSortedIndex(sortedIndex);
+    if (!entry) return;
+    const templates = entry.stage.taskTemplates ?? [];
+    const next = stages.map((item, idx) =>
+      idx === entry.index
+        ? syncStageTemplates({
+            ...item,
+            taskTemplates: moveTemplateAmongSiblings(templates, templateId, delta),
+          })
+        : item,
+    );
+    markDirty(next);
+  }
+
+  function addSubtask(sortedIndex: number, parentTemplateId: string) {
+    const entry = stageAtSortedIndex(sortedIndex);
+    if (!entry) return;
+    const templates = entry.stage.taskTemplates ?? [];
+    const parent = findTemplateInTree(templates, parentTemplateId);
+    if (!parent) return;
+    const created = createSubtaskTemplate(
+      parent.template.title,
+      parent.template.children?.length ?? 0,
+    );
+    const next = stages.map((item, idx) =>
+      idx === entry.index
+        ? syncStageTemplates({
+            ...item,
+            taskTemplates: addChildTemplate(templates, parentTemplateId, created),
+          })
+        : item,
+    );
+    selectNewStage(next, entry.index, created.id);
+  }
+
   if (!session) return null;
 
   return (
@@ -165,11 +302,13 @@ export function WorkflowTemplatesPage() {
       <aside className="flex w-[240px] shrink-0 flex-col border-r border-white/[0.07] bg-black">
         <div className="space-y-2 border-b border-white/[0.06] px-3 py-3">
           <p className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Templates</p>
-          <div className="flex gap-2">
-            <Input
+          <div className="flex h-9 w-full overflow-hidden rounded-lg border border-white/[0.1] bg-[#111111] shadow-sm ring-offset-black focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-black">
+            <input
               value={newTemplateTitle}
               onChange={(event) => setNewTemplateTitle(event.target.value)}
-              placeholder="New template name"
+              placeholder="New template"
+              disabled={creatingTemplate}
+              className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               onKeyDown={(event) => {
                 if (event.key === "Enter" && newTemplateTitle.trim()) {
                   event.preventDefault();
@@ -179,34 +318,102 @@ export function WorkflowTemplatesPage() {
             />
             <Button
               type="button"
+              variant="ghost"
               size="icon"
+              className="h-full w-9 shrink-0 rounded-none border-l border-white/[0.1] hover:bg-white/[0.06]"
               disabled={!newTemplateTitle.trim() || creatingTemplate}
               onClick={() => void handleCreateTemplate()}
             >
               {creatingTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             </Button>
           </div>
+          {/* Import from JSON file */}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImportFile(file);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-full"
+            disabled={importing}
+            onClick={() => importInputRef.current?.click()}
+          >
+            {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            Import JSON
+          </Button>
         </div>
 
         <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
           {templates.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              onClick={() => {
-                if (dirty && !window.confirm("Discard unsaved changes?")) return;
-                setSelectedId(template.id);
-              }}
-              className={cn(
-                "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
-                selectedId === template.id
-                  ? "bg-white/[0.08] text-foreground"
-                  : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
-              )}
-            >
-              <p className="text-sm font-medium">{template.title}</p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{template.description}</p>
-            </button>
+            <div key={template.id} className="group relative">
+              <button
+                type="button"
+                onClick={() => {
+                  if (dirty && !window.confirm("Discard unsaved changes?")) return;
+                  setSelectedId(template.id);
+                }}
+                className={cn(
+                  "w-full rounded-lg px-3 py-2.5 pr-16 text-left transition-colors",
+                  selectedId === template.id
+                    ? "bg-white/[0.08] text-foreground"
+                    : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
+                )}
+              >
+                <p className="text-sm font-medium">{template.title}</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{template.description}</p>
+              </button>
+              {/* Export button — visible on hover or when selected */}
+              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                <button
+                  type="button"
+                  title="Export as JSON"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedId(template.id);
+                    void exportWorkflowTemplate(session, template.id).catch(() =>
+                      toast.error("Export failed"),
+                    );
+                  }}
+                  className={cn(
+                    "rounded p-1 transition-opacity",
+                    "text-muted-foreground hover:text-foreground",
+                    selectedId === template.id
+                      ? "opacity-100"
+                      : "opacity-0 group-hover:opacity-100",
+                  )}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+                {!PROTECTED_WORKFLOW_TEMPLATE_IDS.has(template.id) ? (
+                  <button
+                    type="button"
+                    title="Delete template"
+                    disabled={deleting}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteTemplate(template);
+                    }}
+                    className={cn(
+                      "rounded p-1 transition-opacity",
+                      "text-muted-foreground hover:text-destructive",
+                      selectedId === template.id
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100",
+                    )}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -214,7 +421,7 @@ export function WorkflowTemplatesPage() {
 
       <div className="flex min-h-0 flex-1 flex-col">
         <PageHeader
-          title={templates.find((item) => item.id === selectedId)?.title ?? "Template"}
+          title={selectedTemplate?.title ?? "Template"}
           subtitle="Stages and task templates"
           actions={
             <>
@@ -222,6 +429,23 @@ export function WorkflowTemplatesPage() {
                 <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
                   Unsaved
                 </span>
+              ) : null}
+              {selectedId ? (
+                <Button variant="outline" onClick={() => void handleExport()}>
+                  <Download className="h-4 w-4" />
+                  Export
+                </Button>
+              ) : null}
+              {canDeleteSelected && selectedTemplate ? (
+                <Button
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  disabled={deleting}
+                  onClick={() => void handleDeleteTemplate(selectedTemplate)}
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Delete
+                </Button>
               ) : null}
               <Button onClick={() => void handleSave()} disabled={saving || !dirty || !selectedId}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -247,6 +471,11 @@ export function WorkflowTemplatesPage() {
               onMoveStage={moveStage}
               onSelectStage={(flowIndex) => setStageBySortedIndex(flowIndex, null)}
               onSelectTaskTemplate={(flowIndex, templateId) => setStageBySortedIndex(flowIndex, templateId)}
+              onAddStageTask={(flowIndex) => addStageTask(flowIndex)}
+              onAddSubtask={(flowIndex, parentId) => addSubtask(flowIndex, parentId)}
+              onMoveTaskTemplate={(flowIndex, templateId, delta) =>
+                moveTaskTemplate(flowIndex, templateId, delta)
+              }
             />
             <aside className="flex w-[380px] shrink-0 flex-col border-l border-white/[0.07] bg-[#0a0a0a]">
               <div className="flex-1 overflow-y-auto p-4">

@@ -15,7 +15,6 @@ cp .env.example .env
 
 ```env
 TASK_BRIDGE_IMAGE=your-dockerhub-user/task-bridge:latest
-BACKEND_API_KEY=uzun-rastgele-bir-anahtar
 TASK_BRIDGE_PORT=3000
 ```
 
@@ -28,7 +27,7 @@ docker compose up -d
 
 Aç: **http://localhost:3000/app/login**
 
-API key olarak `.env` içindeki `BACKEND_API_KEY` değerini kullan.
+İlk açılışta web arayüzünden `/setup` ile admin hesabı oluştur.
 
 ## Android APK
 
@@ -37,7 +36,7 @@ Image APK içeriyorsa:
 - Web: **Mobile** sayfası → **Download APK**
 - Direkt: **http://localhost:3000/downloads/task-bridge.apk**
 
-APK yoksa image sadece API+UI içerir; mobil build için repodaki `npm run docker:mobile:build` gerekir.
+APK yoksa image sadece API+UI içerir; mobil build için repodaki `npm run mobile:build` gerekir.
 
 ## Veri
 

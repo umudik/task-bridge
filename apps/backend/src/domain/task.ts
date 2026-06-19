@@ -1,5 +1,5 @@
 import { AppError } from "../errors/app-error.js";
-import { emptyToNull } from "../lib/strings.js";
+import { emptyToUndefined } from "../lib/strings.js";
 import { isWorkDone, type WorkStatus } from "./work-status.js";
 
 export const DONE_STAGE_ID = "done";
@@ -17,10 +17,12 @@ export type TaskEvent = {
   type: TaskEventType;
   at: string;
   by: string;
-  note?: string;
+  note: string | undefined;
 };
 
 export type AuthorType = "human" | "system";
+
+export type AssigneeKind = "human" | "ai";
 
 export type TaskComment = {
   id: string;
@@ -29,45 +31,47 @@ export type TaskComment = {
   tags: string[];
   body: string;
   at: string;
-  metadata?: Record<string, unknown>;
+  metadata: Record<string, unknown> | undefined;
 };
 
 export type BridgeTask = {
   id: number;
   projectId: string;
   projectName: string;
-  parentId: number | null;
-  epicId: number | null;
-  templateId: string | null;
+  parentId: number | undefined;
+  epicId: number | undefined;
+  templateId: string | undefined;
   title: string;
   description: string;
-  acceptanceCriteria: string | null;
-  priority: string | null;
+  acceptanceCriteria: string | undefined;
+  priority: string | undefined;
   labels: string[];
-  assignee: string | null;
-  assigneeRole: string | null;
+  assignee: string | undefined;
+  assigneeRole: string | undefined;
+  assigneeKind: AssigneeKind | undefined;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  claimedBy: string | null;
-  claimedAt: string | null;
-  answeredBy: string | null;
-  answeredAt: string | null;
-  answer: string | null;
-  stageId: string | null;
-  workStatus?: WorkStatus | null;
+  claimedBy: string | undefined;
+  claimedAt: string | undefined;
+  answeredBy: string | undefined;
+  answeredAt: string | undefined;
+  answer: string | undefined;
+  stageId: string | undefined;
+  workStatus: WorkStatus | undefined;
   comments: TaskComment[];
   events: TaskEvent[];
 };
 
-export type RawTask = BridgeTask & { status?: string };
+/** Raw task from the DB layer or legacy JSON — may contain a leftover `status` string. */
+export type RawTask = BridgeTask & { status: string | undefined };
 
-export function isDoneStage(stageId: string | null | undefined): boolean {
+export function isDoneStage(stageId: string | undefined): boolean {
   return stageId === DONE_STAGE_ID;
 }
 
 export function isTaskClaimed(task: BridgeTask): boolean {
-  return task.claimedBy !== null;
+  return Boolean(task.claimedBy?.trim());
 }
 
 export function touchTask(task: BridgeTask): void {
@@ -100,24 +104,27 @@ export function listDescendantIds(tasks: BridgeTask[], parentId: number): number
 
 export function listEpicWorkflowTasks(tasks: BridgeTask[], epicId: number): BridgeTask[] {
   return sortTasks(
-    tasks.filter((task) => (task.epicId ?? resolveEpicId(tasks, task)) === epicId),
+    tasks.filter((task) => {
+      const resolved = task.epicId != null ? task.epicId : resolveEpicId(tasks, task);
+      return resolved === epicId;
+    }),
   );
 }
 
-export function resolveTaskStageId(tasks: BridgeTask[], task: BridgeTask): string | null {
+export function resolveTaskStageId(tasks: BridgeTask[], task: BridgeTask): string | undefined {
   if (task.stageId) return task.stageId;
-  if (!task.parentId) return null;
+  if (!task.parentId) return undefined;
   const parent = tasks.find((entry) => entry.id === task.parentId);
-  if (!parent) return null;
+  if (!parent) return undefined;
   return resolveTaskStageId(tasks, parent);
 }
 
-export function resolveEpicId(tasks: BridgeTask[], task: BridgeTask): number | null {
-  if (task.epicId !== null && task.epicId !== undefined) return task.epicId;
-  if (task.parentId === null) return null;
+export function resolveEpicId(tasks: BridgeTask[], task: BridgeTask): number | undefined {
+  if (task.epicId != null) return task.epicId;
+  if (task.parentId == null) return undefined;
   const parent = tasks.find((entry) => entry.id === task.parentId);
   if (!parent) return task.parentId;
-  if (parent.parentId === null) return parent.id;
+  if (parent.parentId == null) return parent.id;
   return resolveEpicId(tasks, parent);
 }
 
@@ -133,7 +140,7 @@ export function assertCanAdvanceWorkStatus(
   if (nextStatus === "todo") return;
   if (!task.parentId) return;
   const parent = tasks.find((entry) => entry.id === task.parentId);
-  if (!parent || parent.parentId === null) return;
+  if (!parent || parent.parentId == null) return;
   if (!isWorkDone(parent)) {
     throw new AppError("Parent task must be done first", 409);
   }
@@ -162,7 +169,7 @@ function mergeAcceptanceIntoDescription(description: string, acceptanceCriteria:
 
 export function canonicalDescription(task: BridgeTask): string {
   const desc = task.description.trim();
-  const legacy = emptyToNull(task.acceptanceCriteria);
+  const legacy = emptyToUndefined(task.acceptanceCriteria);
   if (!legacy) return desc;
   return mergeAcceptanceIntoDescription(desc, legacy);
 }
@@ -181,14 +188,19 @@ export function migrateComment(
   raw: Record<string, unknown>,
   taskId: number,
   index: number,
-): TaskComment | null {
-  const body = emptyToNull(
-    typeof raw.body === "string" ? raw.body : typeof raw.text === "string" ? raw.text : null,
-  );
-  if (!body) return null;
+): TaskComment | undefined {
+  const rawBody =
+    typeof raw.body === "string" ? raw.body : typeof raw.text === "string" ? raw.text : undefined;
+  const body = emptyToUndefined(rawBody);
+  if (!body) return undefined;
 
   const role = typeof raw.role === "string" ? raw.role : "";
-  const authorId = String(raw.by ?? raw.authorId ?? "unknown").trim() || "unknown";
+  const rawBy = typeof raw.by === "string" ? raw.by : undefined;
+  const rawAuthorId = typeof raw.authorId === "string" ? raw.authorId : undefined;
+  const resolvedAuthor =
+    rawBy !== undefined ? rawBy : rawAuthorId !== undefined ? rawAuthorId : "unknown";
+  const authorId = String(resolvedAuthor).trim() || "unknown";
+
   const rawAuthorType = raw.authorType === "ai" ? "system" : raw.authorType;
   const authorType: AuthorType =
     rawAuthorType === "human" || rawAuthorType === "system"
@@ -197,13 +209,16 @@ export function migrateComment(
         ? "human"
         : "system";
 
+  const rawId = raw.id !== undefined ? String(raw.id) : undefined;
+  const rawAt = raw.at !== undefined ? String(raw.at) : undefined;
+
   return {
-    id: String(raw.id ?? `legacy-${taskId}-${index}`),
+    id: rawId !== undefined ? rawId : `legacy-${taskId}-${index}`,
     authorType,
     authorId,
     tags: parseTags(raw.tags, raw.type),
     body,
-    at: String(raw.at ?? new Date().toISOString()),
+    at: rawAt !== undefined ? rawAt : new Date().toISOString(),
     metadata:
       raw.metadata && typeof raw.metadata === "object"
         ? (raw.metadata as Record<string, unknown>)
@@ -220,23 +235,29 @@ function applyLegacyStage(task: RawTask): void {
 
 export function normalizeTask(task: RawTask): BridgeTask {
   applyLegacyStage(task);
-  task.parentId = task.parentId ?? null;
-  task.epicId = task.epicId ?? null;
-  task.templateId = task.templateId ?? null;
+
+  // Coerce fields that may arrive as null from legacy JSON or older DB rows.
+  // We use type-safe checks so null and undefined both become undefined.
+  task.parentId = typeof task.parentId === "number" ? task.parentId : undefined;
+  task.epicId = typeof task.epicId === "number" ? task.epicId : undefined;
+  task.templateId = typeof task.templateId === "string" ? task.templateId.trim() || undefined : undefined;
+
   task.labels = Array.isArray(task.labels) ? task.labels : [];
-  task.priority = emptyToNull(task.priority);
-  task.assignee = emptyToNull(task.assignee);
-  task.assigneeRole = emptyToNull(task.assigneeRole);
-  task.stageId = emptyToNull(task.stageId);
-  task.answer = emptyToNull(task.answer);
-  task.claimedBy = emptyToNull(task.claimedBy);
+  task.priority = emptyToUndefined(task.priority);
+  task.assignee = emptyToUndefined(task.assignee);
+  task.assigneeRole = emptyToUndefined(task.assigneeRole);
+  task.assigneeKind =
+    task.assigneeKind === "human" || task.assigneeKind === "ai" ? task.assigneeKind : undefined;
+  task.stageId = emptyToUndefined(task.stageId);
+  task.answer = emptyToUndefined(task.answer);
+  task.claimedBy = emptyToUndefined(task.claimedBy);
   task.updatedAt = task.updatedAt || task.createdAt;
 
-  const legacyCriteria = emptyToNull(task.acceptanceCriteria);
+  const legacyCriteria = emptyToUndefined(task.acceptanceCriteria);
   if (legacyCriteria) {
-    task.description = mergeAcceptanceIntoDescription(task.description ?? "", legacyCriteria);
+    task.description = mergeAcceptanceIntoDescription(task.description || "", legacyCriteria);
   }
-  task.acceptanceCriteria = null;
+  task.acceptanceCriteria = undefined;
 
   const rawComments = task.comments as unknown;
   if (!Array.isArray(rawComments)) {
@@ -249,12 +270,13 @@ export function normalizeTask(task: RawTask): BridgeTask {
         tags: [],
         body: task.answer,
         at: task.answeredAt,
+        metadata: undefined,
       });
     }
   } else {
     task.comments = rawComments
       .map((entry, index) => migrateComment(entry as Record<string, unknown>, task.id, index))
-      .filter((entry): entry is TaskComment => entry !== null);
+      .filter((entry): entry is TaskComment => entry !== undefined);
   }
 
   delete task.status;
@@ -267,4 +289,3 @@ export function mergeAcceptanceCriteria(
 ): string {
   return mergeAcceptanceIntoDescription(description, acceptanceCriteria);
 }
-

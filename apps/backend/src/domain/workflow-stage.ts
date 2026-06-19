@@ -1,20 +1,27 @@
 export type TemplateExecution = "parallel" | "sequential";
 
+export type AssigneeKind = "human" | "ai";
+
+export function parseActorKind(value: string): AssigneeKind {
+  return value === "ai" ? "ai" : "human";
+}
+
 export type StageTaskTemplate = {
   id: string;
   title: string;
   description: string;
-  assigneeRole?: string;
-  kind?: "task" | "group";
-  execution?: TemplateExecution;
-  dependsOn?: string[];
-  children?: StageTaskTemplate[];
+  assigneeRole: string | undefined;
+  assigneeKind: AssigneeKind | undefined;
+  kind: "task" | "group" | undefined;
+  execution: TemplateExecution | undefined;
+  dependsOn: string[] | undefined;
+  children: StageTaskTemplate[] | undefined;
 };
 
 export const SUBTASK_SPAWN_STAGE_ID = "in-progress";
 
-export function parseStageRolesJson(raw: string | null | undefined): Record<string, string> {
-  if (!raw?.trim()) return {};
+export function parseStageRolesJson(raw: string | undefined): Record<string, string> {
+  if (!raw || !raw.trim()) return {};
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -45,16 +52,17 @@ export function parseRulesJson(raw: string): string[] {
 }
 
 export function resolveEpicDescription(input: {
-  description?: string;
-  purpose?: string;
-  rulesJson?: string;
+  description: string | undefined;
+  purpose: string | undefined;
+  rulesJson: string | undefined;
 }): string {
   const parts: string[] = [];
-  const description = input.description?.trim() ?? "";
-  const purpose = input.purpose?.trim() ?? "";
+  const description = input.description !== undefined ? input.description.trim() : "";
+  const purpose = input.purpose !== undefined ? input.purpose.trim() : "";
   if (description) parts.push(description);
   if (purpose && purpose !== description) parts.push(purpose);
-  const rules = parseRulesJson(input.rulesJson ?? "[]");
+  const rulesRaw = input.rulesJson !== undefined ? input.rulesJson : "[]";
+  const rules = parseRulesJson(rulesRaw);
   if (rules.length > 0) parts.push(rules.join("\n"));
   return parts.join("\n\n");
 }
@@ -69,13 +77,13 @@ function resolveTaskDescription(row: Record<string, unknown>): string {
   return "";
 }
 
-function parseTemplateNode(item: unknown, index: number, fallbackTitle: string): StageTaskTemplate | null {
-  if (!item || typeof item !== "object") return null;
+function parseTemplateNode(item: unknown, index: number, fallbackTitle: string): StageTaskTemplate | undefined {
+  if (!item || typeof item !== "object") return undefined;
   const row = item as Record<string, unknown>;
   const id = typeof row.id === "string" && row.id.trim() ? row.id.trim() : `tpl-${index}`;
   const kind = row.kind === "group" ? "group" : "task";
   const title = typeof row.title === "string" ? row.title.trim() : "";
-  if (!title && kind === "task") return null;
+  if (!title && kind === "task") return undefined;
   if (!title && kind === "group") {
     return {
       id,
@@ -83,6 +91,9 @@ function parseTemplateNode(item: unknown, index: number, fallbackTitle: string):
       title: fallbackTitle || "Group",
       description: "",
       execution: row.execution === "sequential" ? "sequential" : "parallel",
+      assigneeRole: undefined,
+      assigneeKind: undefined,
+      dependsOn: undefined,
       children: parseTaskTemplateNodes(row.children, "Task"),
     };
   }
@@ -92,9 +103,16 @@ function parseTemplateNode(item: unknown, index: number, fallbackTitle: string):
     title: title || fallbackTitle,
     description: resolveTaskDescription(row),
     execution: row.execution === "sequential" ? "sequential" : "parallel",
+    assigneeRole: undefined,
+    assigneeKind: undefined,
+    dependsOn: undefined,
+    children: undefined,
   };
   if (typeof row.assigneeRole === "string" && row.assigneeRole.trim()) {
     template.assigneeRole = row.assigneeRole.trim();
+  }
+  if (row.assigneeKind === "human" || row.assigneeKind === "ai") {
+    template.assigneeKind = row.assigneeKind;
   }
   if (Array.isArray(row.dependsOn)) {
     template.dependsOn = row.dependsOn
@@ -111,11 +129,11 @@ function parseTaskTemplateNodes(raw: unknown, fallbackTitle: string): StageTaskT
   if (!Array.isArray(raw)) return [];
   return raw
     .map((item, index) => parseTemplateNode(item, index, fallbackTitle))
-    .filter((item): item is StageTaskTemplate => item !== null);
+    .filter((item): item is StageTaskTemplate => item !== undefined);
 }
 
-export function parseTaskTemplatesJson(raw: string | null | undefined): StageTaskTemplate[] {
-  if (!raw?.trim()) return [];
+export function parseTaskTemplatesJson(raw: string | undefined): StageTaskTemplate[] {
+  if (!raw || !raw.trim()) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -129,13 +147,14 @@ function serializeTemplateNode(template: StageTaskTemplate): Record<string, unkn
   const payload: Record<string, unknown> = {
     id: template.id,
     title: template.title,
-    description: template.description ?? "",
-    assigneeRole: template.assigneeRole ?? "",
-    kind: template.kind ?? "task",
-    execution: template.execution ?? "parallel",
-    dependsOn: template.dependsOn ?? [],
+    description: template.description,
+    kind: template.kind !== undefined ? template.kind : "task",
+    execution: template.execution !== undefined ? template.execution : "parallel",
+    dependsOn: template.dependsOn !== undefined ? template.dependsOn : [],
   };
-  if (template.children?.length) {
+  if (template.assigneeRole) payload.assigneeRole = template.assigneeRole;
+  if (template.assigneeKind) payload.assigneeKind = template.assigneeKind;
+  if (template.children !== undefined && template.children.length > 0) {
     payload.children = template.children.map((child) => serializeTemplateNode(child));
   }
   return payload;
@@ -152,22 +171,27 @@ export function legacyTemplatesFromCount(stageId: string, stageTitle: string, co
     title: `${stageTitle} #${index + 1}`,
     description: "",
     assigneeRole: undefined,
+    assigneeKind: undefined,
+    kind: undefined,
+    execution: undefined,
+    dependsOn: undefined,
+    children: undefined,
   }));
 }
 
 export function resolveStageTaskTemplates(input: {
-  taskTemplatesJson: string | null | undefined;
+  taskTemplatesJson: string | undefined;
   spawnTaskCount: number;
   stageId: string;
   stageTitle: string;
 }): StageTaskTemplate[] {
   const parsed = parseTaskTemplatesJson(input.taskTemplatesJson);
   if (parsed.length > 0) return parsed;
-  return legacyTemplatesFromCount(input.stageId, input.stageTitle, input.spawnTaskCount ?? 0);
+  return legacyTemplatesFromCount(input.stageId, input.stageTitle, input.spawnTaskCount);
 }
 
 export function resolveStageTaskTemplateRoots(input: {
-  taskTemplatesJson: string | null | undefined;
+  taskTemplatesJson: string | undefined;
   spawnTaskCount: number;
   stageId: string;
   stageTitle: string;
@@ -178,7 +202,8 @@ export function resolveStageTaskTemplateRoots(input: {
 function templateTreeHasTasks(nodes: StageTaskTemplate[]): boolean {
   for (const node of nodes) {
     if (node.kind === "group") {
-      if (templateTreeHasTasks(node.children ?? [])) return true;
+      const children = node.children !== undefined ? node.children : [];
+      if (templateTreeHasTasks(children)) return true;
       continue;
     }
     return true;
@@ -187,7 +212,7 @@ function templateTreeHasTasks(nodes: StageTaskTemplate[]): boolean {
 }
 
 export function stageHasActionableTemplates(input: {
-  taskTemplatesJson: string | null | undefined;
+  taskTemplatesJson: string | undefined;
   spawnTaskCount: number;
   stageId: string;
   stageTitle: string;

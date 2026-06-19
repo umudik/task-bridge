@@ -7,7 +7,7 @@ Mobil + web UI + backend task manager.
 Static reference: [docs/index.html](docs/index.html) — same Tailwind/shadcn design tokens as the web app.
 
 ```powershell
-npm run build:docs
+npm --prefix docs run build
 ```
 
 Open `docs/index.html` locally after building (or run `npm run dev` in `docs/` for CSS watch).
@@ -30,40 +30,19 @@ Backend (`tsx watch`) + web (`vite` HMR) aynı anda açılır. Docker image buil
 |--------|-----|
 | Web UI | http://localhost:5173/app/login |
 | API | http://localhost:3000 |
-| Ngrok panel | http://localhost:4040 |
-
-Ngrok container Ctrl+C sonrası da ayakta kalır (mobil QR için). Sadece local:
-
-```powershell
-npm run dev:local
-```
-
-Ngrok’u ayrı kapatmak için: `npm run dev:ngrok:down`
 
 ## Docker (tek container — API + UI)
 
 ```powershell
 copy .env.example .env
-npm run docker:up:d
+npm run docker:up
 ```
 
-`.env`:
-
-```env
-BACKEND_API_KEY=dev-key
-TASK_BRIDGE_PORT=3000
-```
+İlk açılışta `/setup` ile admin hesabı oluştur, sonra `/app/login` ile giriş yap.
 
 | Servis | URL |
 |--------|-----|
 | API + Web UI | http://localhost:3000/app/login |
-| Ngrok panel | http://localhost:4040 (opsiyonel) |
-
-Mobil QR / dış erişim için ngrok:
-
-```powershell
-npm run docker:up:ngrok
-```
 
 ## Docker Hub
 
@@ -72,7 +51,7 @@ Image build + push:
 ```powershell
 # .env içine DOCKER_USER=your-dockerhub-user ekle
 npm run docker:publish
-npm run docker:publish:all
+npm run docker:publish -- --mobile
 # veya: node scripts/docker-publish.mjs 0.1.0 0.1.0 --mobile
 ```
 
@@ -81,7 +60,7 @@ Başka bir projede sadece pull ile çalıştır:
 ```powershell
 cd deploy
 copy .env.example .env
-# TASK_BRIDGE_IMAGE ve BACKEND_API_KEY düzenle
+# TASK_BRIDGE_IMAGE düzenle
 docker compose pull
 docker compose up -d
 ```
@@ -93,8 +72,8 @@ Detay: [deploy/README.md](deploy/README.md)
 ### Docker image içinden (önerilen)
 
 ```powershell
-npm run docker:mobile:build
-npm run docker:up:d
+npm run mobile:build
+npm run docker:up
 ```
 
 Web UI → **Mobile** → **Download APK** → telefona kur → QR tara.
@@ -102,7 +81,7 @@ Web UI → **Mobile** → **Download APK** → telefona kur → QR tara.
 Tek seferde Hub'a API+UI+APK:
 
 ```powershell
-npm run docker:publish:all
+npm run docker:publish -- --mobile
 ```
 
 ### Android Studio

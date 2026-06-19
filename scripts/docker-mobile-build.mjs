@@ -48,7 +48,7 @@ async function main() {
 
   console.log("");
   console.log(`[mobile] APK ready: ${outFile}`);
-  console.log("[mobile] Next: npm run docker:up:d  (APK is bundled into the image)");
+  console.log("[mobile] Next: npm run docker:up  (APK is bundled into the image)");
 }
 
 main().catch(async (error) => {

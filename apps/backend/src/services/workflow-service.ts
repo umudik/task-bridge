@@ -14,6 +14,7 @@ import {
   upsertProjectWorkflowSettingsRow,
 } from "../db/workflow-db.js";
 import { countSpawnableTemplates } from "../domain/task-template-graph.js";
+import { parseActorKind } from "../domain/workflow-stage.js";
 import {
   type StageTaskTemplate,
   SUBTASK_SPAWN_STAGE_ID,
@@ -26,6 +27,7 @@ import {
 } from "../domain/workflow-stage.js";
 import { isDoneStage, listSubtasks, type BridgeTask } from "../domain/task.js";
 import { AppError } from "../errors/app-error.js";
+import { emptyToNull } from "../lib/strings.js";
 import { countActiveTasksOnStage } from "../db/tasks-db.js";
 import { allocateTaskId, getBridgeTask, listBridgeTasks, upsertBridgeTask } from "./task-service.js";
 import { copyTemplateStagesToProject, getWorkflowTemplate } from "./workflow-template-service.js";
@@ -50,7 +52,8 @@ export type ProjectMember = {
   id: string;
   projectId: string;
   name: string;
-  role?: string;
+  role: string;
+  actorKind: "human" | "ai";
   openTasks: number;
 };
 
@@ -152,18 +155,21 @@ function memberRowToProjectMember(
     project_id: string;
     name: string;
     stage_roles_json: string;
-    role?: string;
+    role: string;
+    actor_kind: string;
   },
   tasks: BridgeTask[],
 ): ProjectMember {
-  const directRole = row.role?.trim() || "";
-  const legacyRole = Object.values(parseStageRolesJson(row.stage_roles_json)).find((value) => value.trim())?.trim() ?? "";
-  const role = directRole || legacyRole || undefined;
+  const directRole = emptyToNull(row.role);
+  const legacyRole = Object.values(parseStageRolesJson(row.stage_roles_json))
+    .map(emptyToNull)
+    .find((value): value is string => Boolean(value));
   return {
     id: row.id,
     projectId: row.project_id,
     name: row.name,
-    role,
+    role: directRole ?? legacyRole ?? "",
+    actorKind: parseActorKind(row.actor_kind),
     openTasks: countOpenTasksForMember(
       tasks.filter((task) => task.projectId === row.project_id),
       row.name,
@@ -430,14 +436,16 @@ export async function getStageSnapshot(projectId: string, stageId: string | null
 export async function createProjectMember(input: {
   projectId: string;
   name: string;
-  role?: string;
+  role: string;
+  actorKind: "human" | "ai";
 }): Promise<ProjectMember> {
   const id = randomUUID();
   insertProjectMemberRow({
     id,
     projectId: input.projectId,
     name: input.name,
-    role: input.role ?? "",
+    role: input.role,
+    actorKind: input.actorKind,
   });
   const row = getProjectMemberRow(id);
   if (!row) throw new Error("Failed to create member");
@@ -447,11 +455,12 @@ export async function createProjectMember(input: {
 
 export async function updateProjectMember(
   id: string,
-  patch: { name?: string; role?: string },
+  patch: { name?: string; role?: string; actorKind?: "human" | "ai" },
 ): Promise<ProjectMember | null> {
-  const dbPatch: { name?: string; role?: string } = {};
+  const dbPatch: { name?: string; role?: string; actorKind?: "human" | "ai" } = {};
   if (patch.name !== undefined) dbPatch.name = patch.name;
   if (patch.role !== undefined) dbPatch.role = patch.role;
+  if (patch.actorKind !== undefined) dbPatch.actorKind = patch.actorKind;
   if (!updateProjectMemberRow(id, dbPatch)) return null;
   const row = getProjectMemberRow(id);
   if (!row) return null;

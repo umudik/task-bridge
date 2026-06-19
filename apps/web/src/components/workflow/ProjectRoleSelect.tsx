@@ -1,4 +1,5 @@
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type ProjectRoleSelectProps = {
@@ -22,15 +23,12 @@ export function ProjectRoleSelect({
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <select
+      <Select
         id={id}
         value={value}
         disabled={!hasRoles}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(
-          "h-10 w-full rounded-xl border border-white/[0.1] bg-[#111] px-3 text-sm",
-          !hasRoles && "cursor-not-allowed opacity-50",
-        )}
+        className={cn(!hasRoles && "cursor-not-allowed opacity-50")}
       >
         <option value="">{emptyLabel}</option>
         {roles.map((role) => (
@@ -38,7 +36,7 @@ export function ProjectRoleSelect({
             {role}
           </option>
         ))}
-      </select>
+      </Select>
       {!hasRoles ? (
         <p className="text-xs text-muted-foreground">Add project roles in the Team tab first.</p>
       ) : null}

@@ -20,40 +20,15 @@ function loadEnv() {
   return vars;
 }
 
-function run(command, args, options = {}, track = true) {
+function run(command, args, options = {}) {
   const child = spawn(command, args, {
     stdio: "inherit",
     shell: isWin,
     cwd: root,
     ...options,
   });
-  if (track) children.push(child);
+  children.push(child);
   return child;
-}
-
-function waitForExit(child) {
-  return new Promise((resolve, reject) => {
-    child.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`exit ${code}`));
-    });
-    child.on("error", reject);
-  });
-}
-
-async function ensureNgrok(env) {
-  if (!env.NGROK_AUTHTOKEN) {
-    console.log("[dev] No NGROK_AUTHTOKEN — local only (http://localhost:5173/app/login)");
-    return;
-  }
-  console.log("[dev] Starting ngrok (docker, stays up after Ctrl+C)…");
-  const child = run(
-    "docker",
-    ["compose", "-f", "docker-compose.dev.yml", "up", "-d", "--remove-orphans"],
-    { env: { ...process.env, ...env } },
-    false,
-  );
-  await waitForExit(child);
 }
 
 function shutdown() {
@@ -65,23 +40,11 @@ function shutdown() {
 
 async function main() {
   const env = loadEnv();
-  const skipNgrok = process.argv.includes("--no-ngrok");
-
-  if (!skipNgrok) {
-    try {
-      await ensureNgrok(env);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[dev] ngrok skipped: ${message}`);
-    }
-  }
 
   const backendEnv = {
     ...process.env,
     ...env,
     PORT: env.PORT ?? "3000",
-    BACKEND_API_KEY: env.BACKEND_API_KEY ?? "dev-key",
-    NGROK_INSPECTOR_URL: "http://localhost:4040",
   };
 
   run("npm", ["--prefix", "apps/backend", "run", "dev"], { env: backendEnv });
@@ -90,8 +53,6 @@ async function main() {
   console.log("");
   console.log("[dev] Web (HMR):  http://localhost:5173/app/login");
   console.log("[dev] API (watch): http://localhost:3000");
-  console.log("[dev] Ngrok panel:  http://localhost:4040");
-  console.log("[dev] Ctrl+C stops backend + web only. Ngrok keeps running.");
   console.log("");
 
   process.on("SIGINT", shutdown);

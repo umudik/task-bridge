@@ -53,6 +53,7 @@ export async function upsertBridgeTask(input: {
   stageId?: string | null;
   assignee?: string | null;
   assigneeRole?: string | null;
+  assigneeKind?: BridgeTask["assigneeKind"];
   parentId?: number | null;
   epicId?: number | null;
   templateId?: string | null;
@@ -100,6 +101,7 @@ export async function upsertBridgeTask(input: {
     workStatus: input.workStatus ?? (input.parentId ? "todo" : null),
     assignee: input.assignee ?? null,
     assigneeRole: input.assigneeRole ?? null,
+    assigneeKind: input.assigneeKind ?? null,
     comments: [],
     events: [{ type: "created", at: createdAt, by: createdBy }],
   };

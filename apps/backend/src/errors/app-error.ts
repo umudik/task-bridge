@@ -1,8 +1,8 @@
 export class AppError extends Error {
   readonly statusCode: number;
-  readonly details?: unknown;
+  readonly details: unknown;
 
-  constructor(message: string, statusCode: number, details?: unknown) {
+  constructor(message: string, statusCode: number, details: unknown = undefined) {
     super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
@@ -20,9 +20,9 @@ export function statusCodeFromError(error: unknown): number {
     typeof error === "object" &&
     error !== null &&
     "statusCode" in error &&
-    typeof error.statusCode === "number"
+    typeof (error as Record<string, unknown>).statusCode === "number"
   ) {
-    return error.statusCode;
+    return (error as { statusCode: number }).statusCode;
   }
   return 500;
 }

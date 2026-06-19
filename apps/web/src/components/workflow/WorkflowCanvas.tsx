@@ -16,9 +16,9 @@ import { cn } from "@/lib/utils";
 import type { StageTaskTemplate, WorkflowStage } from "@/lib/api";
 import {
   canMoveTemplateAmongSiblings,
-  NODE_ADD_BTN_SIZE,
   sanitizeStageTemplates,
 } from "./template-graph-utils";
+import { NodeAddButton } from "./NodeAddButton";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -181,24 +181,6 @@ function NodeLink({ className }: { className?: string }) {
   return <div className={cn("shrink-0 bg-white/[0.14]", className)} />;
 }
 
-function NodeAddButton({ title, onClick }: { title: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      data-node-insert="true"
-      title={title}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      className="pointer-events-auto relative z-10 flex shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-[#1a1a1a] text-muted-foreground shadow-md transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-400"
-      style={{ width: NODE_ADD_BTN_SIZE, height: NODE_ADD_BTN_SIZE }}
-    >
-      <Plus className="h-3.5 w-3.5" />
-    </button>
-  );
-}
-
 function TaskReorderButton({
   direction,
   disabled,
@@ -294,6 +276,11 @@ function TaskNode({
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-white/90">
                 {template.title}
               </span>
+              {template.assigneeKind === "human" ? (
+                <span className="shrink-0 rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">
+                  Human
+                </span>
+              ) : null}
               {template.assigneeRole ? (
                 <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">
                   {template.assigneeRole}
@@ -302,7 +289,7 @@ function TaskNode({
             </div>
           </button>
           <NodeLink className="mx-1 h-px w-3" />
-          <NodeAddButton title="Add subtask" onClick={() => onAddSubtask(template.id)} />
+          <NodeAddButton title="Add subtask" data-node-insert="true" onClick={() => onAddSubtask(template.id)} />
         </div>
       </div>
       {children.length > 0 ? (
@@ -376,7 +363,7 @@ function StageColumn({
         />
         <div className="flex flex-col items-center">
           <NodeLink className="h-4 w-px" />
-          <NodeAddButton title="Add task to step" onClick={onAddStageTask} />
+          <NodeAddButton title="Add task to step" data-node-insert="true" onClick={onAddStageTask} />
         </div>
       </div>
       <div
@@ -669,17 +656,14 @@ export function WorkflowCanvas({
             if (!nextStage) return null;
             const midpoint = connectorMidpoint(stage, nextStage);
             return (
-              <button
+              <NodeAddButton
                 key={`insert-${stage.id}`}
-                type="button"
-                data-stage-insert="true"
                 title="Insert stage"
+                data-stage-insert="true"
                 onClick={() => onInsertStageAfter(flowIndex)}
-                className="pointer-events-auto absolute z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/[0.12] bg-[#1a1a1a] text-muted-foreground shadow-lg transition-colors hover:border-primary/40 hover:bg-primary/15 hover:text-primary"
+                className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
                 style={{ left: midpoint.x, top: midpoint.y }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+              />
             );
           })}
         </div>

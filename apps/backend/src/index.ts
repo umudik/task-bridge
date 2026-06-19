@@ -5,31 +5,18 @@ import { isAppError, statusCodeFromError } from "./errors/app-error.js";
 import { createLogger } from "./logger.js";
 import { config } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
-import { connectRoutes } from "./routes/connect.js";
 import { projectRoutes } from "./routes/projects.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { workflowRoutes } from "./routes/workflow.js";
 import { workflowTemplateRoutes } from "./routes/workflow-templates.js";
 import { libraryRoutes } from "./routes/library.js";
 import { webRoutes } from "./routes/web.js";
+import { authRoutes } from "./routes/auth.js";
+import { adminUserRoutes } from "./routes/admin-users.js";
+import { docsRoutes } from "./routes/docs.js";
 import { refreshProjectRegistry, initProjectRegistry } from "./services/project-registry.js";
-import { resolveConnectTarget } from "./services/connect-target.js";
 
 const logger = createLogger("backend");
-
-async function logConnectInfo() {
-  const localUi = `http://localhost:${config.port}/app/login`;
-  for (let attempt = 0; attempt < 15; attempt += 1) {
-    const target = await resolveConnectTarget();
-    if (target) {
-      logger.info(`Web UI: ${localUi}`);
-      logger.info(`Ngrok URL: https://${target.host}`);
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-  logger.info(`Web UI: ${localUi}`);
-}
 
 async function main() {
   const app = Fastify({ logger: false });
@@ -38,13 +25,25 @@ async function main() {
   await initProjectRegistry();
   await refreshProjectRegistry();
 
+  // Health (no prefix)
   await healthRoutes(app);
-  await connectRoutes(app);
-  await projectRoutes(app);
-  await taskRoutes(app);
-  await workflowRoutes(app);
-  await workflowTemplateRoutes(app);
-  await libraryRoutes(app);
+
+  // All API routes under /api prefix
+  await app.register(
+    async (apiApp) => {
+      await docsRoutes(apiApp);
+      await authRoutes(apiApp);
+      await adminUserRoutes(apiApp);
+      await projectRoutes(apiApp);
+      await taskRoutes(apiApp);
+      await workflowRoutes(apiApp);
+      await workflowTemplateRoutes(apiApp);
+      await libraryRoutes(apiApp);
+    },
+    { prefix: "/api" },
+  );
+
+  // Web UI — serves static files + SPA fallback
   await webRoutes(app);
 
   app.setErrorHandler((error, _request, reply) => {
@@ -65,7 +64,7 @@ async function main() {
 
   await app.listen({ port: config.port, host: "0.0.0.0" });
   logger.info(`Server listening on port ${config.port}`);
-  void logConnectInfo();
+  logger.info(`Web UI: http://localhost:${config.port}/app/login`);
   logger.info("Projects loaded from database");
 }
 

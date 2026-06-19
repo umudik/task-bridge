@@ -10,6 +10,7 @@ import {
   type BridgeTask,
   type RawTask,
 } from "../domain/task.js";
+import { type WorkStatus } from "../domain/work-status.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
@@ -19,8 +20,9 @@ function resolveDatabasePath(): string {
 }
 
 function resolveLegacyJsonPath(): string {
-  if (process.env.BRIDGE_TASKS_PATH?.trim()) {
-    return process.env.BRIDGE_TASKS_PATH.trim();
+  const bridgeTasksPath = process.env["BRIDGE_TASKS_PATH"];
+  if (bridgeTasksPath !== undefined && bridgeTasksPath.trim()) {
+    return bridgeTasksPath.trim();
   }
   return join(moduleDir, "..", "..", "..", "..", "data", "bridge-tasks.json");
 }
@@ -73,6 +75,9 @@ function migrate(database: Database.Database) {
   if (!columnExists(database, "tasks", "assignee_role")) {
     database.exec(`ALTER TABLE tasks ADD COLUMN assignee_role TEXT`);
   }
+  if (!columnExists(database, "tasks", "assignee_kind")) {
+    database.exec(`ALTER TABLE tasks ADD COLUMN assignee_kind TEXT`);
+  }
   if (!columnExists(database, "tasks", "epic_id")) {
     database.exec(`ALTER TABLE tasks ADD COLUMN epic_id INTEGER`);
     database.exec(`
@@ -95,39 +100,52 @@ function migrate(database: Database.Database) {
 }
 
 function rowToTask(row: Record<string, unknown>): BridgeTask {
+  const rawWorkStatus = row.work_status;
+  const workStatus: WorkStatus | undefined =
+    rawWorkStatus !== null &&
+    rawWorkStatus !== undefined &&
+    rawWorkStatus !== "" &&
+    typeof rawWorkStatus === "string"
+      ? (rawWorkStatus as WorkStatus)
+      : undefined;
+
   return normalizeTask({
     id: Number(row.id),
     projectId: String(row.project_id),
     projectName: String(row.project_name),
-    parentId: row.parent_id === null || row.parent_id === undefined ? null : Number(row.parent_id),
-    epicId: row.epic_id === null || row.epic_id === undefined ? null : Number(row.epic_id),
+    parentId: row.parent_id !== null && row.parent_id !== undefined ? Number(row.parent_id) : undefined,
+    epicId: row.epic_id !== null && row.epic_id !== undefined ? Number(row.epic_id) : undefined,
     templateId:
-      row.template_id === null || row.template_id === undefined ? null : String(row.template_id),
+      row.template_id !== null && row.template_id !== undefined
+        ? String(row.template_id)
+        : undefined,
     title: String(row.title),
     description: String(row.description),
-    acceptanceCriteria: null,
-    priority: row.priority === null || row.priority === undefined ? null : String(row.priority),
+    acceptanceCriteria: undefined,
+    priority: row.priority !== null && row.priority !== undefined ? String(row.priority) : undefined,
     labels: JSON.parse(String(row.labels_json)) as string[],
-    assignee: row.assignee === null || row.assignee === undefined ? null : String(row.assignee),
+    assignee: row.assignee !== null && row.assignee !== undefined ? String(row.assignee) : undefined,
     assigneeRole:
-      row.assignee_role === null || row.assignee_role === undefined
-        ? null
-        : String(row.assignee_role),
+      row.assignee_role !== null && row.assignee_role !== undefined
+        ? String(row.assignee_role)
+        : undefined,
+    assigneeKind:
+      row.assignee_kind === "human" || row.assignee_kind === "ai"
+        ? row.assignee_kind
+        : undefined,
     createdBy: String(row.created_by),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
-    claimedBy: row.claimed_by === null || row.claimed_by === undefined ? null : String(row.claimed_by),
-    claimedAt: row.claimed_at === null || row.claimed_at === undefined ? null : String(row.claimed_at),
-    answeredBy: row.answered_by === null || row.answered_by === undefined ? null : String(row.answered_by),
-    answeredAt: row.answered_at === null || row.answered_at === undefined ? null : String(row.answered_at),
-    answer: row.answer === null || row.answer === undefined ? null : String(row.answer),
-    stageId: row.stage_id === null || row.stage_id === undefined ? null : String(row.stage_id),
-    workStatus:
-      row.work_status === null || row.work_status === undefined || row.work_status === ""
-        ? null
-        : (String(row.work_status) as BridgeTask["workStatus"]),
+    claimedBy: row.claimed_by !== null && row.claimed_by !== undefined ? String(row.claimed_by) : undefined,
+    claimedAt: row.claimed_at !== null && row.claimed_at !== undefined ? String(row.claimed_at) : undefined,
+    answeredBy: row.answered_by !== null && row.answered_by !== undefined ? String(row.answered_by) : undefined,
+    answeredAt: row.answered_at !== null && row.answered_at !== undefined ? String(row.answered_at) : undefined,
+    answer: row.answer !== null && row.answer !== undefined ? String(row.answer) : undefined,
+    stageId: row.stage_id !== null && row.stage_id !== undefined ? String(row.stage_id) : undefined,
+    workStatus,
     comments: JSON.parse(String(row.comments_json)),
     events: JSON.parse(String(row.events_json)),
+    status: undefined,
   } as RawTask);
 }
 
@@ -145,6 +163,7 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
     labels_json: JSON.stringify(task.labels),
     assignee: task.assignee,
     assignee_role: task.assigneeRole,
+    assignee_kind: task.assigneeKind,
     ai_context: null,
     ai_summary: null,
     created_by: task.createdBy,
@@ -156,7 +175,7 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
     answered_at: task.answeredAt,
     answer: task.answer,
     stage_id: task.stageId,
-    work_status: task.workStatus ?? null,
+    work_status: task.workStatus,
     comments_json: JSON.stringify(task.comments),
     events_json: JSON.stringify(task.events),
   };
@@ -227,17 +246,17 @@ export function listTaskRows(): BridgeTask[] {
   return sortTasks(rows.map((row) => rowToTask(row as Record<string, unknown>)));
 }
 
-export function getTaskRow(id: number): BridgeTask | null {
+export function getTaskRow(id: number): BridgeTask | undefined {
   const database = getTasksDb();
   const row = database.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
-  if (!row) return null;
+  if (!row) return undefined;
   return rowToTask(row as Record<string, unknown>);
 }
 
 export function allocateTaskRowId(): number {
   const database = getTasksDb();
   const row = database.prepare("SELECT MAX(id) AS maxId FROM tasks").get() as { maxId: number | null };
-  return (row.maxId ?? 0) + 1;
+  return (row.maxId !== null ? row.maxId : 0) + 1;
 }
 
 export function upsertTaskRow(task: BridgeTask): void {
@@ -289,11 +308,11 @@ export function upsertTaskRow(task: BridgeTask): void {
 export function mutateTaskRow(
   id: number,
   mutator: (task: BridgeTask) => void,
-): BridgeTask | null {
+): BridgeTask | undefined {
   const database = getTasksDb();
   return database.transaction(() => {
     const task = getTaskRow(id);
-    if (!task) return null;
+    if (!task) return undefined;
     mutator(task);
     upsertTaskRow(task);
     return task;

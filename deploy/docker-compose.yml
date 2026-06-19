@@ -3,7 +3,6 @@ services:
     image: ${TASK_BRIDGE_IMAGE:?Set TASK_BRIDGE_IMAGE e.g. youruser/task-bridge:latest}
     environment:
       PORT: "3000"
-      BACKEND_API_KEY: ${BACKEND_API_KEY:?Set BACKEND_API_KEY}
       DATABASE_PATH: /app/data/bridge.db
     volumes:
       - task_bridge_data:/app/data

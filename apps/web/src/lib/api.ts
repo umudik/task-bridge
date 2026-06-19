@@ -1,9 +1,19 @@
 import type { Session } from "./session";
+import { clearSession } from "./session";
 
 export type Project = {
   id: string;
   name: string;
   repoPath?: string | null;
+  description?: string;
+  workflowTemplateId?: string;
+};
+
+export type UpdateProjectInput = {
+  name?: string;
+  repoPath?: string;
+  description?: string;
+  workflowTemplateId?: string;
 };
 
 export type InboxItem = {
@@ -24,11 +34,14 @@ export type InboxItem = {
 
 export type TemplateExecution = "parallel" | "sequential";
 
+export type AssigneeKind = "human" | "ai";
+
 export type StageTaskTemplate = {
   id: string;
   title: string;
   description: string;
   assigneeRole?: string;
+  assigneeKind?: AssigneeKind;
   kind?: "task" | "group";
   execution?: TemplateExecution;
   dependsOn?: string[];
@@ -52,7 +65,8 @@ export type ProjectMember = {
   id: string;
   projectId: string;
   name: string;
-  role?: string;
+  role: string;
+  actorKind: AssigneeKind;
   openTasks: number;
 };
 
@@ -95,6 +109,8 @@ export type TaskSubtask = {
   stageTitle?: string | null;
   templateId?: string | null;
   assignee?: string | null;
+  assigneeKind?: AssigneeKind | null;
+  claimedBy?: string | null;
   workStatus?: WorkStatus;
   workStatusLabel?: string;
   done: boolean;
@@ -173,13 +189,13 @@ export type LibraryDocumentLink = {
   linkedAt: string;
 };
 
-export type ConnectConfig = {
-  host: string;
-  port: number;
-  secure: boolean;
-  apiKey: string;
-  connectPath?: string;
-  source?: string;
+export type PublicUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isSystemAdmin: boolean;
+  createdAt: string;
 };
 
 export class ApiError extends Error {
@@ -191,15 +207,11 @@ export class ApiError extends Error {
   }
 }
 
-function headers(session: Session) {
-  const next: Record<string, string> = {
+function authHeaders(session: Session): Record<string, string> {
+  return {
     Accept: "application/json",
-    "X-Api-Key": session.apiKey,
+    Authorization: `Bearer ${session.token}`,
   };
-  if (session.useHttps && session.baseUrl.includes("ngrok")) {
-    next["ngrok-skip-browser-warning"] = "true";
-  }
-  return next;
 }
 
 async function parseError(response: Response) {
@@ -217,14 +229,21 @@ async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const url = `${session.baseUrl.replace(/\/$/, "")}${path}`;
-  const response = await fetch(url, {
+  // Paths are relative — no baseUrl needed (same origin)
+  const response = await fetch(path, {
     ...init,
     headers: {
-      ...headers(session),
+      ...authHeaders(session),
       ...(init?.headers ?? {}),
     },
   });
+
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/app/login";
+    throw new ApiError("Session expired", 401);
+  }
+
   if (!response.ok) {
     throw new ApiError(await parseError(response), response.status);
   }
@@ -238,23 +257,96 @@ async function request<T>(
   return JSON.parse(text) as T;
 }
 
-export async function fetchConnectConfig(origin?: string) {
-  const base = origin ?? (typeof window !== "undefined" ? window.location.origin : "");
-  const response = await fetch(`${base.replace(/\/$/, "")}/connect.json`, {
-    headers: { Accept: "application/json" },
+// ─── Auth (no session required) ───────────────────────────────────────────────
+
+export async function checkAuthStatus(): Promise<{ hasUsers: boolean }> {
+  const response = await fetch("/api/auth/status");
+  if (!response.ok) throw new ApiError("Failed to check status", response.status);
+  return response.json() as Promise<{ hasUsers: boolean }>;
+}
+
+export async function setupAdmin(params: { name: string; email: string; password: string }) {
+  const response = await fetch("/api/auth/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
   });
   if (!response.ok) {
-    throw new ApiError(await parseError(response), response.status);
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(body.error ?? "Setup failed", response.status);
   }
-  return (await response.json()) as ConnectConfig;
+  return response.json();
 }
 
-export async function validateSession(session: Session) {
-  await request<{ projects: Project[] }>(session, "/projects");
+export async function loginUser(params: {
+  email: string;
+  password: string;
+}): Promise<{
+  token: string;
+  user: { id: string; name: string; email: string; role: string; isSystemAdmin: boolean };
+}> {
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(body.error ?? "Login failed", response.status);
+  }
+  return response.json() as Promise<{
+    token: string;
+    user: { id: string; name: string; email: string; role: string; isSystemAdmin: boolean };
+  }>;
 }
+
+// ─── Mobile QR ────────────────────────────────────────────────────────────────
+
+export function buildMobileQrData(session: Session): string {
+  const server = typeof window !== "undefined" ? window.location.origin : "";
+  return `taskbridge://auth?server=${encodeURIComponent(server)}&token=${encodeURIComponent(session.token)}`;
+}
+
+// ─── Admin user management ────────────────────────────────────────────────────
+
+export async function fetchUsers(session: Session): Promise<PublicUser[]> {
+  const data = await request<{ users: PublicUser[] }>(session, "/api/admin/users");
+  return data.users ?? [];
+}
+
+export async function createAppUser(
+  session: Session,
+  params: { name: string; email: string; password: string; role: string },
+): Promise<PublicUser> {
+  const data = await request<{ user: PublicUser }>(session, "/api/admin/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return data.user;
+}
+
+export async function updateAppUser(
+  session: Session,
+  userId: string,
+  params: { name?: string; role?: string },
+): Promise<PublicUser> {
+  const data = await request<{ user: PublicUser }>(session, `/api/admin/users/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return data.user;
+}
+
+export async function deleteAppUser(session: Session, userId: string): Promise<void> {
+  await request<void>(session, `/api/admin/users/${userId}`, { method: "DELETE" });
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
 
 export async function fetchProjects(session: Session) {
-  const data = await request<{ projects: Project[] }>(session, "/projects");
+  const data = await request<{ projects: Project[] }>(session, "/api/projects");
   return data.projects ?? [];
 }
 
@@ -272,56 +364,114 @@ export type CreateProjectInput = {
   name: string;
   id?: string;
   repoPath: string;
+  description?: string;
   workflowTemplateId?: string;
 };
 
 export async function createProject(session: Session, input: CreateProjectInput) {
-  return request<Project>(session, "/projects", {
+  return request<Project>(session, "/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: input.name,
       id: input.id?.trim() || undefined,
       repoPath: input.repoPath,
+      description: input.description?.trim() || undefined,
       workflowTemplateId: input.workflowTemplateId?.trim() || undefined,
     }),
   });
 }
 
+export async function updateProject(session: Session, projectId: string, input: UpdateProjectInput) {
+  return request<Project>(session, `/api/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function fetchWorkflowTemplates(session: Session) {
-  const data = await request<{ items: WorkflowTemplateSummary[] }>(session, "/workflow-templates");
+  const data = await request<{ items: WorkflowTemplateSummary[] }>(
+    session,
+    "/api/workflow-templates",
+  );
   return data.items ?? [];
 }
 
 export async function fetchWorkflowTemplate(session: Session, templateId: string) {
-  return request<WorkflowTemplate>(session, `/workflow-templates/${templateId}`);
+  return request<WorkflowTemplate>(session, `/api/workflow-templates/${templateId}`);
 }
 
 export async function createWorkflowTemplate(
   session: Session,
   input: { title: string; id?: string; description?: string },
 ) {
-  return request<WorkflowTemplate>(session, "/workflow-templates", {
+  return request<WorkflowTemplate>(session, "/api/workflow-templates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
-export async function saveWorkflowTemplate(session: Session, templateId: string, stages: WorkflowStage[]) {
-  return request<WorkflowTemplate>(session, `/workflow-templates/${templateId}`, {
+export async function saveWorkflowTemplate(
+  session: Session,
+  templateId: string,
+  stages: WorkflowStage[],
+) {
+  return request<WorkflowTemplate>(session, `/api/workflow-templates/${templateId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ stages }),
   });
 }
 
-export async function applyWorkflowTemplate(session: Session, projectId: string, templateId: string) {
-  return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow/apply-template`, {
+export async function deleteWorkflowTemplate(session: Session, templateId: string) {
+  await request<void>(session, `/api/workflow-templates/${templateId}`, {
+    method: "DELETE",
+  });
+}
+
+export const PROTECTED_WORKFLOW_TEMPLATE_IDS = new Set(["ai-sdlc"]);
+
+export async function exportWorkflowTemplate(session: Session, templateId: string): Promise<void> {
+  const res = await fetch(`/api/workflow-templates/${templateId}/export`, {
+    headers: { Authorization: `Bearer ${session.token}` },
+  });
+  if (!res.ok) throw new ApiError("Export failed", res.status);
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const filename = match?.[1] ?? `${templateId}.json`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function importWorkflowTemplate(session: Session, data: unknown): Promise<WorkflowTemplate> {
+  return request<WorkflowTemplate>(session, "/api/workflow-templates/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ templateId }),
+    body: JSON.stringify(data),
   });
+}
+
+export async function applyWorkflowTemplate(
+  session: Session,
+  projectId: string,
+  templateId: string,
+) {
+  return request<ProjectWorkflow>(
+    session,
+    `/api/projects/${projectId}/workflow/apply-template`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templateId }),
+    },
+  );
 }
 
 export type CreateEpicInput = {
@@ -340,7 +490,7 @@ export type CreateTaskInput = {
 export async function createEpic(session: Session, input: CreateEpicInput) {
   return request<{ id: string | number; title?: string; projectName?: string; parentId?: number | null }>(
     session,
-    "/epics",
+    "/api/epics",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -356,7 +506,7 @@ export async function createEpic(session: Session, input: CreateEpicInput) {
 export async function createTask(session: Session, input: CreateTaskInput) {
   return request<{ id: string | number; title?: string; projectName?: string; parentId?: number | null }>(
     session,
-    "/tasks",
+    "/api/tasks",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -378,7 +528,7 @@ export async function fetchInbox(session: Session, query: InboxQuery = {}) {
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit) params.set("limit", String(query.limit));
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  return request<InboxResult>(session, `/inbox${suffix}`);
+  return request<InboxResult>(session, `/api/inbox${suffix}`);
 }
 
 export async function fetchAllInbox(session: Session, query: Omit<InboxQuery, "cursor"> = {}) {
@@ -393,11 +543,11 @@ export async function fetchAllInbox(session: Session, query: Omit<InboxQuery, "c
 }
 
 export async function fetchTask(session: Session, taskId: number) {
-  return request<TaskDetail>(session, `/tasks/${taskId}`);
+  return request<TaskDetail>(session, `/api/tasks/${taskId}`);
 }
 
 export async function addTaskComment(session: Session, taskId: number, text: string) {
-  return request<TaskDetail>(session, `/tasks/${taskId}`, {
+  return request<TaskDetail>(session, `/api/tasks/${taskId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ comment: { text, by: "web" } }),
@@ -405,7 +555,7 @@ export async function addTaskComment(session: Session, taskId: number, text: str
 }
 
 export async function updateTaskDescription(session: Session, taskId: number, description: string) {
-  return request<TaskDetail>(session, `/tasks/${taskId}`, {
+  return request<TaskDetail>(session, `/api/tasks/${taskId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ description }),
@@ -413,7 +563,7 @@ export async function updateTaskDescription(session: Session, taskId: number, de
 }
 
 export async function fetchProjectWorkflow(session: Session, projectId: string) {
-  return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow`);
+  return request<ProjectWorkflow>(session, `/api/projects/${projectId}/workflow`);
 }
 
 export async function saveProjectWorkflow(
@@ -421,7 +571,7 @@ export async function saveProjectWorkflow(
   projectId: string,
   input: { stages: WorkflowStage[]; roles: string[] },
 ) {
-  return request<ProjectWorkflow>(session, `/projects/${projectId}/workflow`, {
+  return request<ProjectWorkflow>(session, `/api/projects/${projectId}/workflow`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -429,15 +579,15 @@ export async function saveProjectWorkflow(
 }
 
 export async function exportProjectWorkflow(session: Session, projectId: string) {
-  return request<Record<string, unknown>>(session, `/projects/${projectId}/workflow/export`);
+  return request<Record<string, unknown>>(session, `/api/projects/${projectId}/workflow/export`);
 }
 
 export async function createMember(
   session: Session,
   projectId: string,
-  input: { name: string; role?: string },
+  input: { name: string; role: string; actorKind: AssigneeKind },
 ) {
-  return request<ProjectMember>(session, `/projects/${projectId}/members`, {
+  return request<ProjectMember>(session, `/api/projects/${projectId}/members`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -448,9 +598,9 @@ export async function updateMember(
   session: Session,
   projectId: string,
   memberId: string,
-  input: { name?: string; role?: string },
+  input: { name?: string; role?: string; actorKind?: AssigneeKind },
 ) {
-  return request<ProjectMember>(session, `/projects/${projectId}/members/${memberId}`, {
+  return request<ProjectMember>(session, `/api/projects/${projectId}/members/${memberId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -458,23 +608,25 @@ export async function updateMember(
 }
 
 export async function deleteMember(session: Session, projectId: string, memberId: string) {
-  await request<void>(session, `/projects/${projectId}/members/${memberId}`, { method: "DELETE" });
+  await request<void>(session, `/api/projects/${projectId}/members/${memberId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function fetchLibraries(session: Session) {
-  const data = await request<{ items: LibrarySummary[] }>(session, "/libraries");
+  const data = await request<{ items: LibrarySummary[] }>(session, "/api/libraries");
   return data.items ?? [];
 }
 
 export async function fetchLibrary(session: Session, libraryId: string) {
-  return request<LibraryDetail>(session, `/libraries/${libraryId}`);
+  return request<LibraryDetail>(session, `/api/libraries/${libraryId}`);
 }
 
 export async function createLibrary(
   session: Session,
   input: { title: string; id?: string; description?: string },
 ) {
-  return request<LibraryDetail>(session, "/libraries", {
+  return request<LibraryDetail>(session, "/api/libraries", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -486,7 +638,7 @@ export async function saveLibrary(
   libraryId: string,
   input: { title: string; description?: string },
 ) {
-  return request<LibraryDetail>(session, `/libraries/${libraryId}`, {
+  return request<LibraryDetail>(session, `/api/libraries/${libraryId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -494,7 +646,7 @@ export async function saveLibrary(
 }
 
 export async function deleteLibrary(session: Session, libraryId: string) {
-  await request<void>(session, `/libraries/${libraryId}`, { method: "DELETE" });
+  await request<void>(session, `/api/libraries/${libraryId}`, { method: "DELETE" });
 }
 
 export async function createLibraryDocument(
@@ -502,7 +654,7 @@ export async function createLibraryDocument(
   libraryId: string,
   input: { title: string; id?: string; description?: string },
 ) {
-  return request<LibraryDocument>(session, `/libraries/${libraryId}/documents`, {
+  return request<LibraryDocument>(session, `/api/libraries/${libraryId}/documents`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -510,7 +662,7 @@ export async function createLibraryDocument(
 }
 
 export async function fetchLibraryDocument(session: Session, documentId: string) {
-  return request<LibraryDocument>(session, `/library-documents/${documentId}`);
+  return request<LibraryDocument>(session, `/api/library-documents/${documentId}`);
 }
 
 export async function saveLibraryDocument(
@@ -519,11 +671,15 @@ export async function saveLibraryDocument(
   documentId: string,
   input: { title: string; description?: string },
 ) {
-  return request<LibraryDocument>(session, `/libraries/${libraryId}/documents/${documentId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  return request<LibraryDocument>(
+    session,
+    `/api/libraries/${libraryId}/documents/${documentId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function deleteLibraryDocument(
@@ -531,7 +687,7 @@ export async function deleteLibraryDocument(
   libraryId: string,
   documentId: string,
 ) {
-  await request<void>(session, `/libraries/${libraryId}/documents/${documentId}`, {
+  await request<void>(session, `/api/libraries/${libraryId}/documents/${documentId}`, {
     method: "DELETE",
   });
 }
@@ -543,7 +699,7 @@ export async function linkLibraryDocument(
 ) {
   const data = await request<{ items: LibraryDocumentLink[] }>(
     session,
-    `/library-documents/${documentId}/links`,
+    `/api/library-documents/${documentId}/links`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -558,7 +714,7 @@ export async function unlinkLibraryDocument(
   documentId: string,
   taskId: number,
 ) {
-  await request<void>(session, `/library-documents/${documentId}/links/${taskId}`, {
+  await request<void>(session, `/api/library-documents/${documentId}/links/${taskId}`, {
     method: "DELETE",
   });
 }
@@ -566,30 +722,28 @@ export async function unlinkLibraryDocument(
 export async function fetchTaskLibraryLinks(session: Session, taskId: number) {
   const data = await request<{ items: LibraryDocumentLink[] }>(
     session,
-    `/tasks/${taskId}/library-links`,
+    `/api/tasks/${taskId}/library-links`,
   );
   return data.items ?? [];
+}
+
+export async function claimTask(session: Session, taskId: number, claimedBy: string) {
+  return request<{ id: number; claimedBy: string | null }>(session, `/api/tasks/${taskId}/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ claimedBy }),
+  });
 }
 
 export async function updateTaskWorkStatus(
   session: Session,
   taskId: number,
   workStatus: WorkStatus,
-  by = "web",
+  claimedBy: string,
 ) {
-  return request<TaskDetail>(session, `/tasks/${taskId}/work-status`, {
+  return request<TaskDetail>(session, `/api/tasks/${taskId}/work-status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workStatus, by }),
+    body: JSON.stringify({ workStatus, claimedBy }),
   });
-}
-
-export function buildMobileConnectUri(config: ConnectConfig, publicOrigin?: string) {
-  const origin =
-    publicOrigin?.replace(/\/$/, "") ||
-    `${config.secure ? "https" : "http"}://${config.host}${
-      config.port && config.port !== 443 && config.port !== 80 ? `:${config.port}` : ""
-    }`;
-  const fetchUrl = `${origin}/connect.json`;
-  return `taskbridge://connect?fetch=${encodeURIComponent(fetchUrl)}`;
 }

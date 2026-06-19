@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { Session } from "@/lib/session";
 import { createProject, fetchWorkflowTemplates, type Project, type WorkflowTemplateSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -18,15 +19,16 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [repoPath, setRepoPath] = useState("");
+  const [description, setDescription] = useState("");
   const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([]);
-  const [workflowTemplateId, setWorkflowTemplateId] = useState("empty");
+  const [workflowTemplateId, setWorkflowTemplateId] = useState("");
 
   useEffect(() => {
     void fetchWorkflowTemplates(session)
       .then((items) => {
         setTemplates(items);
         setWorkflowTemplateId((current) =>
-          items.some((item) => item.id === current) ? current : (items[0]?.id ?? "empty"),
+          items.some((item) => item.id === current) ? current : (items[0]?.id ?? ""),
         );
       })
       .catch(() => setTemplates([]));
@@ -42,6 +44,7 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
       const created = await createProject(session, {
         name: trimmedName,
         repoPath: trimmedRepo,
+        description: description.trim(),
         workflowTemplateId,
       });
       onCreated(created);
@@ -86,12 +89,21 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
           />
         </div>
         <div className="space-y-2">
-          <Label>Workflow template</Label>
-          <div className="grid gap-2">
-            {templates.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Empty template will be used.</p>
-            ) : (
-              templates.map((template) => (
+          <Label htmlFor="project-description">Description</Label>
+          <Textarea
+            id="project-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Optional notes about this project"
+            rows={3}
+            disabled={creating}
+          />
+        </div>
+        {templates.length > 0 && (
+          <div className="space-y-2">
+            <Label>Workflow template</Label>
+            <div className="grid gap-2">
+              {templates.map((template) => (
                 <button
                   key={template.id}
                   type="button"
@@ -107,10 +119,10 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
                   <p className="text-sm font-medium text-white">{template.title}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{template.description}</p>
                 </button>
-              ))
-            )}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onCancel} disabled={creating}>
             Cancel

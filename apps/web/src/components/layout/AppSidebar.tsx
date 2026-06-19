@@ -7,15 +7,23 @@ import {
   Layers,
   LogOut,
   Smartphone,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useCommentNotifications } from "@/hooks/useCommentNotifications";
 import { useSession } from "@/hooks/useSession";
 import { unreadCommentCount } from "@/lib/read-tasks";
 import { clearSession } from "@/lib/session";
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  "read-write": "Read & Write",
+  read: "Read only",
+};
 
 export function AppSidebar() {
   const location = useLocation();
@@ -24,7 +32,6 @@ export function AppSidebar() {
 
   const projectMatch = matchPath("/projects/:projectId/*", location.pathname);
   const activeProjectId = projectMatch?.params.projectId;
-  // On global pages, offer a shortcut back to the last project the user was in.
   const fallbackProjectId = activeProjectId ?? session?.projectId;
   const projectId = activeProjectId;
   const projectName = session?.projectName ?? projectId ?? fallbackProjectId;
@@ -36,6 +43,8 @@ export function AppSidebar() {
     clearSession();
     navigate("/login", { replace: true });
   }
+
+  const isAdmin = session?.userRole === "admin";
 
   return (
     <aside className="app-sidebar">
@@ -65,12 +74,45 @@ export function AppSidebar() {
             <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Recent project
             </p>
-            <NavItem to={`/projects/${fallbackProjectId}/tasks`} label={projectName ?? "Open project"} icon={Layers} />
+            <NavItem
+              to={`/projects/${fallbackProjectId}/tasks`}
+              label={projectName ?? "Open project"}
+              icon={Layers}
+            />
           </div>
-        ) : null}
+        ) : undefined}
+
+        {isAdmin ? (
+          <div className="space-y-0.5">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Admin
+            </p>
+            <NavItem to="/admin/users" label="Team members" icon={Users} />
+          </div>
+        ) : undefined}
       </nav>
 
-      <div className="shrink-0 border-t border-white/[0.07] p-2">
+      {/* Current user info + sign out */}
+      <div className="shrink-0 border-t border-white/[0.07] p-2 space-y-1">
+        {session ? (
+          <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary uppercase">
+              {session.userName.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-sm font-medium text-foreground leading-none">
+                {session.userName}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground mt-0.5">
+                {ROLE_LABELS[session.userRole] ?? session.userRole}
+              </p>
+            </div>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 hidden sm:flex">
+              {ROLE_LABELS[session.userRole] ?? session.userRole}
+            </Badge>
+          </div>
+        ) : undefined}
+
         <Button
           variant="ghost"
           size="sm"

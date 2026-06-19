@@ -1,8 +1,0 @@
-version: "2"
-web_addr: 0.0.0.0:4040
-log: stdout
-log_level: info
-tunnels:
-  task-bridge:
-    addr: task-bridge:3000
-    proto: http

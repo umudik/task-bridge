@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Circle, Loader2, Maximize2, Plus, ZoomIn, ZoomOut } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { TaskSubtask, WorkStatus, WorkflowStage } from "@/lib/api";
-import { flattenTemplates, NODE_ADD_BTN_SIZE, sanitizeStageTemplates } from "./template-graph-utils";
+import { flattenTemplates, sanitizeStageTemplates } from "./template-graph-utils";
+import { NodeAddButton } from "./NodeAddButton";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -23,6 +24,7 @@ export type TemplateRuntimeStatus = {
   taskId: number;
   workStatus: WorkStatus;
   workStatusLabel: string;
+  assigneeKind?: TaskSubtask["assigneeKind"];
 };
 
 type EpicProgressCanvasProps = {
@@ -80,6 +82,7 @@ function toRuntime(subtask: TaskSubtask): TemplateRuntimeStatus {
     taskId: subtask.taskId,
     workStatus,
     workStatusLabel: subtask.workStatusLabel ?? workStatus,
+    assigneeKind: subtask.assigneeKind,
   };
 }
 
@@ -320,28 +323,11 @@ function NodeLink({ className }: { className?: string }) {
   return <div className={cn("shrink-0 bg-white/[0.14]", className)} />;
 }
 
-function NodeAddButton({ title, onClick }: { title: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      data-epic-add="true"
-      title={title}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      className="pointer-events-auto relative z-10 flex shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-[#1a1a1a] text-muted-foreground shadow-md transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-400"
-      style={{ width: NODE_ADD_BTN_SIZE, height: NODE_ADD_BTN_SIZE }}
-    >
-      <Plus className="h-3.5 w-3.5" />
-    </button>
-  );
-}
-
 function ProgressTaskNode({
   title,
   depth,
   runtime,
+  humanGate,
   selected,
   adHoc,
   onSelect,
@@ -350,6 +336,7 @@ function ProgressTaskNode({
   title: string;
   depth: number;
   runtime: TemplateRuntimeStatus | null;
+  humanGate?: boolean;
   selected: boolean;
   adHoc?: boolean;
   onSelect?: () => void;
@@ -357,6 +344,7 @@ function ProgressTaskNode({
 }) {
   const spawned = Boolean(runtime);
   const workStatus = runtime?.workStatus ?? null;
+  const showHuman = runtime?.assigneeKind === "human" || humanGate;
   const indent = depth * TASK_DEPTH_INDENT;
 
   return (
@@ -385,6 +373,11 @@ function ProgressTaskNode({
         >
           <StatusIcon workStatus={workStatus} spawned={spawned} />
           <span className="min-w-0 flex-1 truncate text-xs font-medium">{title}</span>
+          {showHuman ? (
+            <span className="shrink-0 rounded bg-sky-500/20 px-1 py-0.5 text-[9px] font-semibold uppercase text-sky-300">
+              Human
+            </span>
+          ) : null}
           <span className="shrink-0 text-[10px] opacity-80">
             {adHoc ? "Ad-hoc" : spawned ? (runtime?.workStatusLabel ?? "Todo") : "Pending"}
           </span>
@@ -392,7 +385,7 @@ function ProgressTaskNode({
         {spawned && onAddSubtask ? (
           <>
             <NodeLink className="mx-1 h-px w-3" />
-            <NodeAddButton title="Add subtask" onClick={onAddSubtask} />
+            <NodeAddButton title="Add subtask" data-epic-add="true" onClick={onAddSubtask} />
           </>
         ) : null}
       </div>
@@ -490,6 +483,7 @@ function buildProgressTaskTree({
           title={template.title}
           depth={depth}
           runtime={runtime}
+          humanGate={template.assigneeKind === "human"}
           selected={runtime?.taskId === selectedTaskId}
           onSelect={() => {
             if (runtime) onSelectTask?.(runtime.taskId);
@@ -696,7 +690,7 @@ function ProgressStageColumn({
         {onAddTaskToStage ? (
           <div className="pointer-events-auto flex flex-col items-center">
             <NodeLink className="h-4 w-px" />
-            <NodeAddButton title="Add task to this step" onClick={onAddTaskToStage} />
+            <NodeAddButton title="Add task to this step" data-epic-add="true" onClick={onAddTaskToStage} />
           </div>
         ) : null}
       </div>

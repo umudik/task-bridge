@@ -8,9 +8,7 @@ services:
         VERSION: ${TASK_BRIDGE_VERSION:-0.1.0}
     environment:
       PORT: "3000"
-      BACKEND_API_KEY: ${BACKEND_API_KEY:?Set BACKEND_API_KEY in .env}
       DATABASE_PATH: /app/data/bridge.db
-      NGROK_INSPECTOR_URL: http://ngrok:4040
     volumes:
       - task_bridge_data:/app/data
     ports:
@@ -22,25 +20,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  ngrok:
-    profiles: ["ngrok"]
-    image: ngrok/ngrok:latest
-    environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?Set NGROK_AUTHTOKEN in .env}
-    command:
-      - start
-      - --all
-      - --config
-      - /etc/ngrok.yml
-    volumes:
-      - ./ngrok.yml:/etc/ngrok.yml:ro
-    ports:
-      - "4040:4040"
-    depends_on:
-      task-bridge:
-        condition: service_healthy
-    restart: unless-stopped
 
   mobile-build:
     profiles: ["mobile"]

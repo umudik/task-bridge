@@ -87,6 +87,8 @@ function mapSubtaskSummary(
     stageTitle: stageKey ? (stageTitles.get(stageKey) ?? stageId) : null,
     templateId: task.templateId,
     assignee: task.assignee,
+    assigneeKind: task.assigneeKind,
+    claimedBy: task.claimedBy,
     workStatus,
     workStatusLabel: workStatusLabel(workStatus),
     done: workStatus === "done",

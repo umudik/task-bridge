@@ -16,11 +16,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/hooks/useSession";
 import {
   addTaskComment,
+  claimTask,
   createTask,
   fetchProjectWorkflow,
   fetchTask,
   updateTaskDescription,
   updateTaskWorkStatus,
+  type ProjectMember,
   type TaskComment,
   type TaskDetail,
   type WorkflowStage,
@@ -52,6 +54,9 @@ export function TaskPage() {
   const session = useSession();
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [workflowStages, setWorkflowStages] = useState<WorkflowStage[]>([]);
+  const [humanMembers, setHumanMembers] = useState<ProjectMember[]>([]);
+  const [actAsMemberId, setActAsMemberId] = useState("");
+  const [claimingSubtask, setClaimingSubtask] = useState(false);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
@@ -85,7 +90,15 @@ export function TaskPage() {
           const workflowProjectId = data.projectId ?? projectId;
           if (workflowProjectId) {
             const workflow = await fetchProjectWorkflow(activeSession, workflowProjectId);
-            if (active) setWorkflowStages(workflow.stages);
+            if (active) {
+              setWorkflowStages(workflow.stages);
+              const humans = workflow.members.filter((member) => member.actorKind === "human");
+              setHumanMembers(humans);
+              setActAsMemberId((current) => {
+                if (current && humans.some((member) => member.id === current)) return current;
+                return humans[0]?.id ?? "";
+              });
+            }
           }
         }
       } catch (error) {
@@ -127,9 +140,14 @@ export function TaskPage() {
 
   async function handleWorkStatus(workStatus: WorkStatus) {
     if (!session || !Number.isFinite(taskId)) return;
+    const actor = humanMembers.find((member) => member.id === actAsMemberId);
+    if (!actor) {
+      toast.error("Pick a project member on the epic canvas first");
+      return;
+    }
     setUpdatingStatus(true);
     try {
-      const data = await updateTaskWorkStatus(session, taskId, workStatus);
+      const data = await updateTaskWorkStatus(session, taskId, workStatus, actor.name);
       setDetail(data);
       toast.success("Status updated");
     } catch (error) {
@@ -141,18 +159,40 @@ export function TaskPage() {
 
   async function handleSubtaskStatus(subtaskId: number, workStatus: WorkStatus) {
     if (!session) return;
+    const actor = humanMembers.find((member) => member.id === actAsMemberId);
     setUpdatingSubtaskStatus(true);
     try {
-      await updateTaskWorkStatus(session, subtaskId, workStatus);
+      await updateTaskWorkStatus(session, subtaskId, workStatus, actor?.name ?? "web");
       const data = await reloadEpic();
       if (data) {
         const refreshed = data.subtasks?.find((entry) => entry.taskId === subtaskId);
         if (refreshed) setSelectedSubtaskId(subtaskId);
       }
+      toast.success("Status updated");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update status");
     } finally {
       setUpdatingSubtaskStatus(false);
+    }
+  }
+
+  async function handleSubtaskClaim(subtaskId: number) {
+    if (!session) return;
+    const actor = humanMembers.find((member) => member.id === actAsMemberId);
+    if (!actor) {
+      toast.error("Pick a human member");
+      return;
+    }
+    setClaimingSubtask(true);
+    try {
+      await claimTask(session, subtaskId, actor.name);
+      await reloadEpic();
+      setSelectedSubtaskId(subtaskId);
+      toast.success("Task claimed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to claim task");
+    } finally {
+      setClaimingSubtask(false);
     }
   }
 
@@ -322,8 +362,13 @@ export function TaskPage() {
                 epicId={taskId}
                 subtasks={subtasks}
                 selected={selectedSubtask}
+                humanMembers={humanMembers}
+                actAsMemberId={actAsMemberId}
                 updatingStatus={updatingSubtaskStatus}
+                claiming={claimingSubtask}
+                onActAsMemberChange={setActAsMemberId}
                 onClose={() => setSelectedSubtaskId(null)}
+                onClaim={(subtaskId) => void handleSubtaskClaim(subtaskId)}
                 onStatusChange={(subtaskId, status) => void handleSubtaskStatus(subtaskId, status)}
               />
             </div>

@@ -152,6 +152,19 @@ export function StageInspectorPanel({
             roles={projectRoles}
             onChange={(next) => patchTemplate(activeTemplate.id, { assigneeRole: next || undefined })}
           />
+          <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={activeTemplate.assigneeKind === "human"}
+              onChange={(event) =>
+                patchTemplate(activeTemplate.id, {
+                  assigneeKind: event.target.checked ? "human" : undefined,
+                })
+              }
+              className="h-4 w-4 rounded border-white/20 accent-sky-500"
+            />
+            <span className="text-sm text-white/90">Human approval required</span>
+          </label>
           <Button
             type="button"
             variant="ghost"

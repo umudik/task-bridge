@@ -4,6 +4,7 @@ import type { BridgeTask } from "../domain/task.js";
 import type { EpicClaimIndex } from "./task-claim-policy.js";
 import {
   canActorClaimTask,
+  canActorUpdateWorkStatus,
   isWorkflowClaimable,
   rolesMatch,
   sortWorkflowClaimCandidates,
@@ -42,6 +43,7 @@ function makeTask(overrides: Partial<BridgeTask> & { id: number }): BridgeTask {
     labels: [],
     assignee: null,
     assigneeRole: null,
+    assigneeKind: null,
     createdBy: "test",
     createdAt: now,
     updatedAt: now,
@@ -127,11 +129,11 @@ describe("task claim policy", () => {
     const index = makeIndex("stage-1");
     assert.equal(userAwaitingReply(task), true);
     assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "Dev", role: "developer" }),
+      canActorClaimTask(task, index, { claimedBy: "Dev", role: "developer", actorKind: "human" }),
       true,
     );
     assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "PM", role: "product" }),
+      canActorClaimTask(task, index, { claimedBy: "PM", role: "product", actorKind: "human" }),
       false,
     );
   });
@@ -144,12 +146,49 @@ describe("task claim policy", () => {
     });
     const index = makeIndex("stage-1");
     assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "Dev", role: "developer" }),
+      canActorClaimTask(task, index, { claimedBy: "Dev", role: "developer", actorKind: "human" }),
       true,
     );
     assert.equal(
-      canActorClaimTask(task, index, { claimedBy: "PM", role: "product" }),
+      canActorClaimTask(task, index, { claimedBy: "PM", role: "product", actorKind: "human" }),
       false,
+    );
+  });
+
+  it("blocks AI actors from human-only tasks", () => {
+    const task = makeTask({
+      id: 10,
+      parentId: 1,
+      assigneeKind: "human",
+      assigneeRole: "tech-lead",
+    });
+    const index = makeIndex("stage-1");
+    assert.equal(
+      canActorClaimTask(task, index, { claimedBy: "Bot", role: "tech-lead", actorKind: "ai" }),
+      false,
+    );
+    assert.equal(
+      canActorClaimTask(task, index, { claimedBy: "Lead", role: "tech-lead", actorKind: "human" }),
+      true,
+    );
+  });
+
+  it("requires claim before human-only status updates", () => {
+    const task = makeTask({
+      id: 10,
+      parentId: 1,
+      assigneeKind: "human",
+      assigneeRole: "tech-lead",
+    });
+    const index = makeIndex("stage-1");
+    assert.equal(
+      canActorUpdateWorkStatus(task, index, { claimedBy: "Lead", role: "tech-lead", actorKind: "human" }),
+      false,
+    );
+    task.claimedBy = "Lead";
+    assert.equal(
+      canActorUpdateWorkStatus(task, index, { claimedBy: "Lead", role: "tech-lead", actorKind: "human" }),
+      true,
     );
   });
 });
