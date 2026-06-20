@@ -229,7 +229,6 @@ class TaskRepository(
             title = json.optString("title"),
             request = json.optString("request"),
             description = json.optString("description").ifBlank { null },
-            acceptanceCriteria = json.optString("acceptanceCriteria").ifBlank { null },
             status = json.optString("status", "pending"),
             createdAt = json.optString("createdAt").ifBlank { null },
             updatedAt = json.optString("updatedAt").ifBlank { null },
@@ -292,11 +291,12 @@ class TaskRepository(
                 val id = item.optString("id")
                 val body = item.optString("body").ifBlank { item.optString("text") }
                 if (id.isBlank() || body.isBlank()) continue
-                val authorType = item.optString("authorType")
+                val roleField = item.optString("role")
                 val role = when {
-                    authorType == "human" -> "user"
-                    authorType == "system" || authorType == "ai" -> "system"
-                    else -> item.optString("role", "user")
+                    roleField == "user" || roleField == "system" -> roleField
+                    item.optString("authorType") == "human" -> "user"
+                    item.optString("authorType") == "system" || item.optString("authorType") == "ai" -> "system"
+                    else -> "user"
                 }
                 val tags = buildList {
                     val tagsArray = item.optJSONArray("tags")

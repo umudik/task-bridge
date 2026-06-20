@@ -1,4 +1,3 @@
-import { parseActorKind } from "../domain/workflow-stage.js";
 import { getProjectsDb } from "./projects-db.js";
 
 export type WorkflowStageRow = {
@@ -103,6 +102,7 @@ export function migrateWorkflowTables() {
     db.exec("ALTER TABLE project_members ADD COLUMN actor_kind TEXT NOT NULL DEFAULT 'human'");
   }
 
+  db.exec("DELETE FROM project_members WHERE role IS NULL OR trim(role) = ''");
   db.exec("DROP TABLE IF EXISTS project_decisions");
 }
 
@@ -114,24 +114,30 @@ export function countWorkflowStages(projectId: string): number {
   return row.count;
 }
 
-export function listWorkflowStageRows(projectId: string): WorkflowStageRow[] {
+export function listWorkflowStageRows(filter: {
+  projectId: string;
+  stageId: string;
+}): WorkflowStageRow[] {
   migrateWorkflowTables();
-  return getProjectsDb()
-    .prepare(
-      `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
-       FROM workflow_stages WHERE project_id = ? ORDER BY position ASC, title COLLATE NOCASE ASC`,
-    )
-    .all(projectId.trim()) as WorkflowStageRow[];
-}
-
-export function getWorkflowStageRow(projectId: string, stageId: string): WorkflowStageRow | undefined {
-  migrateWorkflowTables();
-  return getProjectsDb()
-    .prepare(
-      `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
-       FROM workflow_stages WHERE project_id = ? AND id = ?`,
-    )
-    .get(projectId.trim(), stageId.trim()) as WorkflowStageRow | undefined;
+  const projectId = filter.projectId.trim();
+  const stageId = filter.stageId.trim();
+  if (projectId !== "" && stageId !== "") {
+    return getProjectsDb()
+      .prepare(
+        `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
+         FROM workflow_stages WHERE project_id = ? AND id = ?`,
+      )
+      .all(projectId, stageId) as WorkflowStageRow[];
+  }
+  if (projectId !== "") {
+    return getProjectsDb()
+      .prepare(
+        `SELECT id, project_id, title, description, purpose, rules_json, position, auto_assign, auto_assign_role, layout_x, layout_y, spawn_task_count, task_templates_json, roles_json
+         FROM workflow_stages WHERE project_id = ? ORDER BY position ASC, title COLLATE NOCASE ASC`,
+      )
+      .all(projectId) as WorkflowStageRow[];
+  }
+  return [];
 }
 
 export function deleteWorkflowStagesForProject(projectId: string) {
@@ -150,13 +156,17 @@ export function insertWorkflowStageRow(row: {
   rulesJson: string;
   position: number;
   autoAssignRole: string;
-  layoutX?: number | null;
-  layoutY?: number | null;
-  spawnTaskCount?: number;
-  taskTemplatesJson?: string;
+  layoutX: number | null;
+  layoutY: number | null;
+  spawnTaskCount: number;
+  taskTemplatesJson: string;
 }) {
   migrateWorkflowTables();
   const autoAssignRole = row.autoAssignRole.trim();
+  let autoAssignFlag = 0;
+  if (autoAssignRole) {
+    autoAssignFlag = 1;
+  }
   getProjectsDb()
     .prepare(
       `INSERT INTO workflow_stages
@@ -171,29 +181,37 @@ export function insertWorkflowStageRow(row: {
       row.purpose.trim(),
       row.rulesJson,
       row.position,
-      autoAssignRole ? 1 : 0,
+      autoAssignFlag,
       autoAssignRole,
-      row.layoutX ?? null,
-      row.layoutY ?? null,
-      row.spawnTaskCount ?? 0,
-      row.taskTemplatesJson ?? "[]",
+      row.layoutX,
+      row.layoutY,
+      row.spawnTaskCount,
+      row.taskTemplatesJson,
     );
 }
 
-export function listProjectMemberRows(projectId: string): ProjectMemberRow[] {
+export function listProjectMemberRows(filter: {
+  projectId: string;
+  id: string;
+}): ProjectMemberRow[] {
   migrateWorkflowTables();
-  return getProjectsDb()
-    .prepare(
-      `SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE project_id = ? ORDER BY name COLLATE NOCASE ASC`,
-    )
-    .all(projectId.trim()) as ProjectMemberRow[];
-}
-
-export function getProjectMemberRow(id: string): ProjectMemberRow | undefined {
-  migrateWorkflowTables();
-  return getProjectsDb()
-    .prepare(`SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE id = ?`)
-    .get(id.trim()) as ProjectMemberRow | undefined;
+  const projectId = filter.projectId.trim();
+  const id = filter.id.trim();
+  if (id !== "") {
+    return getProjectsDb()
+      .prepare(
+        `SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE id = ?`,
+      )
+      .all(id) as ProjectMemberRow[];
+  }
+  if (projectId !== "") {
+    return getProjectsDb()
+      .prepare(
+        `SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE project_id = ? ORDER BY name COLLATE NOCASE ASC`,
+      )
+      .all(projectId) as ProjectMemberRow[];
+  }
+  return [];
 }
 
 export function insertProjectMemberRow(row: {
@@ -201,41 +219,52 @@ export function insertProjectMemberRow(row: {
   projectId: string;
   name: string;
   role: string;
-  actorKind: "human" | "ai";
 }) {
   migrateWorkflowTables();
   getProjectsDb()
     .prepare(
-      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, actor_kind, updated_at)
-       VALUES (?, ?, ?, 1, '{}', ?, ?, datetime('now'))`,
+      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, updated_at)
+       VALUES (?, ?, ?, 1, '{}', ?, datetime('now'))`,
     )
-    .run(row.id.trim(), row.projectId.trim(), row.name.trim(), row.role.trim(), row.actorKind);
+    .run(row.id.trim(), row.projectId.trim(), row.name.trim(), row.role.trim());
 }
 
 export function updateProjectMemberRow(
   id: string,
-  patch: { name?: string; role?: string; actorKind?: "human" | "ai" },
+  patch: { name: string | null; role: string | null },
 ): boolean {
   migrateWorkflowTables();
-  const existing = getProjectMemberRow(id);
+  const existingRows = listProjectMemberRows({ projectId: "", id });
+  if (existingRows.length === 0) return false;
+  const existing = existingRows[0];
   if (!existing) return false;
-  const name = patch.name !== undefined ? patch.name.trim() : existing.name;
-  const role = patch.role !== undefined ? patch.role.trim() : existing.role;
-  const actorKind =
-    patch.actorKind !== undefined ? patch.actorKind : parseActorKind(existing.actor_kind);
+  let name = existing.name;
+  if (patch.name !== null) {
+    name = patch.name.trim();
+  }
+  let role = existing.role;
+  if (patch.role !== null) {
+    role = patch.role.trim();
+  }
   const result = getProjectsDb()
     .prepare(
-      `UPDATE project_members SET name = ?, role = ?, actor_kind = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE project_members SET name = ?, role = ?, updated_at = datetime('now') WHERE id = ?`,
     )
-    .run(name, role, actorKind, id.trim());
+    .run(name, role, id.trim());
   return result.changes > 0;
 }
 
-export function getProjectWorkflowSettingsRow(projectId: string): ProjectWorkflowSettingsRow | undefined {
+export function listProjectWorkflowSettingsRows(filter: {
+  projectId: string;
+}): ProjectWorkflowSettingsRow[] {
   migrateWorkflowTables();
+  const projectId = filter.projectId.trim();
+  if (projectId === "") return [];
   return getProjectsDb()
-    .prepare(`SELECT project_id, roles_json FROM project_workflow_settings WHERE project_id = ?`)
-    .get(projectId.trim()) as ProjectWorkflowSettingsRow | undefined;
+    .prepare(
+      `SELECT project_id, roles_json FROM project_workflow_settings WHERE project_id = ?`,
+    )
+    .all(projectId) as ProjectWorkflowSettingsRow[];
 }
 
 export function upsertProjectWorkflowSettingsRow(projectId: string, rolesJson: string) {

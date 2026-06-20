@@ -34,6 +34,7 @@ import {
   validateTaskClaim,
 } from "../services/task-queue.js";
 import { resolveClaimActor, type ClaimActor } from "../services/task-claim-policy.js";
+import { createEpicRecords } from "../services/workflow-state-service.js";
 import { AppError } from "../errors/app-error.js";
 
 const createEpicBodySchema = z
@@ -44,7 +45,15 @@ const createEpicBodySchema = z
     description: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (!data.title?.trim() && !data.text?.trim()) {
+    let titleTrimmed = "";
+    if (data.title) {
+      titleTrimmed = data.title.trim();
+    }
+    let textTrimmed = "";
+    if (data.text) {
+      textTrimmed = data.text.trim();
+    }
+    if (!titleTrimmed && !textTrimmed) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "title or text is required",
@@ -62,9 +71,18 @@ const createTaskBodySchema = z
   });
 
 function resolveEpicFields(body: z.infer<typeof createEpicBodySchema>) {
-  const titleInput = body.title?.trim() ?? "";
-  const descriptionInput = body.description?.trim() ?? "";
-  const text = body.text?.trim() ?? "";
+  let titleInput = "";
+  if (body.title) {
+    titleInput = body.title.trim();
+  }
+  let descriptionInput = "";
+  if (body.description) {
+    descriptionInput = body.description.trim();
+  }
+  let text = "";
+  if (body.text) {
+    text = body.text.trim();
+  }
 
   if (titleInput) {
     return {
@@ -92,7 +110,7 @@ function resolveEpicFields(body: z.infer<typeof createEpicBodySchema>) {
 function createdItemResponse(task: {
   id: number;
   title: string;
-  createdAt: string;
+  createdAt: string | null;
   projectId: string;
   projectName: string;
   parentId: number | null;
@@ -135,7 +153,7 @@ const patchTaskBodySchema = z
     description: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (!data.comment && data.description === undefined) {
+    if (!data.comment && !data.description) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "comment or description is required",
@@ -162,9 +180,9 @@ const inboxQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
 });
 
-export async function taskRoutes(app: FastifyInstance) {
+export function taskRoutes(app: FastifyInstance) {
   app.post("/epics", async (request, reply) => {
-    assertAuth(request);
+    const user = assertAuth(request);
     const body = createEpicBodySchema.parse(request.body);
     await refreshProjectRegistry();
 
@@ -177,16 +195,44 @@ export async function taskRoutes(app: FastifyInstance) {
     const { title, description } = resolveEpicFields(body);
     const placement = await resolveNewTaskPlacement(project.id);
 
+    let hasText = false;
+    if (body.text) {
+      hasText = body.text.trim().length > 0;
+    }
+    let hasTitle = false;
+    if (body.title) {
+      hasTitle = body.title.trim().length > 0;
+    }
+
+    let createdBy = user.id;
+    if (hasText && !hasTitle) {
+      createdBy = user.id;
+    }
+
+    createEpicRecords({
+      id,
+      projectId: project.id,
+      title,
+      description,
+      stageId: placement.stageId,
+      createdBy,
+    });
+
     const epic = await upsertBridgeTask({
       id,
       projectId: project.id,
       projectName: project.name,
       title,
       description,
-      createdBy: body.text?.trim() && !body.title?.trim() ? "mobile" : "web",
+      createdBy,
+      createdAt: null,
       stageId: placement.stageId,
       assignee: placement.assignee,
+      assigneeRole: null,
+      assigneeKind: null,
       parentId: null,
+      epicId: null,
+      templateId: null,
       workStatus: null,
     });
 
@@ -223,19 +269,41 @@ export async function taskRoutes(app: FastifyInstance) {
     }
 
     const placement = await resolveNewTaskPlacement(project.id);
-    const stageId = body.stageId?.trim() || parent.stageId || epic.stageId || placement.stageId;
+    let bodyStageId: string | null = null;
+    if (body.stageId) {
+      bodyStageId = body.stageId.trim();
+    }
+    let stageId = bodyStageId;
+    if (stageId === null) {
+      stageId = parent.stageId;
+    }
+    if (stageId === null) {
+      stageId = epic.stageId;
+    }
+    if (stageId === null) {
+      stageId = placement.stageId;
+    }
+
+    let descriptionValue = "";
+    if (body.description) {
+      descriptionValue = body.description.trim();
+    }
 
     const task = await upsertBridgeTask({
       id: await allocateTaskId(),
       projectId: project.id,
       projectName: project.name,
       title: body.title.trim().slice(0, 200),
-      description: body.description?.trim() ?? "",
+      description: descriptionValue,
       createdBy: "web",
+      createdAt: null,
       stageId,
       assignee: null,
+      assigneeRole: null,
+      assigneeKind: null,
       parentId: parent.id,
       epicId: epic.id,
+      templateId: null,
       workStatus: "todo",
     });
 
@@ -269,7 +337,8 @@ export async function taskRoutes(app: FastifyInstance) {
   app.post("/tasks/:id/claim", async (request, reply) => {
     assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
-    const body = claimTaskBodySchema.parse(request.body ?? {});
+    const claimBody = request.body || {};
+    const body = claimTaskBodySchema.parse(claimBody);
     const existing = await getBridgeTask(id);
     if (!existing) {
       return reply.status(404).send({ error: "Task not found" });
@@ -281,8 +350,8 @@ export async function taskRoutes(app: FastifyInstance) {
     }
     const blockReason = await validateTaskClaim(id, actor);
     if (blockReason) {
-      const existing = await getBridgeTask(id);
-      if (!existing) {
+      const existingAgain = await getBridgeTask(id);
+      if (!existingAgain) {
         return reply.status(404).send({ error: "Task not found" });
       }
       return reply.status(409).send({ error: blockReason });
@@ -306,7 +375,8 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.post("/worker/claim-next", async (request, reply) => {
     assertAuth(request);
-    const body = claimNextBodySchema.parse(request.body ?? {});
+    const claimNextBody = request.body || {};
+    const body = claimNextBodySchema.parse(claimNextBody);
     if (!body.projectId) {
       return reply.status(400).send({ error: "projectId is required" });
     }
@@ -331,7 +401,8 @@ export async function taskRoutes(app: FastifyInstance) {
   app.patch("/tasks/:id/work-status", async (request, reply) => {
     assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
-    const body = workStatusBodySchema.parse(request.body ?? {});
+    const workStatusBody = request.body || {};
+    const body = workStatusBodySchema.parse(workStatusBody);
     if (!isWorkStatus(body.workStatus)) {
       return reply.status(400).send({ error: "Invalid work status" });
     }
@@ -373,24 +444,47 @@ export async function taskRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Epic not found" });
     }
     await syncEpicStage(epic.id);
-    const refreshed = (await getBridgeTask(params.epicId)) ?? epic;
+    const refreshedRaw = await getBridgeTask(params.epicId);
+    const refreshed = refreshedRaw || epic;
     const subtasks = await listEpicSubtasks(epic.id);
     const stageTitles = getStageTitleLookup(params.projectId);
+
+    let epicStageTitle: string | null = null;
+    if (refreshed.stageId) {
+      const t = stageTitles.get(refreshed.stageId);
+      if (t) {
+        epicStageTitle = t;
+      } else {
+        epicStageTitle = refreshed.stageId;
+      }
+    }
+
     return {
       epicId: refreshed.id,
       epicTitle: refreshed.title,
       stageId: refreshed.stageId,
-      stageTitle: refreshed.stageId ? (stageTitles.get(refreshed.stageId) ?? refreshed.stageId) : null,
-      tasks: subtasks.map((task) => ({
-        id: task.id,
-        title: task.title,
-        stageId: task.stageId,
-        stageTitle: task.stageId ? (stageTitles.get(task.stageId) ?? task.stageId) : null,
-        templateId: task.templateId,
-        workStatus: resolveWorkStatus(task),
-        workStatusLabel: workStatusLabel(resolveWorkStatus(task)),
-        assignee: task.assignee,
-      })),
+      stageTitle: epicStageTitle,
+      tasks: subtasks.map((task) => {
+        let taskStageTitle: string | null = null;
+        if (task.stageId) {
+          const t = stageTitles.get(task.stageId);
+          if (t) {
+            taskStageTitle = t;
+          } else {
+            taskStageTitle = task.stageId;
+          }
+        }
+        return {
+          id: task.id,
+          title: task.title,
+          stageId: task.stageId,
+          stageTitle: taskStageTitle,
+          templateId: task.templateId,
+          workStatus: resolveWorkStatus(task),
+          workStatusLabel: workStatusLabel(resolveWorkStatus(task)),
+          assignee: task.assignee,
+        };
+      }),
     };
   });
 
@@ -407,20 +501,25 @@ export async function taskRoutes(app: FastifyInstance) {
   app.patch("/tasks/:id", async (request, reply) => {
     assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
-    const body = patchTaskBodySchema.parse(request.body ?? {});
+    const patchBody = request.body || {};
+    const body = patchTaskBodySchema.parse(patchBody);
     const existing = await getBridgeTask(id);
     if (!existing) {
       return reply.status(404).send({ error: "Task not found" });
     }
     if (existing.parentId === null) {
-      if (!body.comment && body.description === undefined) {
+      if (!body.comment && !body.description) {
         return reply.status(400).send({ error: "Epics support description or comment updates" });
       }
       let task = existing;
-      if (body.description !== undefined) {
+      if (body.description) {
+        let commentBy = "web";
+        if (body.comment) {
+          commentBy = body.comment.by;
+        }
         const updated = await updateBridgeTaskSpec(id, {
           description: body.description,
-          by: body.comment?.by ?? "web",
+          by: commentBy,
         });
         if (!updated) {
           return reply.status(404).send({ error: "Task not found" });
@@ -454,12 +553,12 @@ export async function taskRoutes(app: FastifyInstance) {
         claimedBy: z.string().min(1).optional(),
       })
       .parse(request.query);
-    let actor: ClaimActor | undefined;
+    let actor: ClaimActor | null = null;
     if (query.claimedBy) {
       if (!query.projectId) {
         return reply.status(400).send({ error: "projectId is required when filtering by claimedBy" });
       }
-      actor = resolveClaimActor(query.projectId, query.claimedBy) ?? undefined;
+      actor = resolveClaimActor(query.projectId, query.claimedBy);
       if (!actor) {
         return reply.status(404).send({ error: "Project member not found" });
       }
@@ -471,7 +570,13 @@ export async function taskRoutes(app: FastifyInstance) {
   app.get("/inbox", async (request) => {
     assertAuth(request);
     const query = inboxQuerySchema.parse(request.query);
-    return buildInboxItems(query);
+    return buildInboxItems({
+      projectId: query.projectId ?? null,
+      commentsOnly: query.commentsOnly ?? null,
+      epicsOnly: query.epicsOnly ?? null,
+      cursor: query.cursor ?? null,
+      limit: query.limit,
+    });
   });
 
 }

@@ -1,16 +1,14 @@
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
 import {
   DONE_STAGE_ID,
-  normalizeTask,
   sortTasks,
   type BridgeTask,
-  type RawTask,
 } from "../domain/task.js";
-import { type WorkStatus } from "../domain/work-status.js";
+import { isWorkStatus, type WorkStatus } from "../domain/work-status.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
@@ -18,21 +16,7 @@ function resolveDatabasePath(): string {
   if (config.databasePath) return config.databasePath;
   return join(moduleDir, "..", "..", "..", "..", "data", "bridge.db");
 }
-
-function resolveLegacyJsonPath(): string {
-  const bridgeTasksPath = process.env["BRIDGE_TASKS_PATH"];
-  if (bridgeTasksPath !== undefined && bridgeTasksPath.trim()) {
-    return bridgeTasksPath.trim();
-  }
-  return join(moduleDir, "..", "..", "..", "..", "data", "bridge-tasks.json");
-}
-
 let db: Database.Database | null = null;
-
-function columnExists(database: Database.Database, table: string, column: string): boolean {
-  const rows = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-  return rows.some((row) => row.name === column);
-}
 
 function migrate(database: Database.Database) {
   database.exec(`
@@ -41,13 +25,14 @@ function migrate(database: Database.Database) {
       project_id TEXT NOT NULL,
       project_name TEXT NOT NULL,
       parent_id INTEGER,
+      epic_id INTEGER,
+      template_id TEXT,
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       priority TEXT,
       labels_json TEXT NOT NULL DEFAULT '[]',
       assignee TEXT,
-      ai_context TEXT,
-      ai_summary TEXT,
+      assignee_role TEXT,
       created_by TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -57,96 +42,131 @@ function migrate(database: Database.Database) {
       answered_at TEXT,
       answer TEXT,
       stage_id TEXT,
+      work_status TEXT,
       comments_json TEXT NOT NULL DEFAULT '[]',
       events_json TEXT NOT NULL DEFAULT '[]'
     );
     CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_stage_id ON tasks(stage_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_epic_id ON tasks(epic_id);
   `);
-  if (!columnExists(database, "tasks", "work_status")) {
-    database.exec(`ALTER TABLE tasks ADD COLUMN work_status TEXT`);
-    database.exec(`UPDATE tasks SET work_status = 'done' WHERE parent_id IS NOT NULL AND stage_id = 'done'`);
-    database.exec(`UPDATE tasks SET work_status = 'todo' WHERE parent_id IS NOT NULL AND (work_status IS NULL OR work_status = '')`);
-  }
-  if (!columnExists(database, "tasks", "template_id")) {
-    database.exec(`ALTER TABLE tasks ADD COLUMN template_id TEXT`);
-  }
-  if (!columnExists(database, "tasks", "assignee_role")) {
-    database.exec(`ALTER TABLE tasks ADD COLUMN assignee_role TEXT`);
-  }
-  if (!columnExists(database, "tasks", "assignee_kind")) {
-    database.exec(`ALTER TABLE tasks ADD COLUMN assignee_kind TEXT`);
-  }
-  if (!columnExists(database, "tasks", "epic_id")) {
-    database.exec(`ALTER TABLE tasks ADD COLUMN epic_id INTEGER`);
-    database.exec(`
-      UPDATE tasks
-      SET epic_id = parent_id
-      WHERE parent_id IS NOT NULL
-        AND parent_id IN (SELECT id FROM tasks WHERE parent_id IS NULL)
-    `);
-    database.exec(`
-      UPDATE tasks
-      SET epic_id = (
-        SELECT parent.parent_id
-        FROM tasks parent
-        WHERE parent.id = tasks.parent_id
-          AND parent.parent_id IN (SELECT id FROM tasks WHERE parent_id IS NULL)
-      )
-      WHERE epic_id IS NULL AND parent_id IS NOT NULL
-    `);
-  }
 }
 
 function rowToTask(row: Record<string, unknown>): BridgeTask {
-  const rawWorkStatus = row.work_status;
-  const workStatus: WorkStatus | undefined =
-    rawWorkStatus !== null &&
-    rawWorkStatus !== undefined &&
-    rawWorkStatus !== "" &&
-    typeof rawWorkStatus === "string"
-      ? (rawWorkStatus as WorkStatus)
-      : undefined;
+  let parentId: number | null = null;
+  if (row.parent_id !== null) {
+    parentId = Number(row.parent_id);
+  }
 
-  return normalizeTask({
+  let epicId: number | null = null;
+  if (row.epic_id !== null) {
+    epicId = Number(row.epic_id);
+  }
+
+  let templateId: string | null = null;
+  if (row.template_id !== null) {
+    const rawTemplateId: string | number = row.template_id as string | number;
+    templateId = String(rawTemplateId).trim() || null;
+  }
+
+  let priority: string | null = null;
+  if (row.priority !== null) {
+    const rawPriority: string | number = row.priority as string | number;
+    priority = String(rawPriority).trim() || null;
+  }
+
+  let assignee = "";
+  if (row.assignee !== null) {
+    const rawAssignee: string | number = row.assignee as string | number;
+    assignee = String(rawAssignee).trim();
+  }
+  if (!assignee && row.created_by !== null) {
+    assignee = String(row.created_by).trim();
+  }
+  if (!assignee) {
+    assignee = "unassigned";
+  }
+
+  let assigneeRole: string | null = null;
+  if (row.assignee_role !== null) {
+    const rawAssigneeRole: string | number = row.assignee_role as string | number;
+    assigneeRole = String(rawAssigneeRole).trim() || null;
+  }
+
+  let claimedBy: string | null = null;
+  if (row.claimed_by !== null) {
+    const rawClaimedBy: string | number = row.claimed_by as string | number;
+    claimedBy = String(rawClaimedBy).trim() || null;
+  }
+
+  let claimedAt: string | null = null;
+  if (row.claimed_at !== null) {
+    const rawClaimedAt: string | number = row.claimed_at as string | number;
+    claimedAt = String(rawClaimedAt);
+  }
+
+  let answeredBy: string | null = null;
+  if (row.answered_by !== null) {
+    const rawAnsweredBy: string | number = row.answered_by as string | number;
+    answeredBy = String(rawAnsweredBy).trim() || null;
+  }
+
+  let answeredAt: string | null = null;
+  if (row.answered_at !== null) {
+    const rawAnsweredAt: string | number = row.answered_at as string | number;
+    answeredAt = String(rawAnsweredAt);
+  }
+
+  let answer: string | null = null;
+  if (row.answer !== null) {
+    const rawAnswer: string | number = row.answer as string | number;
+    answer = String(rawAnswer).trim() || null;
+  }
+
+  let stageId: string | null = null;
+  if (row.stage_id !== null) {
+    const rawStageId: string | number = row.stage_id as string | number;
+    stageId = String(rawStageId).trim() || null;
+  }
+
+  if (!stageId && row.status === "done") {
+    stageId = DONE_STAGE_ID;
+  }
+
+  let workStatus: WorkStatus | null = null;
+  if (isWorkStatus(row.work_status as string)) {
+    workStatus = row.work_status as WorkStatus;
+  }
+
+  return {
     id: Number(row.id),
     projectId: String(row.project_id),
     projectName: String(row.project_name),
-    parentId: row.parent_id !== null && row.parent_id !== undefined ? Number(row.parent_id) : undefined,
-    epicId: row.epic_id !== null && row.epic_id !== undefined ? Number(row.epic_id) : undefined,
-    templateId:
-      row.template_id !== null && row.template_id !== undefined
-        ? String(row.template_id)
-        : undefined,
+    parentId,
+    epicId,
+    templateId,
     title: String(row.title),
     description: String(row.description),
-    acceptanceCriteria: undefined,
-    priority: row.priority !== null && row.priority !== undefined ? String(row.priority) : undefined,
+    acceptanceCriteria: null,
+    priority,
     labels: JSON.parse(String(row.labels_json)) as string[],
-    assignee: row.assignee !== null && row.assignee !== undefined ? String(row.assignee) : undefined,
-    assigneeRole:
-      row.assignee_role !== null && row.assignee_role !== undefined
-        ? String(row.assignee_role)
-        : undefined,
-    assigneeKind:
-      row.assignee_kind === "human" || row.assignee_kind === "ai"
-        ? row.assignee_kind
-        : undefined,
+    assignee,
+    assigneeRole,
+    assigneeKind: null,
     createdBy: String(row.created_by),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
-    claimedBy: row.claimed_by !== null && row.claimed_by !== undefined ? String(row.claimed_by) : undefined,
-    claimedAt: row.claimed_at !== null && row.claimed_at !== undefined ? String(row.claimed_at) : undefined,
-    answeredBy: row.answered_by !== null && row.answered_by !== undefined ? String(row.answered_by) : undefined,
-    answeredAt: row.answered_at !== null && row.answered_at !== undefined ? String(row.answered_at) : undefined,
-    answer: row.answer !== null && row.answer !== undefined ? String(row.answer) : undefined,
-    stageId: row.stage_id !== null && row.stage_id !== undefined ? String(row.stage_id) : undefined,
+    claimedBy,
+    claimedAt,
+    answeredBy,
+    answeredAt,
+    answer,
+    stageId,
     workStatus,
-    comments: JSON.parse(String(row.comments_json)),
-    events: JSON.parse(String(row.events_json)),
-    status: undefined,
-  } as RawTask);
+    comments: JSON.parse(String(row.comments_json)) as BridgeTask["comments"],
+    events: JSON.parse(String(row.events_json)) as BridgeTask["events"],
+  };
 }
 
 function taskToRow(task: BridgeTask): Record<string, unknown> {
@@ -163,9 +183,6 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
     labels_json: JSON.stringify(task.labels),
     assignee: task.assignee,
     assignee_role: task.assigneeRole,
-    assignee_kind: task.assigneeKind,
-    ai_context: null,
-    ai_summary: null,
     created_by: task.createdBy,
     created_at: task.createdAt,
     updated_at: task.updatedAt,
@@ -181,43 +198,6 @@ function taskToRow(task: BridgeTask): Record<string, unknown> {
   };
 }
 
-function importLegacyJson(database: Database.Database) {
-  const count = database.prepare("SELECT COUNT(*) AS total FROM tasks").get() as { total: number };
-  if (count.total > 0) return;
-
-  const legacyPath = resolveLegacyJsonPath();
-  if (!existsSync(legacyPath)) return;
-
-  let parsed: { tasks?: unknown[] };
-  try {
-    parsed = JSON.parse(readFileSync(legacyPath, "utf8")) as { tasks?: unknown[] };
-  } catch {
-    return;
-  }
-  if (!Array.isArray(parsed.tasks) || parsed.tasks.length === 0) return;
-
-  const insert = database.prepare(`
-    INSERT INTO tasks (
-      id, project_id, project_name, parent_id, epic_id, template_id, title, description, priority, labels_json,
-      assignee, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
-      claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
-    ) VALUES (
-      @id, @project_id, @project_name, @parent_id, @epic_id, @template_id, @title, @description, @priority, @labels_json,
-      @assignee, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
-      @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
-    )
-  `);
-
-  const importMany = database.transaction((tasks: BridgeTask[]) => {
-    for (const task of tasks) {
-      insert.run(taskToRow(task));
-    }
-  });
-
-  const tasks = parsed.tasks.map((entry) => normalizeTask(entry as RawTask));
-  importMany(tasks);
-}
-
 export function getTasksDb(): Database.Database {
   if (db) return db;
   const path = resolveDatabasePath();
@@ -225,11 +205,27 @@ export function getTasksDb(): Database.Database {
   db = new Database(path);
   db.pragma("journal_mode = WAL");
   migrate(db);
-  importLegacyJson(db);
   return db;
 }
 
-export function countActiveTasksOnStage(projectId: string, stageId: string): number {
+export function deleteEpicSubtasks(epicId: number): void {
+  const database = getTasksDb();
+  database
+    .prepare("DELETE FROM tasks WHERE epic_id = ? AND id != ?")
+    .run(epicId, epicId);
+}
+
+export function deleteTaskRows(ids: number[]): void {
+  if (ids.length === 0) return;
+  const database = getTasksDb();
+  const placeholders = ids.map(() => "?").join(", ");
+  database.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
+}
+
+export function countActiveTasksOnStage(
+  projectId: string,
+  stageId: string,
+): number {
   const database = getTasksDb();
   const row = database
     .prepare(
@@ -240,23 +236,30 @@ export function countActiveTasksOnStage(projectId: string, stageId: string): num
   return row.count;
 }
 
-export function listTaskRows(): BridgeTask[] {
+export function listTaskRows(filter: { id: number }): BridgeTask[] {
   const database = getTasksDb();
-  const rows = database.prepare("SELECT * FROM tasks ORDER BY updated_at DESC, id DESC").all();
-  return sortTasks(rows.map((row) => rowToTask(row as Record<string, unknown>)));
-}
-
-export function getTaskRow(id: number): BridgeTask | undefined {
-  const database = getTasksDb();
-  const row = database.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
-  if (!row) return undefined;
-  return rowToTask(row as Record<string, unknown>);
+  if (filter.id > 0) {
+    const rows = database.prepare("SELECT * FROM tasks WHERE id = ?").all(filter.id);
+    return rows.map((row) => rowToTask(row as Record<string, unknown>));
+  }
+  const rows = database
+    .prepare("SELECT * FROM tasks ORDER BY updated_at DESC, id DESC")
+    .all();
+  return sortTasks(
+    rows.map((row) => rowToTask(row as Record<string, unknown>)),
+  );
 }
 
 export function allocateTaskRowId(): number {
   const database = getTasksDb();
-  const row = database.prepare("SELECT MAX(id) AS maxId FROM tasks").get() as { maxId: number | null };
-  return (row.maxId !== null ? row.maxId : 0) + 1;
+  const row = database.prepare("SELECT MAX(id) AS maxId FROM tasks").get() as {
+    maxId: number | null;
+  };
+  let base = 0;
+  if (row.maxId !== null) {
+    base = row.maxId;
+  }
+  return base + 1;
 }
 
 export function upsertTaskRow(task: BridgeTask): void {
@@ -267,11 +270,11 @@ export function upsertTaskRow(task: BridgeTask): void {
       `
       INSERT INTO tasks (
         id, project_id, project_name, parent_id, epic_id, template_id, title, description, priority, labels_json,
-        assignee, assignee_role, ai_context, ai_summary, created_by, created_at, updated_at, claimed_by,
+        assignee, assignee_role, created_by, created_at, updated_at, claimed_by,
         claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
       ) VALUES (
         @id, @project_id, @project_name, @parent_id, @epic_id, @template_id, @title, @description, @priority, @labels_json,
-        @assignee, @assignee_role, @ai_context, @ai_summary, @created_by, @created_at, @updated_at, @claimed_by,
+        @assignee, @assignee_role, @created_by, @created_at, @updated_at, @claimed_by,
         @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
       )
       ON CONFLICT(id) DO UPDATE SET
@@ -286,8 +289,6 @@ export function upsertTaskRow(task: BridgeTask): void {
         labels_json = excluded.labels_json,
         assignee = excluded.assignee,
         assignee_role = excluded.assignee_role,
-        ai_context = excluded.ai_context,
-        ai_summary = excluded.ai_summary,
         created_by = excluded.created_by,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
@@ -308,11 +309,13 @@ export function upsertTaskRow(task: BridgeTask): void {
 export function mutateTaskRow(
   id: number,
   mutator: (task: BridgeTask) => void,
-): BridgeTask | undefined {
+): BridgeTask | null {
   const database = getTasksDb();
   return database.transaction(() => {
-    const task = getTaskRow(id);
-    if (!task) return undefined;
+    const tasks = listTaskRows({ id });
+    if (tasks.length === 0) return null;
+    const task = tasks[0];
+    if (!task) return null;
     mutator(task);
     upsertTaskRow(task);
     return task;

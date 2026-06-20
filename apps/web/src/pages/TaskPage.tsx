@@ -16,7 +16,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/hooks/useSession";
 import {
   addTaskComment,
-  claimTask,
   createTask,
   fetchProjectWorkflow,
   fetchTask,
@@ -42,10 +41,10 @@ function sortComments(comments: TaskComment[]) {
 }
 
 function authorLabel(comment: TaskComment) {
-  if (comment.authorId?.trim()) return comment.authorId.trim();
-  if (comment.by?.trim()) return comment.by.trim();
-  if (comment.authorType === "system") return comment.authorId?.trim() || "System";
-  return comment.authorId?.trim() || comment.by?.trim() || "User";
+  if (comment.authorId.trim()) return comment.authorId.trim();
+  if (comment.by.trim()) return comment.by.trim();
+  if (comment.role === "system") return "System";
+  return "User";
 }
 
 export function TaskPage() {
@@ -54,9 +53,8 @@ export function TaskPage() {
   const session = useSession();
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [workflowStages, setWorkflowStages] = useState<WorkflowStage[]>([]);
-  const [humanMembers, setHumanMembers] = useState<ProjectMember[]>([]);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
   const [actAsMemberId, setActAsMemberId] = useState("");
-  const [claimingSubtask, setClaimingSubtask] = useState(false);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
@@ -92,11 +90,10 @@ export function TaskPage() {
             const workflow = await fetchProjectWorkflow(activeSession, workflowProjectId);
             if (active) {
               setWorkflowStages(workflow.stages);
-              const humans = workflow.members.filter((member) => member.actorKind === "human");
-              setHumanMembers(humans);
+              setMembers(workflow.members);
               setActAsMemberId((current) => {
-                if (current && humans.some((member) => member.id === current)) return current;
-                return humans[0]?.id ?? "";
+                if (current && workflow.members.some((member) => member.id === current)) return current;
+                return workflow.members[0]?.id ?? "";
               });
             }
           }
@@ -140,7 +137,7 @@ export function TaskPage() {
 
   async function handleWorkStatus(workStatus: WorkStatus) {
     if (!session || !Number.isFinite(taskId)) return;
-    const actor = humanMembers.find((member) => member.id === actAsMemberId);
+    const actor = members.find((member) => member.id === actAsMemberId);
     if (!actor) {
       toast.error("Pick a project member on the epic canvas first");
       return;
@@ -159,7 +156,7 @@ export function TaskPage() {
 
   async function handleSubtaskStatus(subtaskId: number, workStatus: WorkStatus) {
     if (!session) return;
-    const actor = humanMembers.find((member) => member.id === actAsMemberId);
+    const actor = members.find((member) => member.id === actAsMemberId);
     setUpdatingSubtaskStatus(true);
     try {
       await updateTaskWorkStatus(session, subtaskId, workStatus, actor?.name ?? "web");
@@ -173,26 +170,6 @@ export function TaskPage() {
       toast.error(error instanceof Error ? error.message : "Failed to update status");
     } finally {
       setUpdatingSubtaskStatus(false);
-    }
-  }
-
-  async function handleSubtaskClaim(subtaskId: number) {
-    if (!session) return;
-    const actor = humanMembers.find((member) => member.id === actAsMemberId);
-    if (!actor) {
-      toast.error("Pick a human member");
-      return;
-    }
-    setClaimingSubtask(true);
-    try {
-      await claimTask(session, subtaskId, actor.name);
-      await reloadEpic();
-      setSelectedSubtaskId(subtaskId);
-      toast.success("Task claimed");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to claim task");
-    } finally {
-      setClaimingSubtask(false);
     }
   }
 
@@ -348,6 +325,7 @@ export function TaskPage() {
                 epicId={taskId}
                 epicStageId={detail.stageId ?? null}
                 subtasks={subtasks}
+                workflowState={detail.workflowState ?? []}
                 selectedTaskId={selectedSubtaskId}
                 onSelectTask={setSelectedSubtaskId}
                 onAddTaskToStage={(stageId, stageTitle) =>
@@ -362,13 +340,11 @@ export function TaskPage() {
                 epicId={taskId}
                 subtasks={subtasks}
                 selected={selectedSubtask}
-                humanMembers={humanMembers}
+                members={members}
                 actAsMemberId={actAsMemberId}
                 updatingStatus={updatingSubtaskStatus}
-                claiming={claimingSubtask}
                 onActAsMemberChange={setActAsMemberId}
                 onClose={() => setSelectedSubtaskId(null)}
-                onClaim={(subtaskId) => void handleSubtaskClaim(subtaskId)}
                 onStatusChange={(subtaskId, status) => void handleSubtaskStatus(subtaskId, status)}
               />
             </div>

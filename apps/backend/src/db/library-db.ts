@@ -54,21 +54,28 @@ function ensureMigrated() {
   migrateLibraryTables();
 }
 
-export function listLibraryRows(): LibraryRow[] {
+export function listLibraryRows(filter: { id: string }): LibraryRow[] {
   ensureMigrated();
+  const id = filter.id.trim();
+  if (id !== "") {
+    return getProjectsDb()
+      .prepare(
+        `SELECT id, title, description, updated_at FROM libraries WHERE id = ?`,
+      )
+      .all(id) as LibraryRow[];
+  }
   return getProjectsDb()
-    .prepare(`SELECT id, title, description, updated_at FROM libraries ORDER BY title COLLATE NOCASE ASC`)
+    .prepare(
+      `SELECT id, title, description, updated_at FROM libraries ORDER BY title COLLATE NOCASE ASC`,
+    )
     .all() as LibraryRow[];
 }
 
-export function getLibraryRow(id: string): LibraryRow | undefined {
-  ensureMigrated();
-  return getProjectsDb()
-    .prepare(`SELECT id, title, description, updated_at FROM libraries WHERE id = ?`)
-    .get(id) as LibraryRow | undefined;
-}
-
-export function insertLibraryRow(row: { id: string; title: string; description: string }) {
+export function insertLibraryRow(row: {
+  id: string;
+  title: string;
+  description: string;
+}) {
   ensureMigrated();
   getProjectsDb()
     .prepare(
@@ -77,7 +84,10 @@ export function insertLibraryRow(row: { id: string; title: string; description: 
     .run(row.id, row.title, row.description);
 }
 
-export function updateLibraryRow(id: string, patch: { title: string; description: string }) {
+export function updateLibraryRow(
+  id: string,
+  patch: { title: string; description: string },
+) {
   ensureMigrated();
   getProjectsDb()
     .prepare(
@@ -89,25 +99,39 @@ export function updateLibraryRow(id: string, patch: { title: string; description
 export function deleteLibraryRow(id: string) {
   ensureMigrated();
   const db = getProjectsDb();
-  db.prepare(`DELETE FROM library_document_links WHERE document_id IN (SELECT id FROM library_documents WHERE library_id = ?)`).run(id);
+  db.prepare(
+    `DELETE FROM library_document_links WHERE document_id IN (SELECT id FROM library_documents WHERE library_id = ?)`,
+  ).run(id);
   db.prepare(`DELETE FROM library_documents WHERE library_id = ?`).run(id);
   db.prepare(`DELETE FROM libraries WHERE id = ?`).run(id);
 }
 
-export function listLibraryDocumentRows(libraryId: string): LibraryDocumentRow[] {
+export function listLibraryDocumentRows(filter: {
+  libraryId: string;
+  documentId: string;
+}): LibraryDocumentRow[] {
   ensureMigrated();
+  const documentId = filter.documentId.trim();
+  const libraryId = filter.libraryId.trim();
+  if (documentId !== "") {
+    return getProjectsDb()
+      .prepare(
+        `SELECT id, library_id, title, description, updated_at FROM library_documents WHERE id = ?`,
+      )
+      .all(documentId) as LibraryDocumentRow[];
+  }
+  if (libraryId !== "") {
+    return getProjectsDb()
+      .prepare(
+        `SELECT id, library_id, title, description, updated_at FROM library_documents WHERE library_id = ? ORDER BY title COLLATE NOCASE ASC`,
+      )
+      .all(libraryId) as LibraryDocumentRow[];
+  }
   return getProjectsDb()
     .prepare(
-      `SELECT id, library_id, title, description, updated_at FROM library_documents WHERE library_id = ? ORDER BY title COLLATE NOCASE ASC`,
+      `SELECT id, library_id, title, description, updated_at FROM library_documents ORDER BY title COLLATE NOCASE ASC`,
     )
-    .all(libraryId) as LibraryDocumentRow[];
-}
-
-export function getLibraryDocumentRow(id: string): LibraryDocumentRow | undefined {
-  ensureMigrated();
-  return getProjectsDb()
-    .prepare(`SELECT id, library_id, title, description, updated_at FROM library_documents WHERE id = ?`)
-    .get(id) as LibraryDocumentRow | undefined;
+    .all() as LibraryDocumentRow[];
 }
 
 export function insertLibraryDocumentRow(row: {
@@ -139,7 +163,9 @@ export function updateLibraryDocumentRow(
 export function deleteLibraryDocumentRow(id: string) {
   ensureMigrated();
   const db = getProjectsDb();
-  db.prepare(`DELETE FROM library_document_links WHERE document_id = ?`).run(id);
+  db.prepare(`DELETE FROM library_document_links WHERE document_id = ?`).run(
+    id,
+  );
   db.prepare(`DELETE FROM library_documents WHERE id = ?`).run(id);
 }
 
@@ -155,11 +181,15 @@ export function insertLibraryDocumentLink(documentId: string, taskId: number) {
 export function deleteLibraryDocumentLink(documentId: string, taskId: number) {
   ensureMigrated();
   getProjectsDb()
-    .prepare(`DELETE FROM library_document_links WHERE document_id = ? AND task_id = ?`)
+    .prepare(
+      `DELETE FROM library_document_links WHERE document_id = ? AND task_id = ?`,
+    )
     .run(documentId, taskId);
 }
 
-export function listLibraryDocumentLinkRowsForTask(taskId: number): LibraryDocumentLinkRow[] {
+export function listLibraryDocumentLinkRowsForTask(
+  taskId: number,
+): LibraryDocumentLinkRow[] {
   ensureMigrated();
   return getProjectsDb()
     .prepare(

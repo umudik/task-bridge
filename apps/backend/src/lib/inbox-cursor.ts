@@ -7,10 +7,15 @@ export type InboxCursorPayload = {
 
 export function encodeInboxCursor(item: {
   taskId: number;
-  activityAt?: string | null;
-  createdAt?: string | null;
+  activityAt: string | null;
+  createdAt: string | null;
 }): string {
-  const activityAt = item.activityAt ?? item.createdAt ?? "";
+  let activityAt = "";
+  if (item.activityAt !== null) {
+    activityAt = item.activityAt;
+  } else if (item.createdAt !== null) {
+    activityAt = item.createdAt;
+  }
   return Buffer.from(`${activityAt}|${item.taskId}`, "utf8").toString("base64url");
 }
 
@@ -29,13 +34,13 @@ export function decodeInboxCursor(cursor: string): InboxCursorPayload | null {
 }
 
 export function inboxItemBeforeCursor(
-  item: { taskId: number; activityAt?: string | null; createdAt?: string | null },
+  item: { taskId: number; activityAt: string | null; createdAt: string | null },
   cursorTime: number,
   cursorTaskId: number,
   parseActivityTime: (entry: {
     taskId: number;
-    activityAt?: string | null;
-    createdAt?: string | null;
+    activityAt: string | null;
+    createdAt: string | null;
   }) => number,
 ): boolean {
   const itemTime = parseActivityTime(item);

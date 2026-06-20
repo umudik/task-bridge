@@ -29,8 +29,6 @@ const taskTemplateSchema: z.ZodTypeAny = z.lazy(() =>
     title: z.string().min(1),
     description: z.string().optional().default(""),
     assigneeRole: z.string().optional().default(""),
-    assigneeKind: z.enum(["human", "ai"]).optional(),
-    kind: z.enum(["task", "group"]).optional().default("task"),
     execution: z.enum(["parallel", "sequential"]).optional().default("parallel"),
     dependsOn: z.array(z.string()).optional().default([]),
     children: z.array(taskTemplateSchema).optional().default([]),
@@ -60,7 +58,7 @@ const applyTemplateSchema = z.object({
 
 const createMemberSchema = z.object({
   name: z.string().min(1),
-  role: z.string().min(1),
+  role: z.string().optional().default(""),
   actorKind: z.enum(["human", "ai"]),
 });
 
@@ -75,11 +73,11 @@ async function assertProject(projectId: string) {
   if (!project) {
     throw new AppError("Project not found", 404);
   }
-  await ensureProjectWorkflow(projectId);
+  ensureProjectWorkflow(projectId);
   return project;
 }
 
-export async function workflowRoutes(app: FastifyInstance) {
+export function workflowRoutes(app: FastifyInstance) {
   app.get("/projects/:projectId/workflow", async (request) => {
     assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
@@ -98,7 +96,9 @@ export async function workflowRoutes(app: FastifyInstance) {
     assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
-    const body = applyTemplateSchema.parse(request.body ?? {});
+    let applyTemplateBody = request.body;
+    if (applyTemplateBody === null) { applyTemplateBody = {}; }
+    const body = applyTemplateSchema.parse(applyTemplateBody);
     const workflow = await applyWorkflowTemplateToProject(projectId, body.templateId);
     return reply.status(200).send(workflow);
   });
@@ -107,15 +107,27 @@ export async function workflowRoutes(app: FastifyInstance) {
     assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
-    const body = replaceWorkflowSchema.parse(request.body ?? {});
+    let replaceWorkflowBody = request.body;
+    if (replaceWorkflowBody === null) { replaceWorkflowBody = {}; }
+    const body = replaceWorkflowSchema.parse(replaceWorkflowBody);
     const workflow = await replaceProjectWorkflow(
       projectId,
-      body.stages.map((stage) => ({
-        ...stage,
-        layoutX: stage.layoutX ?? null,
-        layoutY: stage.layoutY ?? null,
-        autoAssignRole: stage.autoAssignRole?.trim() || undefined,
-      })),
+      body.stages.map((stage) => {
+        let layoutX: number | null = null;
+        if (Number(stage.layoutX) === stage.layoutX) {
+          layoutX = stage.layoutX as number;
+        }
+        let layoutY: number | null = null;
+        if (Number(stage.layoutY) === stage.layoutY) {
+          layoutY = stage.layoutY as number;
+        }
+        let autoAssignRole: string | null = null;
+        const trimmedRole = stage.autoAssignRole.trim();
+        if (trimmedRole) {
+          autoAssignRole = trimmedRole;
+        }
+        return { ...stage, layoutX, layoutY, autoAssignRole };
+      }),
       body.roles,
     );
     return reply.status(200).send(workflow);
@@ -133,11 +145,9 @@ export async function workflowRoutes(app: FastifyInstance) {
     assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     await assertProject(projectId);
-    const body = createMemberSchema.parse(request.body ?? {});
-    const workflow = await getProjectWorkflow(projectId);
-    if (!workflow.roles.includes(body.role)) {
-      return reply.status(400).send({ error: "Unknown project role" });
-    }
+    let createMemberBody = request.body;
+    if (createMemberBody === null) { createMemberBody = {}; }
+    const body = createMemberSchema.parse(createMemberBody);
     const member = await createProjectMember({
       projectId,
       name: body.name,
@@ -151,7 +161,9 @@ export async function workflowRoutes(app: FastifyInstance) {
     assertAuth(request);
     const { projectId, memberId } = memberIdParamsSchema.parse(request.params);
     await assertProject(projectId);
-    const body = updateMemberSchema.parse(request.body ?? {});
+    let updateMemberBody = request.body;
+    if (updateMemberBody === null) { updateMemberBody = {}; }
+    const body = updateMemberSchema.parse(updateMemberBody);
     const member = await updateProjectMember(memberId, body);
     if (!member || member.projectId !== projectId) {
       return reply.status(404).send({ error: "Member not found" });

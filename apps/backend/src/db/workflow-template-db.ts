@@ -1,5 +1,6 @@
 import { countSpawnableTemplates } from "../domain/task-template-graph.js";
-import type { AssigneeKind, StageTaskTemplate } from "../domain/workflow-stage.js";
+import { DEFAULT_WORKFLOW_TEMPLATE_ID } from "../domain/workflow-template-id.js";
+import type { StageTaskTemplate } from "../domain/workflow-stage.js";
 import { serializeTaskTemplates } from "../domain/workflow-stage.js";
 import { getProjectsDb } from "./projects-db.js";
 
@@ -33,7 +34,7 @@ type TemplateStageSeed = {
   rules: string[];
   position: number;
   autoAssign: boolean;
-  taskTemplates?: StageTaskTemplate[];
+  taskTemplates: StageTaskTemplate[] | null;
 };
 
 type TemplateSeed = {
@@ -44,7 +45,6 @@ type TemplateSeed = {
 };
 
 const DEPRECATED_TEMPLATE_IDS = [
-  "empty",
   "go",
   "nodejs",
   "sdlc-classic",
@@ -64,15 +64,19 @@ function task(
   title: string,
   description = "",
   assigneeRole = "",
-  assigneeKind: AssigneeKind = "ai",
+  execution: "parallel" | "sequential" = "parallel",
+  children: StageTaskTemplate[] = [],
 ): StageTaskTemplate {
-  const template: StageTaskTemplate = { id, title, description, kind: "task", assigneeKind };
-  if (assigneeRole.trim()) template.assigneeRole = assigneeRole.trim();
-  return template;
-}
-
-function human(id: string, title: string, description = "", assigneeRole = "tech-lead"): StageTaskTemplate {
-  return task(id, title, description, assigneeRole, "human");
+  const trimmedRole = assigneeRole.trim();
+  return {
+    id,
+    title,
+    description,
+    assigneeRole: trimmedRole || null,
+    execution,
+    dependsOn: [],
+    children,
+  };
 }
 
 function seq(
@@ -80,10 +84,9 @@ function seq(
   title: string,
   description: string,
   assigneeRole: string,
-  assigneeKind: AssigneeKind,
   children: StageTaskTemplate[],
 ): StageTaskTemplate {
-  return { ...task(id, title, description, assigneeRole, assigneeKind), execution: "sequential", children };
+  return task(id, title, description, assigneeRole, "sequential", children);
 }
 
 function group(
@@ -93,10 +96,27 @@ function group(
   execution: "parallel" | "sequential",
   children: StageTaskTemplate[],
 ): StageTaskTemplate {
-  return { id, title, description, kind: "group", execution, children };
+  return task(id, title, description, "", execution, children);
 }
 
 const DEFAULT_TEMPLATE_SEEDS: TemplateSeed[] = [
+  {
+    id: DEFAULT_WORKFLOW_TEMPLATE_ID,
+    title: "Empty workflow",
+    description: "Minimal pipeline with one step. Customize stages on the Pipeline tab.",
+    stages: [
+      {
+        id: "backlog",
+        title: "Backlog",
+        description: "",
+        purpose: "",
+        rules: [],
+        position: 0,
+        autoAssign: false,
+        taskTemplates: [],
+      },
+    ],
+  },
   {
     id: "ai-sdlc",
     title: "AI Spec-Driven SDLC",
@@ -130,7 +150,6 @@ Tech lead confirms constitution is enforceable — not aspirational markdown.`,
             "Write AGENTS.md / CLAUDE.md",
             "**Output:** root agent instructions.\n\n- Language & framework versions\n- Test commands that must exit 0\n- Lint/typecheck commands\n- Branch naming & commit style\n- Files agents must never edit\n- Human gate policy: no PR without approval",
             "tech-lead",
-            "ai",
             [
               task(
                 "cn-testing",
@@ -316,7 +335,7 @@ No TBD items blocking design. Agent cannot proceed with guessed requirements.`,
             "**Output:** numbered questions for human\n\nPrioritize by risk: security > data > UX > nice-to-have.",
             "agent",
           ),
-          human(
+          task(
             "cl-answers",
             "Record human answers",
             "**Output:** Clarifications section in spec\n\nEach Q→A dated and attributed. Update affected REQ-* IDs.",
@@ -354,27 +373,26 @@ Product + tech lead sign-off. **No design work until this gate passes.**`,
             "Product review",
             "**Action:** product owner reads all US-* and REQ-* artifacts.\n\nConfirm spec matches original intent. Reject if scope drift detected.",
             "product",
-            "human",
             [
-              human(
+              task(
                 "sa-tech-review",
                 "Technical feasibility review",
                 "**Action:** tech lead confirms spec is implementable within constraints.\n\nFlag impossible NFRs or missing infra dependencies.",
                 "tech-lead",
               ),
-              human(
+              task(
                 "sa-ambiguity-final",
                 "Final ambiguity sweep",
                 "**Action:** remove remaining vague language agents could misinterpret.\n\nReplace 'fast', 'secure', 'user-friendly' with measurable criteria.",
                 "tech-lead",
               ),
-              human(
+              task(
                 "sa-approve",
                 "Approve specification",
                 "**Output:** Approved status on all spec artifacts + approval record (date, approver).\n\nThis unlocks Design stage.",
                 "tech-lead",
               ),
-              human(
+              task(
                 "sa-freeze",
                 "Freeze spec baseline",
                 "**Output:** git tag or spec version number\n\nImplementation must trace to this baseline. Changes require spec amendment + re-approval.",
@@ -471,21 +489,20 @@ Plan status: Approved. Constitution + spec alignment confirmed.
             "Architect review",
             "**Action:** review architecture.md against approved REQ-* set.\n\nVerify no spec requirements are orphaned.",
             "architect",
-            "human",
             [
-              human(
+              task(
                 "pa-constitution-check",
                 "Constitution compliance",
                 "**Action:** verify plan obeys AGENTS.md rules.\n\nFramework choices, testing approach, security patterns.",
                 "tech-lead",
               ),
-              human(
+              task(
                 "pa-risk-review",
                 "Risk & trade-off review",
                 "**Action:** review ADRs and flagged risks.\n\nAccept or mitigate before tasks are written.",
                 "tech-lead",
               ),
-              human(
+              task(
                 "pa-approve",
                 "Approve technical plan",
                 "**Output:** Approved status on design artifacts.\n\nUnlocks Tasks stage.",
@@ -582,21 +599,20 @@ Human confirms scope per task is logical, complete, and not oversized.`,
             "Scope review",
             "**Action:** human reads tasks.md end-to-end.\n\nEach task independently reviewable in a future PR diff.",
             "tech-lead",
-            "human",
             [
-              human(
+              task(
                 "ta-coverage",
                 "Requirement coverage check",
                 "**Action:** every approved REQ-* maps to ≥1 task.\n\nNo orphan requirements.",
                 "qa",
               ),
-              human(
+              task(
                 "ta-sizing",
                 "Task sizing check",
                 "**Action:** reject tasks that are epics in disguise.\n\nSplit anything estimated >1 agent session.",
                 "tech-lead",
               ),
-              human(
+              task(
                 "ta-approve",
                 "Approve task breakdown",
                 "**Output:** Approved status on tasks.md.\n\nUnlocks Agent Context + Implementation.",
@@ -836,7 +852,7 @@ This is review of **local branch work** — still no public PR.`,
             "**Action:** SCA scan; CVEs fixed, accepted with ADR, or mitigated.",
             "engineer",
           ),
-          human(
+          task(
             "rs-diff-review",
             "Human diff review",
             "**Action:** human reads full branch diff — not rubber-stamp.\n\nFocus on agent-generated code quality.",
@@ -927,21 +943,20 @@ Written approval record: "authorized to open PR".
             "Demo or walkthrough",
             "**Action:** author demos feature to approver (live or recording).\n\nApprover understands what will appear in the PR.",
             "engineer",
-            "human",
             [
-              human(
+              task(
                 "hp-checklist",
                 "Pre-PR checklist",
                 "**Action:** confirm constitution, spec, plan, tasks, tests, security, analyze all passed.\n\nChecklist signed by approver.",
                 "tech-lead",
               ),
-              human(
+              task(
                 "hp-traceability",
                 "Traceability sign-off",
                 "**Action:** approver confirms RTM is accurate.\n\nRequired for audit-sensitive work.",
                 "qa",
               ),
-              human(
+              task(
                 "hp-approve",
                 "Authorize PR creation",
                 "**Output:** approval record in status.md or issue comment.\n\nExplicit: 'Approved to open PR to [target branch]'. **This unlocks Open PR stage.**",
@@ -1065,6 +1080,7 @@ Deploy to staging/production is **not** part of this template — use your relea
         rules: [],
         position: 17,
         autoAssign: false,
+        taskTemplates: null,
       },
     ],
   },
@@ -1081,7 +1097,10 @@ function removeDeprecatedTemplates() {
 
 function insertTemplateStages(template: TemplateSeed) {
   for (const stage of template.stages) {
-    const taskTemplates = stage.taskTemplates ?? [];
+    let taskTemplates: StageTaskTemplate[] = [];
+    if (stage.taskTemplates !== null) {
+      taskTemplates = stage.taskTemplates;
+    }
     insertWorkflowTemplateStageRow({
       templateId: template.id,
       id: stage.id,
@@ -1093,14 +1112,16 @@ function insertTemplateStages(template: TemplateSeed) {
       autoAssign: stage.autoAssign,
       spawnTaskCount: countSpawnableTemplates(taskTemplates),
       taskTemplatesJson: serializeTaskTemplates(taskTemplates),
+      layoutX: null,
+      layoutY: null,
     });
   }
 }
 
 function upsertBuiltinTemplate(template: TemplateSeed) {
   if (template.id === "ai-sdlc") {
-    const existing = getWorkflowTemplateRow(template.id);
-    if (existing) {
+    const existing = listWorkflowTemplateRows({ id: template.id });
+    if (existing.length > 0) {
       deleteWorkflowTemplateStages(template.id);
       getProjectsDb()
         .prepare("UPDATE workflow_templates SET title = ?, description = ?, updated_at = datetime('now') WHERE id = ?")
@@ -1115,8 +1136,8 @@ function upsertBuiltinTemplate(template: TemplateSeed) {
     insertTemplateStages(template);
     return;
   }
-  const existing = getWorkflowTemplateRow(template.id);
-  if (existing) return;
+  const existing = listWorkflowTemplateRows({ id: template.id });
+  if (existing.length > 0) return;
   insertWorkflowTemplateRow({
     id: template.id,
     title: template.title,
@@ -1170,20 +1191,21 @@ export function countWorkflowTemplates(): number {
   return row.count;
 }
 
-export function listWorkflowTemplateRows(): WorkflowTemplateRow[] {
+export function listWorkflowTemplateRows(filter: { id: string }): WorkflowTemplateRow[] {
   migrateWorkflowTemplateTables();
+  const id = filter.id.trim();
+  if (id !== "") {
+    return getProjectsDb()
+      .prepare(
+        "SELECT id, title, description, updated_at FROM workflow_templates WHERE id = ?",
+      )
+      .all(id) as WorkflowTemplateRow[];
+  }
   return getProjectsDb()
     .prepare(
       "SELECT id, title, description, updated_at FROM workflow_templates ORDER BY title COLLATE NOCASE ASC",
     )
     .all() as WorkflowTemplateRow[];
-}
-
-export function getWorkflowTemplateRow(id: string): WorkflowTemplateRow | undefined {
-  migrateWorkflowTemplateTables();
-  return getProjectsDb()
-    .prepare("SELECT id, title, description, updated_at FROM workflow_templates WHERE id = ?")
-    .get(id.trim()) as WorkflowTemplateRow | undefined;
 }
 
 export function listWorkflowTemplateStageRows(templateId: string): WorkflowTemplateStageRow[] {
@@ -1234,12 +1256,16 @@ export function insertWorkflowTemplateStageRow(row: {
   rulesJson: string;
   position: number;
   autoAssign: boolean;
-  layoutX?: number | null;
-  layoutY?: number | null;
-  spawnTaskCount?: number;
-  taskTemplatesJson?: string;
+  layoutX: number | null;
+  layoutY: number | null;
+  spawnTaskCount: number;
+  taskTemplatesJson: string;
 }) {
   migrateWorkflowTemplateTables();
+  let autoAssignFlag = 0;
+  if (row.autoAssign) {
+    autoAssignFlag = 1;
+  }
   getProjectsDb()
     .prepare(
       `INSERT INTO workflow_template_stages
@@ -1254,13 +1280,15 @@ export function insertWorkflowTemplateStageRow(row: {
       row.purpose.trim(),
       row.rulesJson,
       row.position,
-      row.autoAssign ? 1 : 0,
-      row.layoutX ?? null,
-      row.layoutY ?? null,
-      row.spawnTaskCount ?? 0,
-      row.taskTemplatesJson ?? "[]",
+      autoAssignFlag,
+      row.layoutX,
+      row.layoutY,
+      row.spawnTaskCount,
+      row.taskTemplatesJson,
     );
 }
+
+export { DEFAULT_WORKFLOW_TEMPLATE_ID } from "../domain/workflow-template-id.js";
 
 export function seedDefaultWorkflowTemplates() {
   migrateWorkflowTemplateTables();

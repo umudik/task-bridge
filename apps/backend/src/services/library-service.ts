@@ -3,8 +3,6 @@ import {
   deleteLibraryDocumentLink,
   deleteLibraryDocumentRow,
   deleteLibraryRow,
-  getLibraryDocumentRow,
-  getLibraryRow,
   insertLibraryDocumentLink,
   insertLibraryDocumentRow,
   insertLibraryRow,
@@ -15,9 +13,8 @@ import {
   updateLibraryDocumentRow,
   updateLibraryRow,
 } from "../db/library-db.js";
-import { getTaskRow } from "../db/tasks-db.js";
+import { listTaskRows } from "../db/tasks-db.js";
 import { AppError } from "../errors/app-error.js";
-import { emptyToNull } from "../lib/strings.js";
 
 export type LibrarySummary = {
   id: string;
@@ -61,52 +58,45 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function resolveLibraryId(inputId: string | undefined, title: string) {
-  const custom = emptyToNull(inputId);
-  if (custom) return custom;
+function resolveLibraryId(inputId: string, title: string) {
+  const custom = inputId.trim();
+  if (custom !== "") return custom;
   const base = slugify(title) || `library-${randomUUID()}`;
   let candidate = base;
   let suffix = 1;
-  while (getLibraryRow(candidate)) {
+  while (listLibraryRows({ id: candidate }).length > 0) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
   return candidate;
 }
 
-function resolveDocumentId(inputId: string | undefined, title: string, libraryId: string) {
-  const custom = emptyToNull(inputId);
-  if (custom) return custom;
+function resolveDocumentId(inputId: string, title: string, libraryId: string) {
+  const custom = inputId.trim();
+  if (custom !== "") return custom;
   const base = slugify(title) || `doc-${randomUUID()}`;
   let candidate = base;
   let suffix = 1;
-  while (getLibraryDocumentRow(candidate)) {
+  while (listLibraryDocumentRows({ libraryId: "", documentId: candidate }).length > 0) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
-  if (getLibraryDocumentRow(candidate)) {
+  if (listLibraryDocumentRows({ libraryId: "", documentId: candidate }).length > 0) {
     return `${libraryId}-${candidate}`;
   }
   return candidate;
 }
 
-export function listLibraries(): LibrarySummary[] {
-  return listLibraryRows().map((row) => ({
-    id: row.id,
-    title: row.title,
-    description: row.description,
-    documentCount: listLibraryDocumentRows(row.id).length,
-  }));
-}
-
-export function getLibrary(libraryId: string): LibraryDetail | null {
-  const row = getLibraryRow(libraryId);
-  if (!row) return null;
+function mapLibraryDetail(row: {
+  id: string;
+  title: string;
+  description: string;
+}): LibraryDetail {
   return {
     id: row.id,
     title: row.title,
     description: row.description,
-    documents: listLibraryDocumentRows(row.id).map((doc) => ({
+    documents: listLibraryDocumentRows({ libraryId: row.id, documentId: "" }).map((doc) => ({
       id: doc.id,
       libraryId: doc.library_id,
       title: doc.title,
@@ -115,89 +105,140 @@ export function getLibrary(libraryId: string): LibraryDetail | null {
   };
 }
 
-export function createLibrary(input: { id?: string; title: string; description?: string }) {
-  const title = emptyToNull(input.title);
-  if (!title) throw new AppError("Title is required", 400);
-  const id = resolveLibraryId(input.id, title);
-  if (getLibraryRow(id)) throw new AppError("Library already exists", 409);
-  insertLibraryRow({ id, title, description: input.description ?? "" });
-  return getLibrary(id)!;
-}
-
-export function updateLibrary(
-  libraryId: string,
-  input: { title: string; description?: string },
-) {
-  const row = getLibraryRow(libraryId);
-  if (!row) throw new AppError("Library not found", 404);
-  const title = emptyToNull(input.title);
-  if (!title) throw new AppError("Title is required", 400);
-  updateLibraryRow(libraryId, { title, description: input.description ?? "" });
-  return getLibrary(libraryId)!;
-}
-
-export function removeLibrary(libraryId: string) {
-  const row = getLibraryRow(libraryId);
-  if (!row) throw new AppError("Library not found", 404);
-  deleteLibraryRow(libraryId);
-}
-
-export function getLibraryDocument(documentId: string): LibraryDocument | null {
-  const row = getLibraryDocumentRow(documentId);
-  if (!row) return null;
-  const library = getLibraryRow(row.library_id);
+function mapLibraryDocument(row: {
+  id: string;
+  library_id: string;
+  title: string;
+  description: string;
+}): LibraryDocument {
+  const libraries = listLibraryRows({ id: row.library_id });
+  let libraryTitle: string;
+  if (libraries.length > 0 && libraries[0] !== null) {
+    libraryTitle = libraries[0].title;
+  } else {
+    libraryTitle = row.library_id;
+  }
   return {
     id: row.id,
     libraryId: row.library_id,
-    libraryTitle: library?.title ?? row.library_id,
+    libraryTitle,
     title: row.title,
     description: row.description,
     linkCount: listLibraryDocumentLinkRowsForDocument(row.id).length,
   };
 }
 
+export function listLibraries(): LibrarySummary[] {
+  return listLibraryRows({ id: "" }).map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    documentCount: listLibraryDocumentRows({ libraryId: row.id, documentId: "" }).length,
+  }));
+}
+
+export function getLibrary(libraryId: string): LibraryDetail | null {
+  const rows = listLibraryRows({ id: libraryId });
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  if (row === null) return null;
+  return mapLibraryDetail(row);
+}
+
+export function createLibrary(input: { id: string; title: string; description: string }) {
+  const title = input.title.trim();
+  if (title === "") throw new AppError("Title is required", 400);
+  const id = resolveLibraryId(input.id, title);
+  if (listLibraryRows({ id }).length > 0) throw new AppError("Library already exists", 409);
+  insertLibraryRow({ id, title, description: input.description.trim() });
+  const created = getLibrary(id);
+  if (created === null) throw new AppError("Library creation failed", 500);
+  return created;
+}
+
+export function updateLibrary(
+  libraryId: string,
+  input: { title: string; description: string },
+) {
+  const rows = listLibraryRows({ id: libraryId });
+  if (rows.length === 0) throw new AppError("Library not found", 404);
+  const title = input.title.trim();
+  if (title === "") throw new AppError("Title is required", 400);
+  updateLibraryRow(libraryId, { title, description: input.description.trim() });
+  const updated = getLibrary(libraryId);
+  if (updated === null) throw new AppError("Library not found after update", 500);
+  return updated;
+}
+
+export function removeLibrary(libraryId: string) {
+  if (listLibraryRows({ id: libraryId }).length === 0) {
+    throw new AppError("Library not found", 404);
+  }
+  deleteLibraryRow(libraryId);
+}
+
+export function getLibraryDocument(documentId: string): LibraryDocument | null {
+  const rows = listLibraryDocumentRows({ libraryId: "", documentId });
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  if (row === null) return null;
+  return mapLibraryDocument(row);
+}
+
 export function createLibraryDocument(
   libraryId: string,
-  input: { id?: string; title: string; description?: string },
+  input: { id: string; title: string; description: string },
 ) {
-  const library = getLibraryRow(libraryId);
-  if (!library) throw new AppError("Library not found", 404);
-  const title = emptyToNull(input.title);
-  if (!title) throw new AppError("Title is required", 400);
+  if (listLibraryRows({ id: libraryId }).length === 0) {
+    throw new AppError("Library not found", 404);
+  }
+  const title = input.title.trim();
+  if (title === "") throw new AppError("Title is required", 400);
   const id = resolveDocumentId(input.id, title, libraryId);
-  if (getLibraryDocumentRow(id)) throw new AppError("Document already exists", 409);
+  if (listLibraryDocumentRows({ libraryId: "", documentId: id }).length > 0) {
+    throw new AppError("Document already exists", 409);
+  }
   insertLibraryDocumentRow({
     id,
     libraryId,
     title,
-    description: input.description ?? "",
+    description: input.description.trim(),
   });
-  return getLibraryDocument(id)!;
+  const created = getLibraryDocument(id);
+  if (created === null) throw new AppError("Document creation failed", 500);
+  return created;
 }
 
 export function updateLibraryDocument(
   documentId: string,
-  input: { title: string; description?: string },
+  input: { title: string; description: string },
 ) {
-  const row = getLibraryDocumentRow(documentId);
-  if (!row) throw new AppError("Document not found", 404);
-  const title = emptyToNull(input.title);
-  if (!title) throw new AppError("Title is required", 400);
-  updateLibraryDocumentRow(documentId, { title, description: input.description ?? "" });
-  return getLibraryDocument(documentId)!;
+  if (listLibraryDocumentRows({ libraryId: "", documentId }).length === 0) {
+    throw new AppError("Document not found", 404);
+  }
+  const title = input.title.trim();
+  if (title === "") throw new AppError("Title is required", 400);
+  updateLibraryDocumentRow(documentId, { title, description: input.description.trim() });
+  const updated = getLibraryDocument(documentId);
+  if (updated === null) throw new AppError("Document not found after update", 500);
+  return updated;
 }
 
 export function removeLibraryDocument(documentId: string) {
-  const row = getLibraryDocumentRow(documentId);
-  if (!row) throw new AppError("Document not found", 404);
+  if (listLibraryDocumentRows({ libraryId: "", documentId }).length === 0) {
+    throw new AppError("Document not found", 404);
+  }
   deleteLibraryDocumentRow(documentId);
 }
 
 export function linkDocumentToTask(documentId: string, taskId: number) {
-  const document = getLibraryDocumentRow(documentId);
-  if (!document) throw new AppError("Document not found", 404);
-  const task = getTaskRow(taskId);
-  if (!task) throw new AppError("Task not found", 404);
+  if (listLibraryDocumentRows({ libraryId: "", documentId }).length === 0) {
+    throw new AppError("Document not found", 404);
+  }
+  const tasks = listTaskRows({ id: taskId });
+  if (tasks.length === 0) throw new AppError("Task not found", 404);
+  const task = tasks[0];
+  if (task === null) throw new AppError("Task not found", 404);
   if (task.parentId !== null) {
     throw new AppError("Documents can only be linked to epics", 400);
   }
@@ -206,27 +247,35 @@ export function linkDocumentToTask(documentId: string, taskId: number) {
 }
 
 export function unlinkDocumentFromTask(documentId: string, taskId: number) {
-  const document = getLibraryDocumentRow(documentId);
-  if (!document) throw new AppError("Document not found", 404);
+  if (listLibraryDocumentRows({ libraryId: "", documentId }).length === 0) {
+    throw new AppError("Document not found", 404);
+  }
   deleteLibraryDocumentLink(documentId, taskId);
 }
 
 export function listTaskLibraryLinks(taskId: number): LibraryDocumentLink[] {
-  const task = getTaskRow(taskId);
-  if (!task) return [];
-  return listLibraryDocumentLinkRowsForTask(taskId)
-    .map((link) => {
-      const document = getLibraryDocumentRow(link.document_id);
-      if (!document) return null;
-      const library = getLibraryRow(document.library_id);
-      return {
+  if (listTaskRows({ id: taskId }).length === 0) return [];
+  return listLibraryDocumentLinkRowsForTask(taskId).flatMap((link) => {
+    const docs = listLibraryDocumentRows({ libraryId: "", documentId: link.document_id });
+    if (docs.length === 0) return [];
+    const document = docs[0];
+    if (document === null) return [];
+    const libraries = listLibraryRows({ id: document.library_id });
+    let libraryTitle: string;
+    if (libraries.length > 0 && libraries[0] !== null) {
+      libraryTitle = libraries[0].title;
+    } else {
+      libraryTitle = document.library_id;
+    }
+    return [
+      {
         documentId: document.id,
         documentTitle: document.title,
         libraryId: document.library_id,
-        libraryTitle: library?.title ?? document.library_id,
+        libraryTitle,
         taskId: link.task_id,
         linkedAt: link.created_at,
-      };
-    })
-    .filter((entry): entry is LibraryDocumentLink => entry !== null);
+      },
+    ];
+  });
 }

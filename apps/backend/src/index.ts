@@ -51,12 +51,15 @@ async function main() {
       return reply.status(400).send({ error: error.message });
     }
     const statusCode = statusCodeFromError(error);
-    const message = error instanceof Error ? error.message : "Internal error";
+    let message = "Internal error";
+    if (error instanceof Error) {
+      message = error.message;
+    }
     if (statusCode >= 500) {
       logger.error(message);
     }
-    const body: { error: string; details?: unknown } = { error: message };
-    if (isAppError(error) && error.details !== undefined) {
+    const body: { error: string; details: unknown } = { error: message, details: null };
+    if (isAppError(error) && error.details !== null) {
       body.details = error.details;
     }
     return reply.status(statusCode).send(body);
@@ -69,8 +72,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  logger.error("Failed to start", {
-    error: err instanceof Error ? err.message : String(err),
-  });
+  let errMessage = String(err);
+  if (err instanceof Error) {
+    errMessage = err.message;
+  }
+  logger.error("Failed to start", { error: errMessage });
   process.exit(1);
 });

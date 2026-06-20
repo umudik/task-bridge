@@ -1,19 +1,29 @@
 import type { Session } from "./session";
 import { clearSession } from "./session";
 
+export const DEFAULT_WORKFLOW_TEMPLATE_ID = "empty";
+
 export type Project = {
   id: string;
   name: string;
-  repoPath?: string | null;
-  description?: string;
-  workflowTemplateId?: string;
+  repoPath: string;
+  description: string;
+  workflowTemplateId: string;
 };
 
 export type UpdateProjectInput = {
-  name?: string;
-  repoPath?: string;
-  description?: string;
-  workflowTemplateId?: string;
+  name: string;
+  repoPath: string;
+  description: string;
+  workflowTemplateId: string;
+};
+
+export type CreateProjectInput = {
+  name: string;
+  id: string;
+  repoPath: string;
+  description: string;
+  workflowTemplateId: string;
 };
 
 export type InboxItem = {
@@ -40,9 +50,7 @@ export type StageTaskTemplate = {
   id: string;
   title: string;
   description: string;
-  assigneeRole?: string;
-  assigneeKind?: AssigneeKind;
-  kind?: "task" | "group";
+  assigneeRole?: string | null;
   execution?: TemplateExecution;
   dependsOn?: string[];
   children?: StageTaskTemplate[];
@@ -107,7 +115,7 @@ export type TaskSubtask = {
   title: string;
   stageId?: string | null;
   stageTitle?: string | null;
-  templateId?: string | null;
+  templateId: string | null;
   assignee?: string | null;
   assigneeKind?: AssigneeKind | null;
   claimedBy?: string | null;
@@ -118,23 +126,32 @@ export type TaskSubtask = {
 
 export type TaskComment = {
   id: string;
-  authorType?: "human" | "system";
-  authorId?: string;
-  tags?: string[];
-  body?: string;
+  role: "user" | "system";
+  authorId: string;
+  tags: string[];
+  body: string;
   at: string;
-  metadata?: Record<string, unknown> | null;
-  by?: string;
-  text?: string;
-  role?: "user" | "system";
+  metadata: Record<string, unknown> | null;
+  by: string;
+  text: string;
+};
+
+export type WorkflowStateNode = {
+  templateId: string;
+  stageId: string;
+  parentTemplateId: string | null;
+  title: string;
+  taskId: number | null;
+  workStatus: WorkStatus;
+  workStatusLabel: string;
+  commentCount: number;
 };
 
 export type TaskDetail = {
   taskId: number;
   title: string;
   request: string;
-  description?: string;
-  acceptanceCriteria?: string | null;
+  description: string;
   status: string;
   parentId?: number | null;
   parent?: { taskId: number; title: string; stageId?: string | null } | null;
@@ -152,6 +169,7 @@ export type TaskDetail = {
   workStatusLabel?: string | null;
   comments?: TaskComment[];
   libraryLinks?: LibraryDocumentLink[];
+  workflowState?: WorkflowStateNode[];
 };
 
 export type LibrarySummary = {
@@ -360,24 +378,16 @@ export type WorkflowTemplate = WorkflowTemplateSummary & {
   stages: WorkflowStage[];
 };
 
-export type CreateProjectInput = {
-  name: string;
-  id?: string;
-  repoPath: string;
-  description?: string;
-  workflowTemplateId?: string;
-};
-
 export async function createProject(session: Session, input: CreateProjectInput) {
   return request<Project>(session, "/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: input.name,
-      id: input.id?.trim() || undefined,
+      id: input.id.trim(),
       repoPath: input.repoPath,
-      description: input.description?.trim() || undefined,
-      workflowTemplateId: input.workflowTemplateId?.trim() || undefined,
+      description: input.description.trim(),
+      workflowTemplateId: input.workflowTemplateId.trim() || DEFAULT_WORKFLOW_TEMPLATE_ID,
     }),
   });
 }

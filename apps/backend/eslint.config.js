@@ -1,84 +1,72 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 
-/**
- * Banned patterns — zero tolerance.
- *
- * Banned everywhere (including DB files):
- *   ?? ??=              — use explicit if / ternary
- *   ?. ?.()             — guard with an explicit undefined check
- *   ?: on properties/methods/params — use T | undefined union
- *
- * Banned in application code (relaxed in src/db/** — SQLite boundary):
- *   null (type + literal) — use undefined
- *
- * Why DB files are exempt from null:
- *   better-sqlite3 returns SQL NULL as JavaScript null.
- *   The DB layer is the boundary; it converts nulls to undefined
- *   before handing values to application code.
- */
-
-const BANNED_OPTIONALITY = [
-  // ── ?? and ??= ────────────────────────────────────────────────────────────
+const BANNED = [
+  {
+    selector: "LineComment",
+    message: "Comments are banned.",
+  },
+  {
+    selector: "BlockComment",
+    message: "Comments are banned.",
+  },
   {
     selector: "LogicalExpression[operator='??']",
-    message: "?? is banned. Use an explicit if / ternary instead.",
+    message: "?? is banned. Use explicit if/else.",
   },
   {
     selector: "AssignmentExpression[operator='??=']",
     message: "??= is banned.",
   },
-
-  // ── ?. optional chaining ─────────────────────────────────────────────────
+  {
+    selector: "ConditionalExpression",
+    message: "Ternary (? :) is banned. Use explicit if/else.",
+  },
+  {
+    selector: "Identifier[name='undefined']",
+    message: "undefined is banned. Use null for missing values.",
+  },
+  {
+    selector: "TSUndefinedKeyword",
+    message: "undefined in types is banned. Use null.",
+  },
   {
     selector: "MemberExpression[optional=true]",
-    message: "?. optional chaining is banned. Guard with an explicit undefined check.",
+    message: "?. optional chaining is banned. Guard with an explicit null check.",
   },
   {
     selector: "CallExpression[optional=true]",
-    message: "?. optional call is banned. Guard with an explicit undefined check.",
+    message: "?. optional call is banned. Guard with an explicit null check.",
   },
-
-  // ── optional ?: on types / classes / params ──────────────────────────────
   {
     selector: "TSPropertySignature[optional=true]",
-    message: "Optional property (?:) is banned. Use 'T | undefined' in the property type.",
+    message: "Optional property (?:) is banned. Use 'T | null' in the property type.",
   },
   {
     selector: "TSMethodSignature[optional=true]",
-    message: "Optional method (?:) is banned. Use '(() => R) | undefined'.",
+    message: "Optional method (?:) is banned. Use '(() => R) | null'.",
   },
   {
     selector: "PropertyDefinition[optional=true]",
-    message: "Optional class field (?:) is banned. Use 'T | undefined'.",
+    message: "Optional class field (?:) is banned. Use 'T | null'.",
   },
   {
     selector: "Identifier[optional=true]",
-    message: "Optional parameter (?) is banned. Use 'T | undefined' in the parameter type.",
-  },
-];
-
-const BANNED_NULL = [
-  {
-    selector: "TSNullKeyword",
-    message: "null type is banned. Use undefined.",
+    message: "Optional parameter (?) is banned. Use 'T | null' in the parameter type.",
   },
   {
-    selector: "Literal[raw='null']",
-    message: "null literal is banned. Use undefined.",
+    selector: "UnaryExpression[operator='typeof']",
+    message: "typeof is banned. Use explicit null checks.",
   },
 ];
 
 export default tseslint.config(
   eslint.configs.recommended,
-  // recommendedTypeChecked: type-aware rules without the noisy no-unsafe-* rules
-  // that fire on every untyped better-sqlite3 result row.
   ...tseslint.configs.recommendedTypeChecked,
   {
-    ignores: ["dist/**"],
+    ignores: ["dist/**", "**/*.config.js", "**/*.test.ts"],
   },
   {
-    // All TypeScript source files
     files: ["src/**/*.ts"],
     languageOptions: {
       parserOptions: {
@@ -87,15 +75,11 @@ export default tseslint.config(
       },
     },
     rules: {
-      // ── Turn off rules that conflict with our banned patterns ─────────────
-      // We ban ?? so we don't want ESLint telling us to USE ??.
+      "no-undefined": "error",
+      "@typescript-eslint/ban-ts-comment": "error",
       "@typescript-eslint/prefer-nullish-coalescing": "off",
-      // We ban ?. so we don't want ESLint telling us to USE ?..
       "@typescript-eslint/prefer-optional-chain": "off",
-      // type aliases are fine (we use them extensively).
       "@typescript-eslint/consistent-type-definitions": "off",
-
-      // ── TypeScript strict additions ───────────────────────────────────────
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
@@ -107,23 +91,14 @@ export default tseslint.config(
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
-
-      // ── General ───────────────────────────────────────────────────────────
       "no-empty": ["error", { allowEmptyCatch: false }],
       eqeqeq: ["error", "always"],
-
-      // ── Banned: optionality patterns (apply everywhere) ───────────────────
-      "no-restricted-syntax": ["error", ...BANNED_OPTIONALITY, ...BANNED_NULL],
+      "no-restricted-syntax": ["error", ...BANNED],
     },
   },
   {
-    // DB boundary files: null is allowed (SQLite returns null for SQL NULL).
-    // All other bans (??  ?.  ?:) still apply.
     files: ["src/db/**/*.ts"],
     rules: {
-      "no-restricted-syntax": ["error", ...BANNED_OPTIONALITY],
-      // SQLite query results are Record<string,unknown>-ish — relax unsafe rules
-      // at the DB layer only.
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-return": "off",

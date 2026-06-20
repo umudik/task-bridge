@@ -1,20 +1,18 @@
 import {
-  getWorkflowStageRow,
   listWorkflowStageRows,
 } from "../db/workflow-db.js";
 import { flattenTemplateNodes } from "../domain/task-template-graph.js";
 import { findProjectMember } from "../domain/project-member.js";
-import type { AssigneeKind, AuthorType, BridgeTask, TaskComment } from "../domain/task.js";
-import { isWorkDone, resolveWorkStatus } from "../domain/work-status.js";
+import type { BridgeTask, TaskComment } from "../domain/task.js";
+import { isWorkDone, resolveWorkStatus, type WorkStatus } from "../domain/work-status.js";
 import { listEpicWorkflowTasks } from "../domain/task.js";
 import { resolveStageTaskTemplates } from "../domain/workflow-stage.js";
-import { emptyToNull, roleKey } from "../lib/strings.js";
+import { emptyToNull } from "../lib/strings.js";
 import { computeEpicStageId } from "./epic-service.js";
 
 export type ClaimActor = {
   claimedBy: string;
   role: string;
-  actorKind: AssigneeKind;
 };
 
 export function resolveClaimActor(projectId: string, memberName: string): ClaimActor | null {
@@ -23,7 +21,6 @@ export function resolveClaimActor(projectId: string, memberName: string): ClaimA
   return {
     claimedBy: member.name,
     role: member.role,
-    actorKind: member.actorKind,
   };
 }
 
@@ -31,44 +28,35 @@ export function normalizeClaimActor(actor: ClaimActor): ClaimActor {
   return {
     claimedBy: actor.claimedBy.trim(),
     role: actor.role.trim(),
-    actorKind: actor.actorKind,
   };
 }
 
-export function actorKindMatches(
-  required: AssigneeKind | null | undefined,
-  actor: AssigneeKind | null | undefined,
-): boolean {
-  if (!required) return true;
-  if (!actor) return false;
-  return required === actor;
-}
-
-function latestCommentByAuthor(comments: TaskComment[], authorType: AuthorType) {
+function latestCommentByRole(
+  comments: TaskComment[],
+  role: TaskComment["role"],
+): TaskComment | null {
   for (let index = comments.length - 1; index >= 0; index -= 1) {
     const entry = comments[index];
     if (!entry) continue;
-    if (entry.authorType === authorType) return entry;
+    if (entry.role === role) return entry;
   }
   return null;
 }
 
 export function userAwaitingReply(task: BridgeTask): boolean {
-  const lastHuman = latestCommentByAuthor(task.comments, "human");
-  if (!lastHuman) return false;
-  const lastSystem = latestCommentByAuthor(task.comments, "system");
+  const lastUser = latestCommentByRole(task.comments, "user");
+  if (!lastUser) return false;
+  const lastSystem = latestCommentByRole(task.comments, "system");
   if (!lastSystem) return true;
 
-  const humanAt = Date.parse(lastHuman.at);
+  const humanAt = Date.parse(lastUser.at);
   const systemAt = Date.parse(lastSystem.at);
   if (Number.isNaN(humanAt) || Number.isNaN(systemAt)) return true;
   return humanAt > systemAt;
 }
 
-export function rolesMatch(actorRole: string, requiredRole: string | null | undefined): boolean {
-  const required = roleKey(requiredRole);
-  if (!required) return true;
-  return roleKey(actorRole) === required;
+export function rolesMatch(_actorRole: string, _requiredRole: string | null): boolean {
+  return true;
 }
 
 export function resolveTaskClaimRole(task: BridgeTask): string | null {
@@ -77,10 +65,9 @@ export function resolveTaskClaimRole(task: BridgeTask): string | null {
   if (task.assigneeRole) return task.assigneeRole;
 
   if (task.templateId) {
-    for (const row of listWorkflowStageRows(task.projectId)) {
+    for (const row of listWorkflowStageRows({ projectId: task.projectId, stageId: "" })) {
       const roots = resolveStageTaskTemplates({
         taskTemplatesJson: row.task_templates_json,
-        spawnTaskCount: row.spawn_task_count ?? 0,
         stageId: row.id,
         stageTitle: row.title,
       });
@@ -92,48 +79,24 @@ export function resolveTaskClaimRole(task: BridgeTask): string | null {
     }
   }
 
-  if (task.assignee) {
-    const memberRole = findProjectMember(task.projectId, task.assignee)?.role;
-    if (memberRole) return memberRole;
+  if (task.assignee !== null) {
+    const member = findProjectMember(task.projectId, task.assignee);
+    if (member !== null) return member.role;
   }
 
-  if (task.stageId) {
-    const row = getWorkflowStageRow(task.projectId, task.stageId);
-    const autoRole = emptyToNull(row?.auto_assign_role);
-    if (autoRole) return autoRole;
-  }
-
-  return null;
-}
-
-export function resolveTaskAssigneeKind(task: BridgeTask): AssigneeKind | null {
-  if (task.assigneeKind === "human" || task.assigneeKind === "ai") {
-    return task.assigneeKind;
-  }
-  if (task.templateId) {
-    for (const row of listWorkflowStageRows(task.projectId)) {
-      const roots = resolveStageTaskTemplates({
-        taskTemplatesJson: row.task_templates_json,
-        spawnTaskCount: row.spawn_task_count ?? 0,
-        stageId: row.id,
-        stageTitle: row.title,
-      });
-      for (const node of flattenTemplateNodes(roots)) {
-        if (node.id === task.templateId && (node.assigneeKind === "human" || node.assigneeKind === "ai")) {
-          return node.assigneeKind;
-        }
-      }
+  if (task.stageId !== null) {
+    const stageRows = listWorkflowStageRows({
+      projectId: task.projectId,
+      stageId: task.stageId,
+    });
+    if (stageRows.length > 0) {
+      const stageRow = stageRows[0];
+      if (!stageRow) return null;
+      const autoRole = emptyToNull(stageRow.auto_assign_role);
+      if (autoRole) return autoRole;
     }
   }
-  return null;
-}
 
-function actorKindBlockReason(task: BridgeTask, actor: ClaimActor): string | null {
-  const required = resolveTaskAssigneeKind(task);
-  if (!actorKindMatches(required, actor.actorKind)) {
-    if (required === "human") return "Human-only task";
-    if (required === "ai") return "AI-only task";
-  }
   return null;
 }
 
@@ -150,12 +113,16 @@ export function buildEpicClaimIndex(tasks: BridgeTask[]): EpicClaimIndex {
   for (const epic of epics) {
     if (!stagePositionByProject.has(epic.projectId)) {
       const positions = new Map<string, number>();
-      for (const row of listWorkflowStageRows(epic.projectId).sort((a, b) => a.position - b.position)) {
+      for (const row of listWorkflowStageRows({ projectId: epic.projectId, stageId: "" }).sort(
+        (a, b) => a.position - b.position,
+      )) {
         positions.set(row.id, row.position);
       }
       stagePositionByProject.set(epic.projectId, positions);
     }
-    const stageRows = listWorkflowStageRows(epic.projectId).sort((a, b) => a.position - b.position);
+    const stageRows = listWorkflowStageRows({ projectId: epic.projectId, stageId: "" }).sort(
+      (a, b) => a.position - b.position,
+    );
     const subtasks = listEpicWorkflowTasks(tasks, epic.id);
     activeStageByEpic.set(epic.id, computeEpicStageId(stageRows, subtasks));
   }
@@ -165,7 +132,12 @@ export function buildEpicClaimIndex(tasks: BridgeTask[]): EpicClaimIndex {
 
 export function isTaskOnEpicActiveStage(task: BridgeTask, index: EpicClaimIndex): boolean {
   if (!task.stageId) return false;
-  const epicId = task.epicId ?? task.parentId;
+  let epicId: number | null;
+  if (task.epicId !== null) {
+    epicId = task.epicId;
+  } else {
+    epicId = task.parentId;
+  }
   if (!epicId) return false;
   const activeStageId = index.activeStageByEpic.get(epicId);
   return activeStageId === task.stageId;
@@ -183,16 +155,13 @@ export function canActorClaimTask(
   actor: ClaimActor,
 ): boolean {
   if (task.parentId === null || isWorkDone(task)) return false;
-  if (actorKindBlockReason(task, actor)) return false;
 
   if (userAwaitingReply(task)) {
-    return rolesMatch(actor.role, resolveTaskClaimRole(task));
+    return true;
   }
 
   if (task.claimedBy) return false;
-  if (!passesWorkflowClaimGate(task, index)) return false;
-
-  return rolesMatch(actor.role, resolveTaskClaimRole(task));
+  return passesWorkflowClaimGate(task, index);
 }
 
 export function canActorUpdateWorkStatus(
@@ -201,34 +170,30 @@ export function canActorUpdateWorkStatus(
   actor: ClaimActor,
 ): boolean {
   if (task.parentId === null || isWorkDone(task)) return false;
-  if (actorKindBlockReason(task, actor)) return false;
   if (!isTaskOnEpicActiveStage(task, index)) return false;
   if (task.claimedBy && task.claimedBy !== actor.claimedBy) return false;
-  if (!task.claimedBy && resolveTaskAssigneeKind(task)) return false;
-  return rolesMatch(actor.role, resolveTaskClaimRole(task));
+  return true;
 }
 
 export function workflowUpdateBlockReason(
   task: BridgeTask,
   index: EpicClaimIndex,
   actor: ClaimActor,
+  nextWorkStatus: WorkStatus | null = null,
 ): string | null {
   if (task.parentId === null) return "Epics cannot be updated";
-  if (isWorkDone(task)) return "Task is already done";
-  const kindReason = actorKindBlockReason(task, actor);
-  if (kindReason) return kindReason;
-  if (!isTaskOnEpicActiveStage(task, index)) {
+  const isReopen =
+    isWorkDone(task) &&
+    nextWorkStatus !== null &&
+    (nextWorkStatus === "todo" || nextWorkStatus === "in_progress");
+  if (isWorkDone(task) && !isReopen) {
+    return "Task is already done";
+  }
+  if (!isReopen && !isTaskOnEpicActiveStage(task, index)) {
     return "Task is not on the active pipeline step";
   }
-  if (task.claimedBy && task.claimedBy !== actor.claimedBy) {
+  if (!isReopen && task.claimedBy && task.claimedBy !== actor.claimedBy) {
     return "Task is claimed by another member";
-  }
-  if (!task.claimedBy && resolveTaskAssigneeKind(task)) {
-    return "Claim this task before updating status";
-  }
-  const requiredRole = resolveTaskClaimRole(task);
-  if (requiredRole && !rolesMatch(actor.role, requiredRole)) {
-    return `Task requires role "${requiredRole}"`;
   }
   return null;
 }
@@ -236,9 +201,9 @@ export function workflowUpdateBlockReason(
 export function isWorkflowClaimable(
   task: BridgeTask,
   index: EpicClaimIndex,
-  actor?: ClaimActor,
+  actor: ClaimActor | null,
 ): boolean {
-  if (!actor) {
+  if (actor === null) {
     if (userAwaitingReply(task)) return task.parentId !== null && !isWorkDone(task);
     if (task.claimedBy) return false;
     return passesWorkflowClaimGate(task, index);
@@ -251,7 +216,11 @@ function activeStageSortKey(task: BridgeTask, index: EpicClaimIndex): number {
   const positions = index.stagePositionByProject.get(task.projectId);
   const activeStageId = index.activeStageByEpic.get(task.parentId);
   if (!positions || !activeStageId) return Number.MAX_SAFE_INTEGER;
-  return positions.get(activeStageId) ?? Number.MAX_SAFE_INTEGER;
+  const pos = positions.get(activeStageId);
+  if (pos != null) {
+    return pos;
+  }
+  return Number.MAX_SAFE_INTEGER;
 }
 
 function workStatusSortKey(task: BridgeTask): number {
@@ -266,16 +235,48 @@ export function compareWorkflowClaimPriority(
   b: BridgeTask,
   index: EpicClaimIndex,
 ): number {
-  const awaitingA = userAwaitingReply(a) ? 0 : 1;
-  const awaitingB = userAwaitingReply(b) ? 0 : 1;
+  let awaitingA: number;
+  if (userAwaitingReply(a)) {
+    awaitingA = 0;
+  } else {
+    awaitingA = 1;
+  }
+  let awaitingB: number;
+  if (userAwaitingReply(b)) {
+    awaitingB = 0;
+  } else {
+    awaitingB = 1;
+  }
   if (awaitingA !== awaitingB) return awaitingA - awaitingB;
 
   const stageA = activeStageSortKey(a, index);
   const stageB = activeStageSortKey(b, index);
   if (stageA !== stageB) return stageA - stageB;
 
-  const epicA = a.epicId ?? a.parentId ?? Number.MAX_SAFE_INTEGER;
-  const epicB = b.epicId ?? b.parentId ?? Number.MAX_SAFE_INTEGER;
+  let epicAId: number | null;
+  if (a.epicId !== null) {
+    epicAId = a.epicId;
+  } else {
+    epicAId = a.parentId;
+  }
+  let epicBId: number | null;
+  if (b.epicId !== null) {
+    epicBId = b.epicId;
+  } else {
+    epicBId = b.parentId;
+  }
+  let epicA: number;
+  if (epicAId !== null) {
+    epicA = epicAId;
+  } else {
+    epicA = Number.MAX_SAFE_INTEGER;
+  }
+  let epicB: number;
+  if (epicBId !== null) {
+    epicB = epicBId;
+  } else {
+    epicB = Number.MAX_SAFE_INTEGER;
+  }
   if (epicA !== epicB) return epicA - epicB;
 
   const workA = workStatusSortKey(a);
@@ -291,43 +292,62 @@ export function compareWorkflowClaimPriority(
   return a.id - b.id;
 }
 
-export function sortWorkflowClaimCandidates(tasks: BridgeTask[], index: EpicClaimIndex): BridgeTask[] {
+export function sortWorkflowClaimCandidates(
+  tasks: BridgeTask[],
+  index: EpicClaimIndex,
+): BridgeTask[] {
   return [...tasks].sort((a, b) => compareWorkflowClaimPriority(a, b, index));
 }
 
 export function workflowClaimBlockReason(
   task: BridgeTask,
   index: EpicClaimIndex,
-  actor?: ClaimActor,
+  actor: ClaimActor | null,
 ): string | null {
   if (task.parentId === null) return "Epics cannot be claimed";
   if (isWorkDone(task)) return "Task is already done";
 
-  if (actor) {
-    const kindReason = actorKindBlockReason(task, actor);
-    if (kindReason) return kindReason;
-    const requiredRole = resolveTaskClaimRole(task);
-    if (userAwaitingReply(task) && requiredRole && !rolesMatch(actor.role, requiredRole)) {
-      return `Task requires role "${requiredRole}"`;
-    }
+  if (actor !== null) {
     if (!userAwaitingReply(task)) {
       if (task.claimedBy) return "Task is already claimed";
       if (!isTaskOnEpicActiveStage(task, index)) {
-        const epicId = task.epicId ?? task.parentId;
-        const activeStageId = epicId ? index.activeStageByEpic.get(epicId) : null;
+        let epicId: number | null;
+        if (task.epicId !== null) {
+          epicId = task.epicId;
+        } else {
+          epicId = task.parentId;
+        }
+        let activeStageId: string | null;
+        if (epicId !== null) {
+          const looked = index.activeStageByEpic.get(epicId);
+          activeStageId = null;
+          if (looked != null) {
+            activeStageId = looked;
+          }
+        } else {
+          activeStageId = null;
+        }
         if (!activeStageId) return "Epic has no active pipeline step";
         return `Task is on a later pipeline step; epic is at "${activeStageId}"`;
-      }
-      if (requiredRole && !rolesMatch(actor.role, requiredRole)) {
-        return `Task requires role "${requiredRole}"`;
       }
     }
     return null;
   }
 
   if (!isTaskOnEpicActiveStage(task, index)) {
-    const epicId = task.epicId ?? task.parentId;
-    const activeStageId = epicId ? index.activeStageByEpic.get(epicId) : null;
+    let epicId: number | null;
+    if (task.epicId !== null) {
+      epicId = task.epicId;
+    } else {
+      epicId = task.parentId;
+    }
+    let activeStageId: string | null;
+    if (epicId !== null) {
+      const looked = index.activeStageByEpic.get(epicId);
+      activeStageId = looked != null ? looked : null;
+    } else {
+      activeStageId = null;
+    }
     if (!activeStageId) return "Epic has no active pipeline step";
     return `Task is on a later pipeline step; epic is at "${activeStageId}"`;
   }

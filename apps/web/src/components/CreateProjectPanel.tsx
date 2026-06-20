@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Session } from "@/lib/session";
-import { createProject, fetchWorkflowTemplates, type Project, type WorkflowTemplateSummary } from "@/lib/api";
+import { createProject, DEFAULT_WORKFLOW_TEMPLATE_ID, fetchWorkflowTemplates, type Project, type WorkflowTemplateSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type CreateProjectPanelProps = {
@@ -27,9 +27,11 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
     void fetchWorkflowTemplates(session)
       .then((items) => {
         setTemplates(items);
-        setWorkflowTemplateId((current) =>
-          items.some((item) => item.id === current) ? current : (items[0]?.id ?? ""),
-        );
+        setWorkflowTemplateId((current) => {
+          if (items.some((item) => item.id === current)) return current;
+          const empty = items.find((item) => item.id === DEFAULT_WORKFLOW_TEMPLATE_ID);
+          return empty?.id ?? items[0]?.id ?? DEFAULT_WORKFLOW_TEMPLATE_ID;
+        });
       })
       .catch(() => setTemplates([]));
   }, [session]);
@@ -43,9 +45,10 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
     try {
       const created = await createProject(session, {
         name: trimmedName,
+        id: "",
         repoPath: trimmedRepo,
         description: description.trim(),
-        workflowTemplateId,
+        workflowTemplateId: workflowTemplateId.trim() || DEFAULT_WORKFLOW_TEMPLATE_ID,
       });
       onCreated(created);
     } catch (err) {

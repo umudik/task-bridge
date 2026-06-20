@@ -19,12 +19,16 @@ import {
   inboxItemBeforeCursor,
 } from "../lib/inbox-cursor.js";
 import { listBridgeTasks } from "../services/task-service.js";
+import { listWorkflowStateSummaries } from "../services/workflow-state-service.js";
 
-function latestCommentByAuthor(comments: TaskComment[], authorType: TaskComment["authorType"]) {
+function latestCommentByRole(
+  comments: TaskComment[],
+  role: TaskComment["role"],
+): TaskComment | null {
   for (let index = comments.length - 1; index >= 0; index -= 1) {
     const entry = comments[index];
     if (!entry) continue;
-    if (entry.authorType === authorType) return entry;
+    if (entry.role === role) return entry;
   }
   return null;
 }
@@ -35,40 +39,52 @@ export function consumerStatus(task: BridgeTask | null): "sent" | "ready" {
   if (isTaskClaimed(task)) return "sent";
   if (isWorkDone(task)) return "ready";
 
-  const lastHuman = latestCommentByAuthor(task.comments, "human");
-  const lastSystem = latestCommentByAuthor(task.comments, "system");
-  if (lastHuman && lastSystem) {
-    const humanAt = Date.parse(lastHuman.at);
+  const lastUser = latestCommentByRole(task.comments, "user");
+  const lastSystem = latestCommentByRole(task.comments, "system");
+  if (lastUser !== null && lastSystem !== null) {
+    const userAt = Date.parse(lastUser.at);
     const systemAt = Date.parse(lastSystem.at);
-    if (!Number.isNaN(humanAt) && !Number.isNaN(systemAt) && humanAt > systemAt) {
+    if (!Number.isNaN(userAt) && !Number.isNaN(systemAt) && userAt > systemAt) {
       return "sent";
     }
   }
-  if (lastSystem) return "ready";
-  if (lastHuman && lastHuman.authorId !== task.createdBy) return "ready";
+  if (lastSystem !== null) return "ready";
+  if (lastUser !== null && lastUser.authorId !== task.createdBy) return "ready";
   return "sent";
 }
 
 export function mapComments(task: BridgeTask) {
   return task.comments.map((comment) => ({
     id: comment.id,
-    authorType: comment.authorType,
+    role: comment.role,
     authorId: comment.authorId,
     tags: comment.tags,
     body: comment.body,
     at: comment.at,
-    metadata: comment.metadata ?? null,
+    metadata: comment.metadata,
     by: comment.authorId,
     text: comment.body,
-    role: comment.authorType === "human" ? "user" : "system",
   }));
 }
 
 function previewForTask(task: BridgeTask): string | null {
-  const lastComment = task.comments.at(-1);
-  const text = lastComment?.body ?? null;
+  const lastComment = task.comments[task.comments.length - 1];
+  if (!lastComment) return null;
+  const text = lastComment.body;
   if (!text) return null;
-  return text.length > 160 ? `${text.slice(0, 157)}...` : text;
+  if (text.length > 160) return `${text.slice(0, 157)}...`;
+  return text;
+}
+
+function resolveStageTitle(
+  stageId: string | null,
+  projectId: string,
+  stageTitles: Map<string, string>,
+): string | null {
+  if (stageId === null) return null;
+  const fromMap = stageTitles.get(`${projectId}:${stageId}`);
+  if (fromMap) return fromMap;
+  return stageId;
 }
 
 function mapSubtaskSummary(
@@ -76,18 +92,21 @@ function mapSubtaskSummary(
   stageTitles: Map<string, string>,
   allTasks: BridgeTask[],
 ) {
-  const stageId = resolveTaskStageId(allTasks, task) ?? task.stageId;
-  const stageKey = stageId ? `${task.projectId}:${stageId}` : null;
+  const resolvedStage = resolveTaskStageId(allTasks, task);
+  let stageId = task.stageId;
+  if (resolvedStage !== null) {
+    stageId = resolvedStage;
+  }
+  const stageTitle = resolveStageTitle(stageId, task.projectId, stageTitles);
   const workStatus = resolveWorkStatus(task);
   return {
     taskId: task.id,
     parentId: task.parentId,
     title: task.title,
     stageId,
-    stageTitle: stageKey ? (stageTitles.get(stageKey) ?? stageId) : null,
+    stageTitle,
     templateId: task.templateId,
     assignee: task.assignee,
-    assigneeKind: task.assigneeKind,
     claimedBy: task.claimedBy,
     workStatus,
     workStatusLabel: workStatusLabel(workStatus),
@@ -105,38 +124,57 @@ export async function mapTaskDetail(task: BridgeTask) {
   const stage = await getStageSnapshot(task.projectId, task.stageId);
   const allTasks = await listBridgeTasks();
   const stageTitles = getStageTitleLookup(task.projectId);
-  const workflowSubtasks =
-    task.parentId === null
-      ? listEpicWorkflowTasks(allTasks, task.id)
-      : listSubtasks(allTasks, task.id);
+  let workflowSubtasks: BridgeTask[];
+  if (task.parentId === null) {
+    workflowSubtasks = listEpicWorkflowTasks(allTasks, task.id);
+  } else {
+    workflowSubtasks = listSubtasks(allTasks, task.id);
+  }
   const subtasks = workflowSubtasks.map((entry) => mapSubtaskSummary(entry, stageTitles, allTasks));
-  const parent =
-    task.parentId !== null
-      ? allTasks.find((entry) => entry.id === task.parentId) ?? null
-      : null;
+  let parent: BridgeTask | null = null;
+  if (task.parentId !== null) {
+    const found = allTasks.find((entry) => entry.id === task.parentId);
+    if (found) parent = found;
+  }
+
+  let parentPayload: { taskId: number; title: string; stageId: string | null } | null = null;
+  if (parent !== null) {
+    parentPayload = { taskId: parent.id, title: parent.title, stageId: parent.stageId };
+  }
+
+  let workStatusPayload: string | null = null;
+  if (task.parentId !== null) {
+    workStatusPayload = resolveWorkStatus(task);
+  }
+
+  let workStatusLabelPayload: string | null = null;
+  if (task.parentId !== null) {
+    workStatusLabelPayload = workStatusLabel(resolveWorkStatus(task));
+  }
+
+  let workflowState = null;
+  if (task.parentId === null) {
+    workflowState = listWorkflowStateSummaries(task.id).map((node) => ({
+      ...node,
+      workStatusLabel: workStatusLabel(node.workStatus),
+    }));
+  }
 
   return {
     taskId: task.id,
     title: task.title,
     request: canonicalDescription(task),
     description: canonicalDescription(task),
-    acceptanceCriteria: null,
     priority: task.priority,
     labels: task.labels,
     assignee: task.assignee,
     parentId: task.parentId,
-    parent: parent
-      ? {
-          taskId: parent.id,
-          title: parent.title,
-          stageId: parent.stageId,
-        }
-      : null,
+    parent: parentPayload,
     subtasks,
     stageId: task.stageId,
     stage,
-    workStatus: task.parentId !== null ? resolveWorkStatus(task) : null,
-    workStatusLabel: task.parentId !== null ? workStatusLabel(resolveWorkStatus(task)) : null,
+    workStatus: workStatusPayload,
+    workStatusLabel: workStatusLabelPayload,
     isEpic: task.parentId === null,
     status: consumerStatus(task),
     createdAt: task.createdAt,
@@ -148,20 +186,26 @@ export async function mapTaskDetail(task: BridgeTask) {
     events: task.events,
     comments: mapComments(task),
     libraryLinks: listTaskLibraryLinks(task.id),
+    workflowState,
   };
 }
 
 function parseActivityTime(item: {
-  activityAt?: string | null;
-  createdAt?: string | null;
+  activityAt: string | null;
+  createdAt: string | null;
 }): number {
-  const raw = item.activityAt ?? item.createdAt;
+  let raw: string | null = null;
+  if (item.activityAt !== null) {
+    raw = item.activityAt;
+  } else if (item.createdAt !== null) {
+    raw = item.createdAt;
+  }
   if (!raw) return NaN;
   return Date.parse(raw);
 }
 
 function sortInboxByActivity<
-  T extends { taskId: number; activityAt?: string | null; createdAt?: string | null },
+  T extends { taskId: number; activityAt: string | null; createdAt: string | null },
 >(items: T[]): T[] {
   return [...items].sort((a, b) => {
     const aTime = parseActivityTime(a);
@@ -174,10 +218,10 @@ function sortInboxByActivity<
 }
 
 export async function buildInboxItems(query: {
-  projectId?: string;
-  commentsOnly?: boolean;
-  epicsOnly?: boolean;
-  cursor?: string;
+  projectId: string | null;
+  commentsOnly: boolean | null;
+  epicsOnly: boolean | null;
+  cursor: string | null;
   limit: number;
 }) {
   const bridgeTasks = await listBridgeTasks();
@@ -192,15 +236,20 @@ export async function buildInboxItems(query: {
   }
 
   let items = bridgeTasks.map((task) => {
-    const activityAt = task.updatedAt ?? task.claimedAt ?? task.createdAt;
-    const stageKey = task.stageId ? `${task.projectId}:${task.stageId}` : null;
+    let activityAt: string = task.createdAt;
+    if (task.updatedAt) {
+      activityAt = task.updatedAt;
+    } else if (task.claimedAt !== null) {
+      activityAt = task.claimedAt;
+    }
+    const stageTitle = resolveStageTitle(task.stageId, task.projectId, stageTitles);
     return {
       taskId: task.id,
       title: task.title,
       preview: previewForTask(task),
       status: consumerStatus(task),
       activityAt,
-      updatedAt: task.updatedAt ?? task.claimedAt ?? task.createdAt,
+      updatedAt: activityAt,
       createdAt: task.createdAt,
       done: isDoneStage(task.stageId),
       parentId: task.parentId,
@@ -210,11 +259,11 @@ export async function buildInboxItems(query: {
       claimedBy: task.claimedBy,
       assignee: task.assignee,
       stageId: task.stageId,
-      stageTitle: stageKey ? (stageTitles.get(stageKey) ?? task.stageId) : null,
+      stageTitle,
     };
   });
 
-  if (query.projectId) {
+  if (query.projectId != null) {
     items = items.filter((item) => item.projectId === query.projectId);
   }
   if (query.commentsOnly) {
@@ -226,7 +275,7 @@ export async function buildInboxItems(query: {
 
   items = sortInboxByActivity(items);
 
-  if (query.cursor) {
+  if (query.cursor != null) {
     const decoded = decodeInboxCursor(query.cursor);
     if (!decoded) throw new AppError("Invalid cursor", 400);
     const cursorTime = Date.parse(decoded.activityAt);
@@ -237,13 +286,21 @@ export async function buildInboxItems(query: {
 
   const slice = items.slice(0, query.limit + 1);
   const hasMore = slice.length > query.limit;
-  const pageItems = hasMore ? slice.slice(0, query.limit) : slice;
+  let pageItems = slice;
+  if (hasMore) {
+    pageItems = slice.slice(0, query.limit);
+  }
   const lastItem = pageItems[pageItems.length - 1];
+
+  let nextCursor: string | null = null;
+  if (hasMore && lastItem) {
+    nextCursor = encodeInboxCursor(lastItem);
+  }
 
   return {
     items: pageItems,
     limit: query.limit,
-    nextCursor: hasMore && lastItem ? encodeInboxCursor(lastItem) : null,
+    nextCursor,
     hasMore,
   };
 }

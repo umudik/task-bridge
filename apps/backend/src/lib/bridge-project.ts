@@ -2,19 +2,21 @@ export const PROJECT_TAG_PATTERN = /^\[project:([^\]]+)\]\s*(?:\n\n?|\r\n\r\n?)?
 
 export function withProjectMarker(projectId: string, description: string): string {
   const body = description.trim();
-  return body ? `[project:${projectId}]\n\n${body}` : `[project:${projectId}]`;
+  if (body) return `[project:${projectId}]\n\n${body}`;
+  return `[project:${projectId}]`;
 }
 
-export function extractProjectId(description: string | undefined): string | undefined {
-  if (!description) return undefined;
+export function extractProjectId(description: string | null): string | null {
+  if (!description) return null;
   const match = description.match(PROJECT_TAG_PATTERN);
-  if (!match) return undefined;
+  if (!match) return null;
   const id = match[1];
-  return id ? id.trim() || undefined : undefined;
+  if (!id) return null;
+  return id.trim() || null;
 }
 
-export function stripProjectMarker(description: string | undefined): string | undefined {
-  if (!description) return undefined;
+export function stripProjectMarker(description: string | null): string | null {
+  if (!description) return null;
   const stripped = description.replace(PROJECT_TAG_PATTERN, "").trim();
-  return stripped || undefined;
+  return stripped || null;
 }

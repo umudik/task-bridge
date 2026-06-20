@@ -166,7 +166,7 @@ export function ProjectsPage() {
                         {project.repoPath ? (
                           <p className="line-clamp-1 text-xs text-muted-foreground">{project.repoPath}</p>
                         ) : null}
-                        {project.description?.trim() ? (
+                        {project.description.trim() ? (
                           <p className="line-clamp-2 text-xs text-muted-foreground/80">
                             {project.description.trim()}
                           </p>

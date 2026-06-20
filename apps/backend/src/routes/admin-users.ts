@@ -3,12 +3,12 @@ import { z } from "zod";
 import { AppError } from "../errors/app-error.js";
 import { assertAuth } from "../middleware/auth.js";
 import {
-  getAllUsers,
+  listPublicUsers,
   createUser,
   updateUser,
   deleteUser,
-  getUserById,
-  getTokenForUser,
+  listUserRows,
+  readUserToken,
   type UserRow,
 } from "../db/users-db.js";
 
@@ -20,8 +20,8 @@ const createUserSchema = z.object({
 });
 
 const updateUserSchema = z.object({
-  name: z.string().min(1).optional(),
-  role: z.enum(["admin", "read-write", "read"]).optional(),
+  name: z.string().min(1),
+  role: z.enum(["admin", "read-write", "read"]),
 });
 
 function requireAdmin(request: Parameters<typeof assertAuth>[0]): UserRow {
@@ -32,14 +32,12 @@ function requireAdmin(request: Parameters<typeof assertAuth>[0]): UserRow {
   return user;
 }
 
-export async function adminUserRoutes(app: FastifyInstance) {
-  // GET /api/admin/users — list all users (admin only)
-  app.get("/admin/users", async (request) => {
+export function adminUserRoutes(app: FastifyInstance) {
+  app.get("/admin/users", (request) => {
     requireAdmin(request);
-    return { users: getAllUsers() };
+    return { users: listPublicUsers() };
   });
 
-  // POST /api/admin/users — create user (admin only)
   app.post("/admin/users", async (request, reply) => {
     requireAdmin(request);
     const body = createUserSchema.parse(request.body);
@@ -53,41 +51,41 @@ export async function adminUserRoutes(app: FastifyInstance) {
     return reply.status(201).send({ user });
   });
 
-  // PATCH /api/admin/users/:userId — update name or role (admin only)
-  app.patch("/admin/users/:userId", async (request) => {
+  app.patch("/admin/users/:userId", (request) => {
     requireAdmin(request);
     const { userId } = request.params as { userId: string };
-    const existing = getUserById(userId);
+    const existingRows = listUserRows({ id: userId, email: "", token: "" });
+    if (existingRows.length === 0) throw new AppError("User not found", 404);
+    const existing = existingRows[0];
     if (!existing) throw new AppError("User not found", 404);
-    if (existing.is_system_admin) {
-      const incoming = request.body as { role?: string };
-      if (incoming.role && incoming.role !== "admin") {
-        throw new AppError("Cannot change system admin role", 400);
-      }
-    }
     const body = updateUserSchema.parse(request.body);
+    if (existing.is_system_admin && body.role !== "admin") {
+      throw new AppError("Cannot change system admin role", 400);
+    }
     const updated = updateUser(userId, body);
-    if (!updated) throw new AppError("User not found", 404);
+    if (updated === null) throw new AppError("User not found", 404);
     return { user: updated };
   });
 
-  // DELETE /api/admin/users/:userId — admin only, cannot delete system admin
   app.delete("/admin/users/:userId", async (request, reply) => {
     requireAdmin(request);
     const { userId } = request.params as { userId: string };
     const result = deleteUser(userId);
     if (!result.deleted) {
-      throw new AppError(result.reason ?? "Cannot delete user", 400);
+      let reason = "Cannot delete user";
+      if (result.reason !== "") {
+        reason = result.reason;
+      }
+      throw new AppError(reason, 400);
     }
     return reply.status(204).send();
   });
 
-  // GET /api/admin/users/:userId/token — get user's token for mobile QR (admin only)
-  app.get("/admin/users/:userId/token", async (request) => {
+  app.get("/admin/users/:userId/token", (request) => {
     requireAdmin(request);
     const { userId } = request.params as { userId: string };
-    const token = getTokenForUser(userId);
-    if (token === undefined) throw new AppError("User not found", 404);
+    const token = readUserToken(userId);
+    if (token === "") throw new AppError("User not found", 404);
     return { token };
   });
 }

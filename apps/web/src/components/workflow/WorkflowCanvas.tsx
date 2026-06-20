@@ -9,7 +9,6 @@ import {
   Plus,
   ZoomIn,
   ZoomOut,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -159,12 +158,6 @@ function StageCard({
           {stage.title || "Untitled"}
         </p>
         <div className="flex shrink-0 flex-wrap justify-end gap-1">
-          {stage.autoAssignRole ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-primary/15 px-2 py-1 text-[10px] font-medium text-primary">
-              <Zap className="h-2.5 w-2.5" />
-              {stage.autoAssignRole}
-            </span>
-          ) : null}
           {templateCount > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-[10px] font-medium text-emerald-400">
               <Layers className="h-2.5 w-2.5" />
@@ -276,16 +269,6 @@ function TaskNode({
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-white/90">
                 {template.title}
               </span>
-              {template.assigneeKind === "human" ? (
-                <span className="shrink-0 rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">
-                  Human
-                </span>
-              ) : null}
-              {template.assigneeRole ? (
-                <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  {template.assigneeRole}
-                </span>
-              ) : null}
             </div>
           </button>
           <NodeLink className="mx-1 h-px w-3" />

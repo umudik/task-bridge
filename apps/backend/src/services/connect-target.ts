@@ -1,4 +1,4 @@
 // Ngrok-based connect target removed.
-export async function resolveConnectTarget(): Promise<undefined> {
-  return undefined;
+export function resolveConnectTarget(): null {
+  return null;
 }

@@ -1,6 +1,6 @@
 import type { BridgeTask, TaskComment } from "../domain/task.js";
 import { canonicalDescription, isTaskClaimed } from "../domain/task.js";
-import { resolveWorkStatus } from "../domain/work-status.js";
+import { resolveWorkStatus, type WorkStatus } from "../domain/work-status.js";
 import { emptyToNull } from "../lib/strings.js";
 import { getProjectById } from "./project-registry.js";
 import {
@@ -21,7 +21,7 @@ export function turnIdForTask(task: BridgeTask): string {
   if (userAwaitingReply(task)) {
     for (let index = task.comments.length - 1; index >= 0; index -= 1) {
       const comment = task.comments[index];
-      if (comment?.authorType === "human") return `user-${comment.id}`;
+      if (comment !== null && comment.role === "user") return `user-${comment.id}`;
     }
   }
   if (isTaskClaimed(task) && task.claimedAt) return `claimed-${task.claimedAt}`;
@@ -29,25 +29,9 @@ export function turnIdForTask(task: BridgeTask): string {
 }
 
 function resolveWorkspacePath(task: BridgeTask): string | null {
-  return emptyToNull(getProjectById(task.projectId)?.repoPath);
-}
-
-function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
-  return {
-    taskId: task.id,
-    turnId,
-    projectId: task.projectId,
-    projectName: task.projectName,
-    parentId: task.parentId,
-    epicId: task.parentId,
-    title: task.title,
-    description: canonicalDescription(task),
-    workspacePath: resolveWorkspacePath(task),
-    stageId: task.stageId,
-    workStatus: task.parentId !== null ? resolveWorkStatus(task) : null,
-    createdAt: task.createdAt,
-    comments: task.comments,
-  };
+  const project = getProjectById(task.projectId);
+  if (project === null) return null;
+  return emptyToNull(project.repoPath);
 }
 
 export type TaskClaimPayload = {
@@ -61,21 +45,50 @@ export type TaskClaimPayload = {
   description: string;
   workspacePath: string | null;
   stageId: string | null;
-  workStatus: ReturnType<typeof resolveWorkStatus> | null;
+  workStatus: WorkStatus | null;
   createdAt: string;
   comments: TaskComment[];
 };
 
-function scopeTasks(tasks: BridgeTask[], projectId?: string): BridgeTask[] {
+function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
+  let workStatus: WorkStatus | null;
+  if (task.parentId !== null) {
+    workStatus = resolveWorkStatus(task);
+  } else {
+    workStatus = null;
+  }
+  return {
+    taskId: task.id,
+    turnId,
+    projectId: task.projectId,
+    projectName: task.projectName,
+    parentId: task.parentId,
+    epicId: task.epicId,
+    title: task.title,
+    description: canonicalDescription(task),
+    workspacePath: resolveWorkspacePath(task),
+    stageId: task.stageId,
+    workStatus,
+    createdAt: task.createdAt,
+    comments: task.comments,
+  };
+}
+
+function scopeTasks(tasks: BridgeTask[], projectId: string | null): BridgeTask[] {
   if (!projectId) return tasks;
   return tasks.filter((task) => task.projectId === projectId);
 }
 
 export async function listPendingTasks(
-  projectId?: string,
-  rawActor?: ClaimActor,
+  projectId: string | null = null,
+  rawActor: ClaimActor | null = null,
 ): Promise<TaskClaimPayload[]> {
-  const actor = rawActor ? normalizeClaimActor(rawActor) : undefined;
+  let actor: ClaimActor | null;
+  if (rawActor !== null) {
+    actor = normalizeClaimActor(rawActor);
+  } else {
+    actor = null;
+  }
   const tasks = scopeTasks(await listBridgeTasks(), projectId);
   const index = buildEpicClaimIndex(tasks);
   return sortWorkflowClaimCandidates(
@@ -86,10 +99,16 @@ export async function listPendingTasks(
 
 export async function claimNextTask(
   rawActor: ClaimActor,
-  options?: { projectId?: string },
+  options: { projectId: string | null } | null = null,
 ): Promise<{ task: BridgeTask; item: TaskClaimPayload } | null> {
   const actor = normalizeClaimActor(rawActor);
-  const tasks = scopeTasks(await listBridgeTasks(), options?.projectId);
+  let projectId: string | null;
+  if (options !== null) {
+    projectId = options.projectId;
+  } else {
+    projectId = null;
+  }
+  const tasks = scopeTasks(await listBridgeTasks(), projectId);
   const index = buildEpicClaimIndex(tasks);
   const candidates = sortWorkflowClaimCandidates(
     tasks.filter((task) => canActorClaimTask(task, index, actor)),
@@ -108,7 +127,10 @@ export async function claimNextTask(
   return null;
 }
 
-export async function validateTaskClaim(taskId: number, rawActor: ClaimActor): Promise<string | null> {
+export async function validateTaskClaim(
+  taskId: number,
+  rawActor: ClaimActor,
+): Promise<string | null> {
   const actor = normalizeClaimActor(rawActor);
   const tasks = await listBridgeTasks();
   const task = tasks.find((entry) => entry.id === taskId);

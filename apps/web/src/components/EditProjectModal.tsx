@@ -46,8 +46,8 @@ export function EditProjectModal({
   useEffect(() => {
     if (!open || !project) return;
     setName(project.name);
-    setRepoPath(project.repoPath?.trim() ?? "");
-    setDescription(project.description?.trim() ?? "");
+    setRepoPath(project.repoPath.trim());
+    setDescription(project.description.trim());
     setWorkflowTemplateId("");
     void fetchWorkflowTemplates(session)
       .then(setTemplates)
@@ -63,31 +63,18 @@ export function EditProjectModal({
       return;
     }
 
-    const currentTemplateId = project.workflowTemplateId?.trim() ?? "";
-    const applyTemplate = workflowTemplateId.trim();
-    if (applyTemplate && applyTemplate !== currentTemplateId) {
-      const template = templates.find((item) => item.id === applyTemplate);
-      const label = template?.title ?? applyTemplate;
-      if (
-        !window.confirm(
-          `Replace this project's pipeline with "${label}"? Existing stage configuration will be overwritten.`,
-        )
-      ) {
-        return;
-      }
-    }
+    const currentTemplateId = project.workflowTemplateId.trim();
+    const selectedTemplateId = workflowTemplateId.trim();
+    const nextTemplateId = selectedTemplateId !== "" ? selectedTemplateId : currentTemplateId;
 
     setSaving(true);
     try {
-      const payload: Parameters<typeof updateProject>[2] = {
+      const updated = await updateProject(session, project.id, {
         name: trimmedName,
         repoPath: trimmedRepo,
         description: description.trim(),
-      };
-      if (applyTemplate && applyTemplate !== currentTemplateId) {
-        payload.workflowTemplateId = applyTemplate;
-      }
-      const updated = await updateProject(session, project.id, payload);
+        workflowTemplateId: nextTemplateId,
+      });
       onSaved(updated);
       onOpenChange(false);
       toast.success("Project updated");
@@ -101,6 +88,11 @@ export function EditProjectModal({
   const canSubmit = Boolean(name.trim() && repoPath.trim());
 
   const currentTemplate = templates.find((item) => item.id === project?.workflowTemplateId);
+  const selectedTemplateId = workflowTemplateId.trim();
+  const pipelineWillChange =
+    selectedTemplateId !== "" &&
+    selectedTemplateId !== project?.workflowTemplateId.trim();
+  const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -166,6 +158,12 @@ export function EditProjectModal({
                   </option>
                 ))}
               </Select>
+              {pipelineWillChange ? (
+                <p className="text-xs text-amber-400/90">
+                  Switching to {selectedTemplate?.title ?? selectedTemplateId} resets existing epic
+                  workflows and removes their spawned subtasks.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

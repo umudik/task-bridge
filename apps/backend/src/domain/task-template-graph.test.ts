@@ -14,12 +14,21 @@ function ctx(overrides: Partial<TemplateSpawnContext> = {}): TemplateSpawnContex
   };
 }
 
+function task(id: string, title: string, children: StageTaskTemplate[] = []): StageTaskTemplate {
+  return {
+    id,
+    title,
+    description: "",
+    assigneeRole: null,
+    execution: "parallel",
+    dependsOn: [],
+    children,
+  };
+}
+
 describe("task template graph", () => {
   it("spawns parallel roots on active stage", () => {
-    const roots: StageTaskTemplate[] = [
-      { id: "a", title: "A", description: "" },
-      { id: "b", title: "B", description: "" },
-    ];
+    const roots = [task("a", "A"), task("b", "B")];
     const spawnable = collectSpawnableTemplates(roots, ctx());
     assert.deepEqual(
       spawnable.map((item) => item.id),
@@ -27,46 +36,29 @@ describe("task template graph", () => {
     );
   });
 
-  it("spawns only first node in sequential group", () => {
-    const roots: StageTaskTemplate[] = [
-      {
-        id: "group",
-        kind: "group",
-        title: "Group",
-        description: "",
-        execution: "sequential",
-        children: [
-          { id: "a", title: "A", description: "" },
-          { id: "b", title: "B", description: "" },
-        ],
-      },
+  it("spawns only first node in sequential siblings", () => {
+    const roots = [
+      task("a", "A"),
+      { ...task("b", "B"), execution: "sequential" as const },
     ];
-    const spawnable = collectSpawnableTemplates(roots, ctx());
+    const sequentialParent = task("parent", "Parent", roots);
+    sequentialParent.execution = "sequential";
+    const spawnable = collectSpawnableTemplates([sequentialParent], ctx());
     assert.deepEqual(
       spawnable.map((item) => item.id),
-      ["a"],
+      ["parent"],
     );
   });
 
-  it("spawns next sequential node after previous is done", () => {
-    const roots: StageTaskTemplate[] = [
-      {
-        id: "group",
-        kind: "group",
-        title: "Group",
-        description: "",
-        execution: "sequential",
-        children: [
-          { id: "a", title: "A", description: "" },
-          { id: "b", title: "B", description: "" },
-        ],
-      },
-    ];
+  it("spawns next sequential sibling after previous is done", () => {
+    const roots = [task("a", "A"), task("b", "B")];
+    const parent = task("parent", "Parent", roots);
+    parent.execution = "sequential";
     const spawnable = collectSpawnableTemplates(
-      roots,
+      [parent],
       ctx({
-        spawnedTemplateIds: new Set(["a"]),
-        doneTemplateIds: new Set(["a"]),
+        spawnedTemplateIds: new Set(["parent", "a"]),
+        doneTemplateIds: new Set(["parent", "a"]),
       }),
     );
     assert.deepEqual(
@@ -76,73 +68,40 @@ describe("task template graph", () => {
   });
 
   it("waits for dependsOn before spawning", () => {
-    const roots: StageTaskTemplate[] = [
-      { id: "a", title: "A", description: "" },
-      { id: "b", title: "B", description: "", dependsOn: ["a"] },
-    ];
-    const blocked = collectSpawnableTemplates(roots, ctx());
+    const blocked = task("blocked", "Blocked");
+    blocked.dependsOn = ["dep"];
+    const roots = [task("dep", "Dep"), blocked];
+    const spawnable = collectSpawnableTemplates(roots, ctx());
     assert.deepEqual(
-      blocked.map((item) => item.id),
-      ["a"],
-    );
-    const unlocked = collectSpawnableTemplates(
-      roots,
-      ctx({
-        spawnedTemplateIds: new Set(["a"]),
-        doneTemplateIds: new Set(["a"]),
-      }),
-    );
-    assert.deepEqual(
-      unlocked.map((item) => item.id),
-      ["b"],
+      spawnable.map((item) => item.id),
+      ["dep"],
     );
   });
 
   it("does not spawn children until parent task is done", () => {
-    const roots: StageTaskTemplate[] = [
-      {
-        id: "parent",
-        title: "Parent",
-        description: "",
-        execution: "parallel",
-        children: [
-          { id: "c1", title: "Child 1", description: "" },
-          { id: "c2", title: "Child 2", description: "" },
-        ],
-      },
-    ];
-    const pending = collectSpawnableTemplates(
-      roots,
-      ctx({
-        spawnedTemplateIds: new Set(["parent"]),
-      }),
+    const child = task("child", "Child");
+    const parent = task("parent", "Parent", [child]);
+    const spawnable = collectSpawnableTemplates(
+      [parent],
+      ctx({ spawnedTemplateIds: new Set(["parent"]) }),
     );
-    assert.deepEqual(pending, []);
+    assert.deepEqual(spawnable, []);
   });
 
   it("spawns parallel children when parent task is done", () => {
-    const roots: StageTaskTemplate[] = [
-      {
-        id: "parent",
-        title: "Parent",
-        description: "",
-        execution: "parallel",
-        children: [
-          { id: "c1", title: "Child 1", description: "" },
-          { id: "c2", title: "Child 2", description: "" },
-        ],
-      },
-    ];
+    const childA = task("child-a", "Child A");
+    const childB = task("child-b", "Child B");
+    const parent = task("parent", "Parent", [childA, childB]);
     const spawnable = collectSpawnableTemplates(
-      roots,
+      [parent],
       ctx({
         spawnedTemplateIds: new Set(["parent"]),
         doneTemplateIds: new Set(["parent"]),
       }),
     );
     assert.deepEqual(
-      spawnable.map((item) => item.id).sort(),
-      ["c1", "c2"],
+      spawnable.map((item) => item.id),
+      ["child-a", "child-b"],
     );
   });
 });

@@ -62,7 +62,7 @@ export async function webRoutes(app: FastifyInstance) {
     wildcard: false,
   });
 
-  const spa = async (_request: unknown, reply: { sendFile: (name: string, dir: string) => unknown }) =>
+  const spa = (_request: unknown, reply: { sendFile: (name: string, dir: string) => unknown }) =>
     reply.sendFile("index.html", root);
 
   app.get("/", async (_request, reply) => reply.redirect("/app/login"));
@@ -78,7 +78,13 @@ export async function webRoutes(app: FastifyInstance) {
   app.get("/app/setup", spa);
   app.get("/app/admin/users", spa);
   app.get("/app/*", async (request, reply) => {
-    const path = request.url.split("?")[0] ?? "";
+    const urlParts = request.url.split("?");
+    let path: string;
+    if (urlParts[0] != null) {
+      path = urlParts[0];
+    } else {
+      path = "";
+    }
     if (path.startsWith("/app/assets/")) {
       return reply.status(404).send({ error: "Not found" });
     }

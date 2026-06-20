@@ -4,9 +4,9 @@ import { AppError } from "../errors/app-error.js";
 import {
   hasAnyUser,
   createUser,
-  getUserByEmail,
+  listUserRows,
   verifyPassword,
-  getTokenForUser,
+  readUserToken,
 } from "../db/users-db.js";
 import { assertAuth } from "../middleware/auth.js";
 
@@ -21,13 +21,11 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-export async function authRoutes(app: FastifyInstance) {
-  // GET /api/auth/status — check if system has any users (for first-run detection)
-  app.get("/auth/status", async () => {
+export function authRoutes(app: FastifyInstance) {
+  app.get("/auth/status", () => {
     return { hasUsers: hasAnyUser() };
   });
 
-  // POST /api/auth/setup — create first admin (only if no users exist)
   app.post("/auth/setup", async (request, reply) => {
     if (hasAnyUser()) {
       throw new AppError("Setup already completed", 409);
@@ -43,15 +41,16 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.status(201).send({ user, message: "Admin account created" });
   });
 
-  // POST /api/auth/login — email + password → token
   app.post("/auth/login", async (request, reply) => {
     const body = loginSchema.parse(request.body);
-    const userRow = getUserByEmail(body.email);
-    if (!userRow || !verifyPassword(userRow, body.password)) {
+    const userRows = listUserRows({ id: "", email: body.email, token: "" });
+    const firstRow = userRows[0];
+    if (userRows.length === 0 || !firstRow || !verifyPassword(firstRow, body.password)) {
       throw new AppError("Invalid email or password", 401);
     }
-    const token = getTokenForUser(userRow.id) ?? "";
-    if (!token) throw new AppError("Token not found", 500);
+    const userRow = firstRow;
+    const token = readUserToken(userRow.id);
+    if (token === "") throw new AppError("Token not found", 500);
     return reply.send({
       token,
       user: {
@@ -64,8 +63,7 @@ export async function authRoutes(app: FastifyInstance) {
     });
   });
 
-  // GET /api/auth/me — get current user info (protected)
-  app.get("/auth/me", async (request) => {
+  app.get("/auth/me", (request) => {
     const userRow = assertAuth(request);
     return {
       id: userRow.id,

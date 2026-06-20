@@ -2,63 +2,61 @@ import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
-/**
- * Banned patterns — zero tolerance.
- *
- * Banned:
- *   null (type + literal)      — use undefined
- *   ?? and ??=                  — use explicit if / ternary
- *   ?. and ?.() optional chain  — guard with explicit undefined check
- *   ?: optional property / method / class field / parameter
- *                               — use T | undefined union
- */
-const BANNED = [
-  // ── null ──────────────────────────────────────────────────────────────────
+const BANNED_EVERYWHERE = [
   {
-    selector: "TSNullKeyword",
-    message: "null type is banned. Use undefined.",
+    selector: "LineComment",
+    message: "Comments are banned.",
   },
   {
-    selector: "Literal[raw='null']",
-    message: "null literal is banned. Use undefined.",
+    selector: "BlockComment",
+    message: "Comments are banned.",
   },
-
-  // ── ?? and ??= ────────────────────────────────────────────────────────────
   {
     selector: "LogicalExpression[operator='??']",
-    message: "?? is banned. Use an explicit if / ternary instead.",
+    message: "?? is banned. Use explicit if/else.",
   },
   {
     selector: "AssignmentExpression[operator='??=']",
     message: "??= is banned.",
   },
-
-  // ── ?. optional chaining ─────────────────────────────────────────────────
+  {
+    selector: "Identifier[name='undefined']",
+    message: "undefined is banned. Use null for missing values.",
+  },
+  {
+    selector: "TSUndefinedKeyword",
+    message: "undefined in types is banned. Use null.",
+  },
   {
     selector: "MemberExpression[optional=true]",
-    message: "?. optional chaining is banned. Guard with an explicit undefined check.",
+    message: "?. optional chaining is banned. Guard with an explicit null check.",
   },
   {
     selector: "CallExpression[optional=true]",
-    message: "?. optional call is banned. Guard with an explicit undefined check.",
+    message: "?. optional call is banned. Guard with an explicit null check.",
   },
-
-  // ── optional ?: on types / classes / params ──────────────────────────────
   {
     selector: "TSPropertySignature[optional=true]",
-    message: "Optional property (?:) is banned. Use '| undefined' in the property type.",
+    message: "Optional property (?:) is banned. Use 'T | null' in the property type.",
   },
   {
     selector: "TSMethodSignature[optional=true]",
-    message: "Optional method (?:) is banned. Use '(() => R) | undefined'.",
+    message: "Optional method (?:) is banned. Use '(() => R) | null'.",
   },
   {
     selector: "PropertyDefinition[optional=true]",
-    message: "Optional class field (?:) is banned. Use 'T | undefined'.",
+    message: "Optional class field (?:) is banned. Use 'T | null'.",
   },
   {
     selector: "Identifier[optional=true]",
-    message: "Optional parameter (?) is banned. Use 'T | undefined' in the parameter type.",
+    message: "Optional parameter (?) is banned. Use 'T | null' in the parameter type.",
+  },
+];
+
+const BANNED_TERNARY = [
+  {
+    selector: "ConditionalExpression",
+    message: "Ternary (? :) is banned in .ts files. Use explicit if/else.",
   },
 ];
 
@@ -66,7 +64,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
-    ignores: ["dist/**", "*.config.*"],
+    ignores: ["dist/**", "**/*.config.js"],
   },
   {
     files: ["src/**/*.{ts,tsx}"],
@@ -80,19 +78,13 @@ export default tseslint.config(
       },
     },
     rules: {
-      // ── Turn off rules that conflict with our banned patterns ─────────────
-      // We ban ?? — don't tell us to USE ??.
+      "no-undefined": "error",
+      "@typescript-eslint/ban-ts-comment": "error",
       "@typescript-eslint/prefer-nullish-coalescing": "off",
-      // We ban ?. — don't tell us to USE ?..
       "@typescript-eslint/prefer-optional-chain": "off",
-      // type aliases are used extensively — allow both type and interface.
       "@typescript-eslint/consistent-type-definitions": "off",
-
-      // ── React hooks ──────────────────────────────────────────────────────
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
-
-      // ── TypeScript strict extras ─────────────────────────────────────────
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
@@ -104,13 +96,15 @@ export default tseslint.config(
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
-
-      // ── General strictness ───────────────────────────────────────────────
       "no-empty": ["error", { allowEmptyCatch: false }],
       eqeqeq: ["error", "always"],
-
-      // ── Banned patterns ──────────────────────────────────────────────────
-      "no-restricted-syntax": ["error", ...BANNED],
+      "no-restricted-syntax": ["error", ...BANNED_EVERYWHERE],
+    },
+  },
+  {
+    files: ["src/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", ...BANNED_EVERYWHERE, ...BANNED_TERNARY],
     },
   },
 );

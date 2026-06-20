@@ -164,7 +164,7 @@ function err(codes: number[]) {
   const result: Record<string, object> = {};
   for (const code of codes) {
     result[String(code)] = {
-      description: { 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 409: "Conflict", 500: "Server Error" }[code] ?? "Error",
+      description: ({ 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 409: "Conflict", 500: "Server Error" } as Record<number, string>)[code] || "Error",
       content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
     };
   }

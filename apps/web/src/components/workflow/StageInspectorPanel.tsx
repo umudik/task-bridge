@@ -13,12 +13,10 @@ import {
   removeTemplateFromTree,
 } from "./template-graph-utils";
 import { syncStageTemplates } from "./workflow-utils";
-import { ProjectRoleSelect } from "./ProjectRoleSelect";
 
 type StageInspectorPanelProps = {
   stage: WorkflowStage;
   stageCount: number;
-  projectRoles: string[];
   selectedTaskTemplateId: string | null;
   onChange: (stage: WorkflowStage) => void;
   onSelectTaskTemplate: (templateId: string | null) => void;
@@ -77,7 +75,6 @@ function DescriptionField({
 export function StageInspectorPanel({
   stage,
   stageCount,
-  projectRoles,
   selectedTaskTemplateId,
   onChange,
   onSelectTaskTemplate,
@@ -146,25 +143,6 @@ export function StageInspectorPanel({
             onChange={(next) => patchTemplate(activeTemplate.id, { description: next })}
             placeholder="What should happen in this task?"
           />
-          <ProjectRoleSelect
-            label="Assignee role"
-            value={activeTemplate.assigneeRole ?? ""}
-            roles={projectRoles}
-            onChange={(next) => patchTemplate(activeTemplate.id, { assigneeRole: next || undefined })}
-          />
-          <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-white/[0.08] bg-[#111] px-3 py-2.5">
-            <input
-              type="checkbox"
-              checked={activeTemplate.assigneeKind === "human"}
-              onChange={(event) =>
-                patchTemplate(activeTemplate.id, {
-                  assigneeKind: event.target.checked ? "human" : undefined,
-                })
-              }
-              className="h-4 w-4 rounded border-white/20 accent-sky-500"
-            />
-            <span className="text-sm text-white/90">Human approval required</span>
-          </label>
           <Button
             type="button"
             variant="ghost"
@@ -198,14 +176,6 @@ export function StageInspectorPanel({
             value={stage.description}
             onChange={(next) => updateStage({ description: next })}
             placeholder="Step context, expectations, notes…"
-          />
-          <ProjectRoleSelect
-            id="stage-auto-assign-role"
-            label="Auto-assign role"
-            value={stage.autoAssignRole ?? ""}
-            roles={projectRoles}
-            emptyLabel="Off"
-            onChange={(next) => updateStage({ autoAssignRole: next || undefined })}
           />
           {stageCount <= 1 ? (
             <p className="text-xs text-muted-foreground">At least one pipeline step is required.</p>

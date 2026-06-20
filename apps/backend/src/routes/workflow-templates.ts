@@ -21,8 +21,6 @@ const taskTemplateSchema: z.ZodTypeAny = z.lazy(() =>
     title: z.string().min(1),
     description: z.string().optional().default(""),
     assigneeRole: z.string().optional().default(""),
-    assigneeKind: z.enum(["human", "ai"]).optional(),
-    kind: z.enum(["task", "group"]).optional().default("task"),
     execution: z.enum(["parallel", "sequential"]).optional().default("parallel"),
     dependsOn: z.array(z.string()).optional().default([]),
     children: z.array(taskTemplateSchema).optional().default([]),
@@ -59,8 +57,8 @@ const importSchema = z.object({
   stages: z.array(stageSchema).min(1),
 }).passthrough();
 
-export async function workflowTemplateRoutes(app: FastifyInstance) {
-  app.get("/workflow-templates", async (request) => {
+export function workflowTemplateRoutes(app: FastifyInstance) {
+  app.get("/workflow-templates", (request) => {
     assertAuth(request);
     return { items: listWorkflowTemplates() };
   });
@@ -68,24 +66,38 @@ export async function workflowTemplateRoutes(app: FastifyInstance) {
   // POST /api/workflow-templates/import — must be before /:templateId routes
   app.post("/workflow-templates/import", async (request, reply) => {
     assertAuth(request);
-    const body = importSchema.parse(request.body ?? {});
+    let importBody = request.body;
+    if (importBody === null) { importBody = {}; }
+    const body = importSchema.parse(importBody);
     const template = importWorkflowTemplate({
       id: body.id,
       title: body.title,
       description: body.description,
-      stages: body.stages.map((stage) => ({
-        ...stage,
-        layoutX: stage.layoutX ?? null,
-        layoutY: stage.layoutY ?? null,
-        autoAssignRole: stage.autoAssignRole?.trim() || undefined,
-      })),
+      stages: body.stages.map((stage) => {
+        let layoutX: number | null = null;
+        if (Number(stage.layoutX) === stage.layoutX) {
+          layoutX = stage.layoutX as number;
+        }
+        let layoutY: number | null = null;
+        if (Number(stage.layoutY) === stage.layoutY) {
+          layoutY = stage.layoutY as number;
+        }
+        let autoAssignRole: string | null = null;
+        const trimmedRole = stage.autoAssignRole.trim();
+        if (trimmedRole) {
+          autoAssignRole = trimmedRole;
+        }
+        return { ...stage, layoutX, layoutY, autoAssignRole };
+      }),
     });
     return reply.status(201).send(template);
   });
 
   app.post("/workflow-templates", async (request, reply) => {
     assertAuth(request);
-    const body = createTemplateSchema.parse(request.body ?? {});
+    let createTemplateBody = request.body;
+    if (createTemplateBody === null) { createTemplateBody = {}; }
+    const body = createTemplateSchema.parse(createTemplateBody);
     const template = createWorkflowTemplate(body);
     return reply.status(201).send(template);
   });
@@ -120,21 +132,33 @@ export async function workflowTemplateRoutes(app: FastifyInstance) {
     return reply
       .header("Content-Type", "application/json; charset=utf-8")
       .header("Content-Disposition", `attachment; filename="${filename}"`)
-      .send(JSON.stringify(payload, undefined, 2));
+      .send(JSON.stringify(payload, null, 2));
   });
 
   app.put("/workflow-templates/:templateId", async (request, reply) => {
     assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
-    const body = replaceTemplateSchema.parse(request.body ?? {});
+    let replaceTemplateBody = request.body;
+    if (replaceTemplateBody === null) { replaceTemplateBody = {}; }
+    const body = replaceTemplateSchema.parse(replaceTemplateBody);
     const template = replaceWorkflowTemplate(
       templateId,
-      body.stages.map((stage) => ({
-        ...stage,
-        layoutX: stage.layoutX ?? null,
-        layoutY: stage.layoutY ?? null,
-        autoAssignRole: stage.autoAssignRole?.trim() || undefined,
-      })),
+      body.stages.map((stage) => {
+        let layoutX: number | null = null;
+        if (Number(stage.layoutX) === stage.layoutX) {
+          layoutX = stage.layoutX as number;
+        }
+        let layoutY: number | null = null;
+        if (Number(stage.layoutY) === stage.layoutY) {
+          layoutY = stage.layoutY as number;
+        }
+        let autoAssignRole: string | null = null;
+        const trimmedRole = stage.autoAssignRole.trim();
+        if (trimmedRole) {
+          autoAssignRole = trimmedRole;
+        }
+        return { ...stage, layoutX, layoutY, autoAssignRole };
+      }),
     );
     return reply.status(200).send(template);
   });

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { consumerStatus } from "./task-response.js";
 import type { BridgeTask } from "../domain/task.js";
-
 function makeTask(overrides: Partial<BridgeTask>): BridgeTask {
   const now = "2026-01-01T00:00:00.000Z";
   return {
@@ -14,7 +13,6 @@ function makeTask(overrides: Partial<BridgeTask>): BridgeTask {
     epicId: null,
     templateId: null,
     description: "",
-    acceptanceCriteria: null,
     priority: null,
     labels: [],
     assignee: null,
@@ -50,7 +48,7 @@ describe("task response mapper", () => {
         comments: [
           {
             id: "system-1",
-            authorType: "system",
+            role: "system",
             authorId: "system",
             tags: [],
             body: "update",
@@ -58,7 +56,7 @@ describe("task response mapper", () => {
           },
           {
             id: "human-1",
-            authorType: "human",
+            role: "user",
             authorId: "user",
             tags: [],
             body: "follow up",

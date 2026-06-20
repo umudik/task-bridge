@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
+import { DEFAULT_WORKFLOW_TEMPLATE_ID } from "../domain/workflow-template-id.js";
 
 export type ProjectRow = {
   id: string;
@@ -52,8 +53,15 @@ function migrate(database: Database.Database) {
     database.exec("ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''");
   }
   if (!columnExists(database, "projects", "workflow_template_id")) {
-    database.exec("ALTER TABLE projects ADD COLUMN workflow_template_id TEXT NOT NULL DEFAULT ''");
+    database.exec(
+      `ALTER TABLE projects ADD COLUMN workflow_template_id TEXT NOT NULL DEFAULT '${DEFAULT_WORKFLOW_TEMPLATE_ID}'`,
+    );
   }
+  database
+    .prepare(
+      `UPDATE projects SET workflow_template_id = ? WHERE trim(workflow_template_id) = ''`,
+    )
+    .run(DEFAULT_WORKFLOW_TEMPLATE_ID);
 }
 
 export function getProjectsDb(): Database.Database {
@@ -79,10 +87,14 @@ export function listProjectRows(): ProjectRow[] {
     .all() as ProjectRow[];
 }
 
-export function getProjectRow(id: string): ProjectRow | undefined {
+export function listProjectRowsById(id: string): ProjectRow[] {
+  const trimmed = id.trim();
+  if (trimmed === "") return [];
   return getProjectsDb()
-    .prepare("SELECT id, name, repo_path, description, workflow_template_id FROM projects WHERE id = ?")
-    .get(id.trim()) as ProjectRow | undefined;
+    .prepare(
+      "SELECT id, name, repo_path, description, workflow_template_id FROM projects WHERE id = ?",
+    )
+    .all(trimmed) as ProjectRow[];
 }
 
 export function upsertProjectRow(id: string, name: string, repoPath: string) {
@@ -103,7 +115,7 @@ export function insertProjectRow(
   name: string,
   repoPath: string,
   description = "",
-  workflowTemplateId = "",
+  workflowTemplateId = DEFAULT_WORKFLOW_TEMPLATE_ID,
 ): boolean {
   try {
     getProjectsDb()
@@ -120,26 +132,24 @@ export function insertProjectRow(
 
 export function updateProjectRow(
   id: string,
-  patch: { name?: string; repoPath?: string; description?: string; workflowTemplateId?: string },
+  input: {
+    name: string;
+    repoPath: string;
+    description: string;
+    workflowTemplateId: string;
+  },
 ): boolean {
-  const existing = getProjectRow(id);
-  if (!existing) return false;
-  const name = patch.name !== undefined ? patch.name.trim() : existing.name;
-  const repoPath = patch.repoPath !== undefined ? patch.repoPath.trim() : existing.repo_path;
-  const description =
-    patch.description !== undefined ? patch.description.trim() : existing.description;
-  const workflowTemplateId =
-    patch.workflowTemplateId !== undefined
-      ? patch.workflowTemplateId.trim()
-      : existing.workflow_template_id;
+  if (listProjectRowsById(id).length === 0) return false;
   const result = getProjectsDb()
     .prepare(
       `UPDATE projects SET name = ?, repo_path = ?, description = ?, workflow_template_id = ?, updated_at = datetime('now') WHERE id = ?`,
     )
-    .run(name, repoPath, description, workflowTemplateId, id.trim());
+    .run(
+      input.name.trim(),
+      input.repoPath.trim(),
+      input.description.trim(),
+      input.workflowTemplateId.trim(),
+      id.trim(),
+    );
   return result.changes > 0;
-}
-
-export function updateProjectRepoPathRow(id: string, repoPath: string): boolean {
-  return updateProjectRow(id, { repoPath });
 }

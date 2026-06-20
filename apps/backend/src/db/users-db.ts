@@ -10,7 +10,7 @@ export type UserRow = {
   email: string;
   password_hash: string;
   role: UserRole;
-  is_system_admin: number; // 0 or 1
+  is_system_admin: number;
   token: string;
   created_at: string;
   updated_at: string;
@@ -25,6 +25,11 @@ export type PublicUser = {
   createdAt: string;
 };
 
+export type UpdateUserInput = {
+  name: string;
+  role: UserRole;
+};
+
 export function hasAnyUser(): boolean {
   const db = getProjectsDb();
   const row = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
@@ -35,18 +40,46 @@ function generateToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+export function listUserRows(filter: {
+  id: string;
+  email: string;
+  token: string;
+}): UserRow[] {
+  const db = getProjectsDb();
+  const id = filter.id.trim();
+  const email = filter.email.trim().toLowerCase();
+  const token = filter.token.trim();
+  if (id !== "") {
+    return db.prepare("SELECT * FROM users WHERE id = ?").all(id) as UserRow[];
+  }
+  if (email !== "") {
+    return db.prepare("SELECT * FROM users WHERE email = ?").all(email) as UserRow[];
+  }
+  if (token !== "") {
+    return db.prepare("SELECT * FROM users WHERE token = ?").all(token) as UserRow[];
+  }
+  return db
+    .prepare("SELECT * FROM users ORDER BY is_system_admin DESC, created_at ASC")
+    .all() as UserRow[];
+}
+
 export function createUser(params: {
   name: string;
   email: string;
   password: string;
   role: UserRole;
-  isSystemAdmin?: boolean;
+  isSystemAdmin: boolean;
 }): PublicUser {
   const db = getProjectsDb();
   const id = randomBytes(8).toString("hex");
   const token = generateToken();
   const passwordHash = bcrypt.hashSync(params.password, 10);
   const now = new Date().toISOString();
+
+  let isAdminFlag = 0;
+  if (params.isSystemAdmin) {
+    isAdminFlag = 1;
+  }
 
   db.prepare(`
     INSERT INTO users (id, name, email, password_hash, role, is_system_admin, token, created_at, updated_at)
@@ -57,78 +90,61 @@ export function createUser(params: {
     params.email.trim().toLowerCase(),
     passwordHash,
     params.role,
-    params.isSystemAdmin ? 1 : 0,
+    isAdminFlag,
     token,
     now,
     now,
   );
 
-  return rowToPublic(getUserById(id)!);
+  const rows = listUserRows({ id, email: "", token: "" });
+  const created = rows[0];
+  if (!created) {
+    throw new Error("Failed to retrieve created user");
+  }
+  return rowToPublic(created);
 }
 
-export function getUserByEmail(email: string): UserRow | undefined {
-  const db = getProjectsDb();
-  return db
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email.trim().toLowerCase()) as UserRow | undefined;
+export function listPublicUsers(): PublicUser[] {
+  return listUserRows({ id: "", email: "", token: "" }).map(rowToPublic);
 }
 
-export function getUserByToken(token: string): UserRow | undefined {
-  const db = getProjectsDb();
-  return db
-    .prepare("SELECT * FROM users WHERE token = ?")
-    .get(token) as UserRow | undefined;
-}
-
-export function getUserById(id: string): UserRow | undefined {
-  const db = getProjectsDb();
-  return db
-    .prepare("SELECT * FROM users WHERE id = ?")
-    .get(id) as UserRow | undefined;
-}
-
-export function getAllUsers(): PublicUser[] {
-  const db = getProjectsDb();
-  const rows = db
-    .prepare("SELECT * FROM users ORDER BY is_system_admin DESC, created_at ASC")
-    .all() as UserRow[];
-  return rows.map(rowToPublic);
-}
-
-export function deleteUser(id: string): { deleted: boolean; reason?: string } {
-  const db = getProjectsDb();
-  const user = getUserById(id);
+export function deleteUser(id: string): { deleted: boolean; reason: string } {
+  const rows = listUserRows({ id, email: "", token: "" });
+  if (rows.length === 0) return { deleted: false, reason: "User not found" };
+  const user = rows[0];
   if (!user) return { deleted: false, reason: "User not found" };
   if (user.is_system_admin) return { deleted: false, reason: "Cannot delete the system admin" };
-  db.prepare("DELETE FROM users WHERE id = ?").run(id);
-  return { deleted: true };
+  getProjectsDb().prepare("DELETE FROM users WHERE id = ?").run(id);
+  return { deleted: true, reason: "" };
 }
 
-export function updateUser(
-  id: string,
-  params: { name?: string; role?: UserRole },
-): PublicUser | undefined {
-  const db = getProjectsDb();
-  const user = getUserById(id);
-  if (!user) return undefined;
-  const name = params.name?.trim() ?? user.name;
-  const role = params.role ?? user.role;
-  db.prepare(`
-    UPDATE users SET name = ?, role = ?, updated_at = datetime('now') WHERE id = ?
-  `).run(name, role, id);
-  return rowToPublic(getUserById(id)!);
+export function updateUser(id: string, input: UpdateUserInput): PublicUser | null {
+  const rows = listUserRows({ id, email: "", token: "" });
+  if (rows.length === 0) return null;
+  getProjectsDb()
+    .prepare(`UPDATE users SET name = ?, role = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(input.name.trim(), input.role, id);
+  const updated = listUserRows({ id, email: "", token: "" });
+  if (updated.length === 0) {
+    return null;
+  }
+  const updatedRow = updated[0];
+  if (!updatedRow) {
+    return null;
+  }
+  return rowToPublic(updatedRow);
 }
 
 export function verifyPassword(user: UserRow, password: string): boolean {
   return bcrypt.compareSync(password, user.password_hash);
 }
 
-export function getTokenForUser(id: string): string | undefined {
-  const db = getProjectsDb();
-  const row = db.prepare("SELECT token FROM users WHERE id = ?").get(id) as
-    | { token: string }
-    | undefined;
-  return row?.token;
+export function readUserToken(id: string): string {
+  const rows = listUserRows({ id, email: "", token: "" });
+  if (rows.length === 0) return "";
+  const tokenRow = rows[0];
+  if (!tokenRow) return "";
+  return tokenRow.token;
 }
 
 function rowToPublic(row: UserRow): PublicUser {

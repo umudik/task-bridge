@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { DEFAULT_WORKFLOW_TEMPLATE_ID } from "../domain/workflow-template-id.js";
 import { isAppError } from "../errors/app-error.js";
 import { assertAuth } from "../middleware/auth.js";
 import {
@@ -10,24 +11,25 @@ import {
   updateProjectRepoPath,
 } from "../services/project-registry.js";
 
+const projectIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 const createProjectSchema = z.object({
   name: z.string().trim().min(1),
   id: z
     .string()
     .trim()
-    .min(1)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-    .optional(),
+    .default("")
+    .refine((value) => value === "" || projectIdPattern.test(value)),
   repoPath: z.string().trim().min(1),
-  description: z.string().optional(),
-  workflowTemplateId: z.string().trim().min(1).optional(),
+  description: z.string().default(""),
+  workflowTemplateId: z.string().trim().default(DEFAULT_WORKFLOW_TEMPLATE_ID),
 });
 
 const updateProjectSchema = z.object({
-  name: z.string().trim().min(1).optional(),
-  repoPath: z.string().trim().min(1).optional(),
-  description: z.string().optional(),
-  workflowTemplateId: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1),
+  repoPath: z.string().trim().min(1),
+  description: z.string(),
+  workflowTemplateId: z.string().trim(),
 });
 
 const updateRepoPathSchema = z.object({
@@ -38,7 +40,7 @@ const projectIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
-export async function projectRoutes(app: FastifyInstance) {
+export function projectRoutes(app: FastifyInstance) {
   app.get("/projects", async (request) => {
     assertAuth(request);
     await refreshProjectRegistry();
@@ -47,7 +49,11 @@ export async function projectRoutes(app: FastifyInstance) {
 
   app.post("/projects", async (request, reply) => {
     assertAuth(request);
-    const body = createProjectSchema.parse(request.body ?? {});
+    let postBody = request.body;
+    if (postBody == null) {
+      postBody = {};
+    }
+    const body = createProjectSchema.parse(postBody);
     const created = await createProject(body);
     if (created === "duplicate") {
       return reply.status(409).send({ error: "Project id already exists" });
@@ -61,15 +67,11 @@ export async function projectRoutes(app: FastifyInstance) {
   app.patch("/projects/:id", async (request, reply) => {
     assertAuth(request);
     const { id } = projectIdParamsSchema.parse(request.params);
-    const body = updateProjectSchema.parse(request.body ?? {});
-    if (
-      body.name === undefined &&
-      body.repoPath === undefined &&
-      body.description === undefined &&
-      body.workflowTemplateId === undefined
-    ) {
-      return reply.status(400).send({ error: "No fields to update" });
+    let patchBody = request.body;
+    if (patchBody == null) {
+      patchBody = {};
     }
+    const body = updateProjectSchema.parse(patchBody);
     try {
       const updated = await updateProject(id, body);
       if (!updated) {

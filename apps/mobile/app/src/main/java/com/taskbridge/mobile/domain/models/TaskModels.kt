@@ -78,7 +78,6 @@ data class AnswerDetail(
     val title: String,
     val request: String,
     val description: String? = null,
-    val acceptanceCriteria: String? = null,
     val status: String,
     val createdAt: String?,
     val updatedAt: String? = null,

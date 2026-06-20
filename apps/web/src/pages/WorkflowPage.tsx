@@ -41,7 +41,6 @@ export function WorkflowPage() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [stages, setStages] = useState<WorkflowStage[]>([]);
-  const [roles, setRoles] = useState<string[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [editorIndex, setEditorIndex] = useState<number | null>(null);
   const [selectedTaskTemplateId, setSelectedTaskTemplateId] = useState<string | null>(null);
@@ -55,7 +54,6 @@ export function WorkflowPage() {
     try {
       const workflow = await fetchProjectWorkflow(session, projectId);
       setStages(workflow.stages);
-      setRoles(workflow.roles ?? []);
       setMembers(workflow.members);
       setDirty(false);
     } catch (error) {
@@ -126,9 +124,8 @@ export function WorkflowPage() {
     if (!session) return;
     setSaving(true);
     try {
-      const workflow = await saveProjectWorkflow(session, projectId, { stages, roles });
+      const workflow = await saveProjectWorkflow(session, projectId, { stages, roles: [] });
       setStages(workflow.stages);
-      setRoles(workflow.roles ?? []);
       setDirty(false);
       toast.success("Workflow saved");
     } catch (error) {
@@ -329,7 +326,6 @@ export function WorkflowPage() {
                 <StageInspectorPanel
                   stage={editingStage}
                   stageCount={stages.length}
-                  projectRoles={roles}
                   selectedTaskTemplateId={selectedTaskTemplateId}
                   onChange={(stage) => {
                     if (editorIndex === null) return;
@@ -347,42 +343,7 @@ export function WorkflowPage() {
         </div>
         <div className={cn("min-h-0 flex-1 overflow-y-auto", activeTab !== "members" && "hidden")}>
           <TeamPanel
-              roles={roles}
               members={members}
-              onRolesChange={(nextRoles) => {
-                const removed = roles.filter((role) => !nextRoles.includes(role));
-                if (removed.length > 0) {
-                  setStages((current) =>
-                    current.map((stage) => ({
-                      ...stage,
-                      autoAssignRole: removed.includes(stage.autoAssignRole ?? "")
-                        ? undefined
-                        : stage.autoAssignRole,
-                      taskTemplates: (stage.taskTemplates ?? []).map((template) => ({
-                        ...template,
-                        assigneeRole: removed.includes(template.assigneeRole ?? "")
-                          ? undefined
-                          : template.assigneeRole,
-                      })),
-                    })),
-                  );
-                  void Promise.all(
-                    members
-                      .filter((member) => member.role && removed.includes(member.role))
-                      .map((member) => updateMember(session, projectId, member.id, { role: "" })),
-                  ).then((updated) => {
-                    if (updated.length === 0) return;
-                    setMembers((current) =>
-                      current.map((member) => {
-                        const patch = updated.find((item) => item?.id === member.id);
-                        return patch ?? member;
-                      }),
-                    );
-                  });
-                }
-                setRoles(nextRoles);
-                setDirty(true);
-              }}
               onCreateMember={async (input) => {
                 try {
                   await handleCreateMember(input);

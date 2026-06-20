@@ -483,7 +483,6 @@ export function WorkflowTemplatesPage() {
               <StageInspectorPanel
                 stage={editingStage}
                 stageCount={stages.length}
-                projectRoles={[]}
                 selectedTaskTemplateId={selectedTaskTemplateId}
                 onChange={(stage) => {
                   if (editorIndex === null) return;

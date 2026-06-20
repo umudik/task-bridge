@@ -34,35 +34,37 @@ const taskIdParamsSchema = z.object({
 });
 
 const createLibrarySchema = z.object({
-  id: z.string().min(1).optional(),
+  id: z.string().default(""),
   title: z.string().min(1),
-  description: z.string().optional().default(""),
+  description: z.string().default(""),
 });
 
 const updateLibrarySchema = z.object({
   title: z.string().min(1),
-  description: z.string().optional().default(""),
+  description: z.string().default(""),
 });
 
 const createDocumentSchema = z.object({
-  id: z.string().min(1).optional(),
+  id: z.string().default(""),
   title: z.string().min(1),
-  description: z.string().optional().default(""),
+  description: z.string().default(""),
 });
 
 const linkDocumentSchema = z.object({
   taskId: z.coerce.number().int().positive(),
 });
 
-export async function libraryRoutes(app: FastifyInstance) {
-  app.get("/libraries", async (request) => {
+export function libraryRoutes(app: FastifyInstance) {
+  app.get("/libraries", (request) => {
     assertAuth(request);
     return { items: listLibraries() };
   });
 
   app.post("/libraries", async (request, reply) => {
     assertAuth(request);
-    const body = createLibrarySchema.parse(request.body ?? {});
+    let rawBody: unknown = request.body;
+    if (rawBody == null) { rawBody = {}; }
+    const body = createLibrarySchema.parse(rawBody);
     const library = createLibrary(body);
     return reply.status(201).send(library);
   });
@@ -75,10 +77,12 @@ export async function libraryRoutes(app: FastifyInstance) {
     return library;
   });
 
-  app.put("/libraries/:libraryId", async (request) => {
+  app.put("/libraries/:libraryId", (request) => {
     assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
-    const body = updateLibrarySchema.parse(request.body ?? {});
+    let rawBody: unknown = request.body;
+    if (rawBody == null) { rawBody = {}; }
+    const body = updateLibrarySchema.parse(rawBody);
     return updateLibrary(libraryId, body);
   });
 
@@ -92,7 +96,9 @@ export async function libraryRoutes(app: FastifyInstance) {
   app.post("/libraries/:libraryId/documents", async (request, reply) => {
     assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
-    const body = createDocumentSchema.parse(request.body ?? {});
+    let rawBody: unknown = request.body;
+    if (rawBody == null) { rawBody = {}; }
+    const body = createDocumentSchema.parse(rawBody);
     const document = createLibraryDocument(libraryId, body);
     return reply.status(201).send(document);
   });
@@ -108,7 +114,9 @@ export async function libraryRoutes(app: FastifyInstance) {
   app.put("/libraries/:libraryId/documents/:documentId", async (request, reply) => {
     assertAuth(request);
     const { libraryId, documentId } = libraryDocumentParamsSchema.parse(request.params);
-    const body = updateLibrarySchema.parse(request.body ?? {});
+    let rawBody: unknown = request.body;
+    if (rawBody == null) { rawBody = {}; }
+    const body = updateLibrarySchema.parse(rawBody);
     const existing = getLibraryDocument(documentId);
     if (!existing || existing.libraryId !== libraryId) {
       return reply.status(404).send({ error: "Document not found" });
@@ -130,7 +138,9 @@ export async function libraryRoutes(app: FastifyInstance) {
   app.post("/library-documents/:documentId/links", async (request, reply) => {
     assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
-    const body = linkDocumentSchema.parse(request.body ?? {});
+    let rawBody: unknown = request.body;
+    if (rawBody == null) { rawBody = {}; }
+    const body = linkDocumentSchema.parse(rawBody);
     const links = linkDocumentToTask(documentId, body.taskId);
     return reply.status(201).send({ items: links });
   });
@@ -143,7 +153,7 @@ export async function libraryRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  app.get("/tasks/:taskId/library-links", async (request) => {
+  app.get("/tasks/:taskId/library-links", (request) => {
     assertAuth(request);
     const { taskId } = taskIdParamsSchema.parse(request.params);
     return { items: listTaskLibraryLinks(taskId) };

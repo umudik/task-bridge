@@ -1,23 +1,24 @@
 import type { FastifyRequest } from "fastify";
 import { AppError } from "../errors/app-error.js";
-import { getUserByToken } from "../db/users-db.js";
-import type { UserRow } from "../db/users-db.js";
+import { listUserRows, type UserRow } from "../db/users-db.js";
 
 export function assertAuth(request: FastifyRequest): UserRow {
   const authHeader = request.headers["authorization"];
-  const token =
-    typeof authHeader === "string" && authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7).trim()
-      : null;
+  let token = "";
+  if (String(authHeader) === authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7).trim();
+  }
 
-  if (!token) {
+  if (token === "") {
     throw new AppError("Unauthorized", 401);
   }
 
-  const user = getUserByToken(token);
-  if (!user) {
+  const rows = listUserRows({ id: "", email: "", token });
+  if (rows.length === 0) {
     throw new AppError("Unauthorized", 401);
   }
 
-  return user;
+  const row = rows[0];
+  if (!row) throw new AppError("Unauthorized", 401);
+  return row;
 }

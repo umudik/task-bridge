@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { WorkflowStageRow } from "../db/workflow-db.js";
 import type { BridgeTask } from "../domain/task.js";
-import { collectTodoCascadeTaskIds, computeEpicStageId } from "./epic-service.js";
+import { listDescendantIds } from "../domain/task.js";
+import { collectLaterStageTodoCascadeIds, computeEpicStageId } from "./epic-service.js";
 
 function makeStage(overrides: Partial<WorkflowStageRow> & { id: string; position: number }): WorkflowStageRow {
   return {
@@ -36,7 +37,9 @@ function makeSubtask(overrides: Partial<BridgeTask> & { id: number }): BridgeTas
     acceptanceCriteria: null,
     priority: null,
     labels: [],
-    assignee: null,
+    assignee: "",
+    assigneeRole: null,
+    assigneeKind: null,
     createdBy: "test",
     createdAt: now,
     updatedAt: now,
@@ -53,7 +56,7 @@ function makeSubtask(overrides: Partial<BridgeTask> & { id: number }): BridgeTas
   };
 }
 
-describe("collectTodoCascadeTaskIds", () => {
+describe("collectLaterStageTodoCascadeIds", () => {
   it("resets later-stage epic tasks when a task is cancelled to todo", () => {
     const rows = [
       makeStage({ id: "plan", position: 0, task_templates_json: "[]" }),
@@ -66,7 +69,7 @@ describe("collectTodoCascadeTaskIds", () => {
     const lastStage = makeSubtask({ id: 13, stageId: "ship", workStatus: "in_progress" });
     const child = makeSubtask({ id: 14, parentId: 12, stageId: "build", workStatus: "done" });
 
-    const ids = collectTodoCascadeTaskIds(
+    const ids = collectLaterStageTodoCascadeIds(
       [cancelled, sameStage, laterStage, lastStage, child],
       cancelled,
       rows,
@@ -80,9 +83,8 @@ describe("collectTodoCascadeTaskIds", () => {
     const parent = makeSubtask({ id: 10, stageId: "plan", workStatus: "in_progress" });
     const child = makeSubtask({ id: 11, parentId: 10, stageId: "plan", workStatus: "done" });
 
-    const ids = collectTodoCascadeTaskIds([parent, child], parent, rows);
-
-    assert.deepEqual(ids, [11]);
+    assert.deepEqual(listDescendantIds([parent, child], parent.id), [11]);
+    assert.deepEqual(collectLaterStageTodoCascadeIds([parent, child], parent, rows), []);
   });
 
   it("uses parent stage when a deep nested subtask has no stage id", () => {
@@ -96,7 +98,7 @@ describe("collectTodoCascadeTaskIds", () => {
     const deep = makeSubtask({ id: 12, parentId: 11, workStatus: "in_progress" });
     const later = makeSubtask({ id: 20, stageId: "build", workStatus: "done" });
 
-    const ids = collectTodoCascadeTaskIds([root, nested, deep, later], deep, rows);
+    const ids = collectLaterStageTodoCascadeIds([root, nested, deep, later], deep, rows);
 
     assert.deepEqual(ids, [20]);
   });

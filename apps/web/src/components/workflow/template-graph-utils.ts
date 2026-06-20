@@ -7,50 +7,34 @@ function createTaskTemplate(stageTitle: string, index: number): StageTaskTemplat
     id: `task-${crypto.randomUUID()}`,
     title: index === 0 ? "New task" : `${stageTitle} task ${index + 1}`,
     description: "",
+    execution: "parallel",
+    dependsOn: [],
+    children: [],
   };
 }
 
 export function sanitizeTaskNode(node: StageTaskTemplate): StageTaskTemplate {
-  if (node.kind === "group") {
-    const children = (node.children ?? []).flatMap((child) => {
-      const sanitized = sanitizeTaskNode(child);
-      return sanitized.kind === "group" ? sanitized.children ?? [] : [sanitized];
-    });
-    return {
-      id: node.id,
-      title: node.title || "Task",
-      description: "",
-      kind: "task",
-      execution: "parallel",
-      children: children.length > 0 ? children.map(sanitizeTaskNode) : undefined,
-    };
-  }
-  const children = node.children?.map(sanitizeTaskNode).filter(Boolean);
+  const children = (node.children ?? []).map(sanitizeTaskNode);
   return {
     id: node.id,
     title: node.title,
     description: node.description ?? "",
-    assigneeRole: node.assigneeRole,
-    kind: "task",
-    execution: "parallel",
-    children: children && children.length > 0 ? children : undefined,
+    assigneeRole: node.assigneeRole ?? null,
+    execution: node.execution ?? "parallel",
+    dependsOn: node.dependsOn ?? [],
+    children,
   };
 }
 
 export function sanitizeStageTemplates(nodes: StageTaskTemplate[]): StageTaskTemplate[] {
-  return nodes.flatMap((node) => {
-    if (node.kind === "group") {
-      return (node.children ?? []).map(sanitizeTaskNode);
-    }
-    return [sanitizeTaskNode(node)];
-  });
+  return nodes.map(sanitizeTaskNode);
 }
 
 export function flattenTemplates(nodes: StageTaskTemplate[]): StageTaskTemplate[] {
   const result: StageTaskTemplate[] = [];
   for (const node of sanitizeStageTemplates(nodes)) {
     result.push(node);
-    if (node.children?.length) {
+    if (node.children.length > 0) {
       result.push(...flattenTemplates(node.children));
     }
   }
@@ -70,7 +54,7 @@ export function patchTemplateInTree(
     if (node.id === templateId) {
       return sanitizeTaskNode({ ...node, ...patch });
     }
-    if (!node.children?.length) return node;
+    if (node.children.length === 0) return node;
     return {
       ...node,
       children: patchTemplateInTree(node.children, templateId, patch),
@@ -83,7 +67,7 @@ export function removeTemplateFromTree(nodes: StageTaskTemplate[], templateId: s
     nodes
       .filter((node) => node.id !== templateId)
       .map((node) =>
-        node.children?.length
+        node.children.length > 0
           ? { ...node, children: removeTemplateFromTree(node.children, templateId) }
           : node,
       ),
@@ -99,10 +83,10 @@ export function addChildTemplate(
     if (node.id === parentId) {
       return sanitizeTaskNode({
         ...node,
-        children: [...(node.children ?? []), sanitizeTaskNode(child)],
+        children: [...node.children, sanitizeTaskNode(child)],
       });
     }
-    if (!node.children?.length) return node;
+    if (node.children.length === 0) return node;
     return { ...node, children: addChildTemplate(node.children, parentId, child) };
   });
 }
@@ -116,8 +100,9 @@ export function createSubtaskTemplate(parentTitle: string, index: number): Stage
     id: `task-${crypto.randomUUID()}`,
     title: index === 0 ? `${parentTitle} subtask` : `${parentTitle} subtask ${index + 1}`,
     description: "",
-    kind: "task",
     execution: "parallel",
+    dependsOn: [],
+    children: [],
   });
 }
 
@@ -139,7 +124,7 @@ export function findTemplateSiblingLocation(
     if (node.id === templateId) {
       return { parentId, index, siblingCount: siblings.length };
     }
-    if (node.children?.length) {
+    if (node.children.length > 0) {
       const found = findTemplateSiblingLocation(node.children, templateId, node.id);
       if (found) return found;
     }
@@ -178,7 +163,7 @@ function swapSiblingInTree(
   }
   return nodes.map((node) => {
     if (node.id === parentId) {
-      const children = sanitizeStageTemplates(node.children ?? []);
+      const children = sanitizeStageTemplates(node.children);
       if (target < 0 || target >= children.length) return node;
       const next = [...children];
       const current = next[index];
@@ -188,7 +173,7 @@ function swapSiblingInTree(
       next[target] = current;
       return sanitizeTaskNode({ ...node, children: next });
     }
-    if (!node.children?.length) return node;
+    if (node.children.length === 0) return node;
     return { ...node, children: swapSiblingInTree(node.children, parentId, index, delta) };
   });
 }
@@ -210,7 +195,7 @@ export function findTemplateInTree(
 ): { template: StageTaskTemplate; depth: number } | null {
   for (const node of sanitizeStageTemplates(nodes)) {
     if (node.id === templateId) return { template: node, depth };
-    if (node.children?.length) {
+    if (node.children.length > 0) {
       const found = findTemplateInTree(node.children, templateId, depth + 1);
       if (found) return found;
     }
@@ -230,7 +215,7 @@ export function flattenTemplatesForDisplay(
   const result: DisplayTemplate[] = [];
   for (const node of sanitizeStageTemplates(nodes)) {
     result.push({ template: node, depth });
-    if (node.children?.length) {
+    if (node.children.length > 0) {
       result.push(...flattenTemplatesForDisplay(node.children, depth + 1));
     }
   }
@@ -247,7 +232,7 @@ export function countDisplayRows(nodes: StageTaskTemplate[]): number {
 }
 
 function countSubtreeRows(node: StageTaskTemplate): number {
-  const children = node.children ?? [];
+  const children = node.children;
   if (children.length === 0) return 1;
   let count = 1;
   for (const child of children) {
@@ -269,7 +254,7 @@ function stackHeightForSiblings(nodes: StageTaskTemplate[]): number {
 }
 
 function subtreeStackHeight(node: StageTaskTemplate): number {
-  const children = sanitizeStageTemplates(node.children ?? []);
+  const children = sanitizeStageTemplates(node.children);
   const childStack = stackHeightForSiblings(children);
   if (childStack === 0) return TASK_ROW_HEIGHT;
   return TASK_ROW_HEIGHT + TASK_ROW_GAP + childStack;
