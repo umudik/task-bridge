@@ -36,7 +36,7 @@ Aç: **http://localhost:3000/app/login**
 1. Docker Hub → **Account Settings → Security → New Access Token** (Read & Write)
 2. GitHub repo:
    - **Variable:** `DOCKERHUB_USERNAME` = Docker Hub kullanıcı adın
-   - **Secret:** `DOCKER_HUB_SECRET_KEY` = access token
+   - **Secret:** `DOCKERHUB_ACCESS_TOKEN` = access token
 3. `main` push veya tag `v1.2.3` push → otomatik publish
 4. İsteğe bağlı: Actions → **Docker Hub Publish** → Run workflow
 
@@ -45,7 +45,7 @@ Aç: **http://localhost:3000/app/login**
 ```bash
 # .env
 # DOCKERHUB_USERNAME=YOUR_USER
-# DOCKER_HUB_SECRET_KEY=your-token
+# DOCKERHUB_ACCESS_TOKEN=your-token
 
 npm run docker:publish
 npm run docker:publish:mobile

@@ -53,7 +53,7 @@ async function main() {
     env.DOCKERHUB_USERNAME?.trim() ||
     env.DOCKER_USER?.trim() ||
     env.DOCKERHUB_USER?.trim();
-  const token = env.DOCKER_HUB_SECRET_KEY?.trim();
+  const token = env.DOCKERHUB_ACCESS_TOKEN?.trim();
 
   if (!user) {
     console.error("Set DOCKERHUB_USERNAME in .env or environment.");
@@ -64,7 +64,7 @@ async function main() {
   if (token) {
     await ensureDockerLogin(user, token);
   } else {
-    console.log("[docker] DOCKER_HUB_SECRET_KEY not set — assuming docker login already done.");
+    console.log("[docker] DOCKERHUB_ACCESS_TOKEN not set — assuming docker login already done.");
   }
 
   if (includeMobile) {
