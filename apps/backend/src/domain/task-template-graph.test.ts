@@ -20,7 +20,6 @@ function task(id: string, title: string, children: StageTaskTemplate[] = []): St
     title,
     description: "",
     assigneeRole: null,
-    execution: "parallel",
     dependsOn: [],
     children,
   };
@@ -36,29 +35,15 @@ describe("task template graph", () => {
     );
   });
 
-  it("spawns only first node in sequential siblings", () => {
-    const roots = [
-      task("a", "A"),
-      { ...task("b", "B"), execution: "sequential" as const },
-    ];
-    const sequentialParent = task("parent", "Parent", roots);
-    sequentialParent.execution = "sequential";
-    const spawnable = collectSpawnableTemplates([sequentialParent], ctx());
-    assert.deepEqual(
-      spawnable.map((item) => item.id),
-      ["parent"],
-    );
-  });
-
-  it("spawns next sequential sibling after previous is done", () => {
-    const roots = [task("a", "A"), task("b", "B")];
-    const parent = task("parent", "Parent", roots);
-    parent.execution = "sequential";
+  it("spawns next sibling after dependsOn is done", () => {
+    const second = task("b", "B");
+    second.dependsOn = ["a"];
+    const roots = [task("a", "A"), second];
     const spawnable = collectSpawnableTemplates(
-      [parent],
+      roots,
       ctx({
-        spawnedTemplateIds: new Set(["parent", "a"]),
-        doneTemplateIds: new Set(["parent", "a"]),
+        spawnedTemplateIds: new Set(["a"]),
+        doneTemplateIds: new Set(["a"]),
       }),
     );
     assert.deepEqual(

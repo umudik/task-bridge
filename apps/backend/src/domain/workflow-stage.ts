@@ -1,11 +1,8 @@
-export type TemplateExecution = "parallel" | "sequential";
-
 export type StageTaskTemplate = {
   id: string;
   title: string;
   description: string;
   assigneeRole: string | null;
-  execution: TemplateExecution;
   dependsOn: string[];
   children: StageTaskTemplate[];
 };
@@ -86,11 +83,6 @@ function resolveTaskDescription(row: Record<string, unknown>): string {
   return "";
 }
 
-function parseExecution(raw: unknown): TemplateExecution {
-  if (raw === "sequential") return "sequential";
-  return "parallel";
-}
-
 function parseTemplateNode(
   item: unknown,
   index: number,
@@ -117,7 +109,6 @@ function parseTemplateNode(
     id,
     title: title || fallbackTitle,
     description: resolveTaskDescription(row),
-    execution: parseExecution(row.execution),
     assigneeRole: null,
     dependsOn: [],
     children: [],
@@ -182,7 +173,6 @@ function serializeTemplateNode(
     id: template.id,
     title: template.title,
     description: template.description,
-    execution: template.execution,
     dependsOn: template.dependsOn,
   };
   if (template.assigneeRole) payload.assigneeRole = template.assigneeRole;

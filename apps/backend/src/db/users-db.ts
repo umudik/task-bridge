@@ -12,6 +12,7 @@ export type UserRow = {
   role: UserRole;
   is_system_admin: number;
   token: string;
+  must_change_password: number;
   created_at: string;
   updated_at: string;
 };
@@ -69,6 +70,7 @@ export function createUser(params: {
   password: string;
   role: UserRole;
   isSystemAdmin: boolean;
+  mustChangePassword?: boolean;
 }): PublicUser {
   const db = getProjectsDb();
   const id = randomBytes(8).toString("hex");
@@ -81,9 +83,14 @@ export function createUser(params: {
     isAdminFlag = 1;
   }
 
+  let mustChangePasswordFlag = 1;
+  if (params.mustChangePassword === false) {
+    mustChangePasswordFlag = 0;
+  }
+
   db.prepare(`
-    INSERT INTO users (id, name, email, password_hash, role, is_system_admin, token, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, name, email, password_hash, role, is_system_admin, token, must_change_password, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     params.name.trim(),
@@ -92,6 +99,7 @@ export function createUser(params: {
     params.role,
     isAdminFlag,
     token,
+    mustChangePasswordFlag,
     now,
     now,
   );
@@ -137,6 +145,19 @@ export function updateUser(id: string, input: UpdateUserInput): PublicUser | nul
 
 export function verifyPassword(user: UserRow, password: string): boolean {
   return bcrypt.compareSync(password, user.password_hash);
+}
+
+export function updateUserPassword(userId: string, newPassword: string): void {
+  const passwordHash = bcrypt.hashSync(newPassword, 10);
+  getProjectsDb()
+    .prepare(
+      `UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = datetime('now') WHERE id = ?`,
+    )
+    .run(passwordHash, userId);
+}
+
+export function userMustChangePassword(user: UserRow): boolean {
+  return user.must_change_password === 1;
 }
 
 export function readUserToken(id: string): string {

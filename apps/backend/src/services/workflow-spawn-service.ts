@@ -2,7 +2,6 @@ import type { WorkflowStageRow } from "../db/workflow-db.js";
 import { listWorkflowStageRows } from "../db/workflow-db.js";
 import {
   collectSpawnableTemplates,
-  templateExecution,
   type TemplateSpawnContext,
 } from "../domain/task-template-graph.js";
 import { isWorkDone } from "../domain/work-status.js";

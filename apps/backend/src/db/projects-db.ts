@@ -57,6 +57,11 @@ function migrate(database: Database.Database) {
       `ALTER TABLE projects ADD COLUMN workflow_template_id TEXT NOT NULL DEFAULT '${DEFAULT_WORKFLOW_TEMPLATE_ID}'`,
     );
   }
+  if (!columnExists(database, "users", "must_change_password")) {
+    database.exec(
+      "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0",
+    );
+  }
   database
     .prepare(
       `UPDATE projects SET workflow_template_id = ? WHERE trim(workflow_template_id) = ''`,

@@ -7,8 +7,9 @@ import {
   listUserRows,
   verifyPassword,
   readUserToken,
+  updateUserPassword,
 } from "../db/users-db.js";
-import { assertAuth } from "../middleware/auth.js";
+import { resolveAuthUser } from "../middleware/auth.js";
 
 const setupSchema = z.object({
   name: z.string().min(1),
@@ -20,6 +21,29 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(6),
+});
+
+function mapAuthUser(userRow: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  is_system_admin: number;
+  must_change_password: number;
+}) {
+  return {
+    id: userRow.id,
+    name: userRow.name,
+    email: userRow.email,
+    role: userRow.role,
+    isSystemAdmin: userRow.is_system_admin === 1,
+    mustChangePassword: userRow.must_change_password === 1,
+  };
+}
 
 export function authRoutes(app: FastifyInstance) {
   app.get("/auth/status", () => {
@@ -37,6 +61,7 @@ export function authRoutes(app: FastifyInstance) {
       password: body.password,
       role: "admin",
       isSystemAdmin: true,
+      mustChangePassword: false,
     });
     return reply.status(201).send({ user, message: "Admin account created" });
   });
@@ -53,24 +78,30 @@ export function authRoutes(app: FastifyInstance) {
     if (token === "") throw new AppError("Token not found", 500);
     return reply.send({
       token,
-      user: {
-        id: userRow.id,
-        name: userRow.name,
-        email: userRow.email,
-        role: userRow.role,
-        isSystemAdmin: userRow.is_system_admin === 1,
-      },
+      user: mapAuthUser(userRow),
     });
   });
 
   app.get("/auth/me", (request) => {
-    const userRow = assertAuth(request);
+    const userRow = resolveAuthUser(request);
+    return mapAuthUser(userRow);
+  });
+
+  app.post("/auth/change-password", (request) => {
+    const userRow = resolveAuthUser(request);
+    const body = changePasswordSchema.parse(request.body);
+    if (!verifyPassword(userRow, body.currentPassword)) {
+      throw new AppError("Invalid current password", 401);
+    }
+    if (body.currentPassword === body.newPassword) {
+      throw new AppError("New password must be different", 400);
+    }
+    updateUserPassword(userRow.id, body.newPassword);
     return {
-      id: userRow.id,
-      name: userRow.name,
-      email: userRow.email,
-      role: userRow.role,
-      isSystemAdmin: userRow.is_system_admin === 1,
+      user: {
+        ...mapAuthUser(userRow),
+        mustChangePassword: false,
+      },
     };
   });
 }

@@ -1,5 +1,5 @@
 import type { Session } from "./session";
-import { clearSession } from "./session";
+import { clearSession, loadSession, saveSession } from "./session";
 
 export const DEFAULT_WORKFLOW_TEMPLATE_ID = "empty";
 
@@ -42,8 +42,6 @@ export type InboxItem = {
   stageTitle?: string | null;
 };
 
-export type TemplateExecution = "parallel" | "sequential";
-
 export type AssigneeKind = "human" | "ai";
 
 export type StageTaskTemplate = {
@@ -51,7 +49,6 @@ export type StageTaskTemplate = {
   title: string;
   description: string;
   assigneeRole?: string | null;
-  execution?: TemplateExecution;
   dependsOn?: string[];
   children?: StageTaskTemplate[];
 };
@@ -234,7 +231,13 @@ function authHeaders(session: Session): Record<string, string> {
 
 async function parseError(response: Response) {
   try {
-    const body = (await response.json()) as { error?: string };
+    const body = (await response.json()) as {
+      error?: string;
+      details?: { code?: string };
+    };
+    if (body.details?.code === "PASSWORD_CHANGE_REQUIRED") {
+      return "PASSWORD_CHANGE_REQUIRED";
+    }
     if (body.error) return body.error;
   } catch {
     // ignore
@@ -247,7 +250,6 @@ async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  // Paths are relative — no baseUrl needed (same origin)
   const response = await fetch(path, {
     ...init,
     headers: {
@@ -263,7 +265,16 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    throw new ApiError(await parseError(response), response.status);
+    const message = await parseError(response);
+    if (message === "PASSWORD_CHANGE_REQUIRED") {
+      const current = loadSession();
+      if (current) {
+        saveSession({ ...current, mustChangePassword: true });
+      }
+      window.location.href = "/app/change-password";
+      throw new ApiError("Password change required", 403);
+    }
+    throw new ApiError(message, response.status);
   }
   if (response.status === 204) {
     return undefined as T;
@@ -301,7 +312,14 @@ export async function loginUser(params: {
   password: string;
 }): Promise<{
   token: string;
-  user: { id: string; name: string; email: string; role: string; isSystemAdmin: boolean };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    isSystemAdmin: boolean;
+    mustChangePassword: boolean;
+  };
 }> {
   const response = await fetch("/api/auth/login", {
     method: "POST",
@@ -314,8 +332,34 @@ export async function loginUser(params: {
   }
   return response.json() as Promise<{
     token: string;
-    user: { id: string; name: string; email: string; role: string; isSystemAdmin: boolean };
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      isSystemAdmin: boolean;
+      mustChangePassword: boolean;
+    };
   }>;
+}
+
+export async function changePassword(
+  session: Session,
+  params: { currentPassword: string; newPassword: string },
+): Promise<{ user: { mustChangePassword: boolean } }> {
+  const response = await fetch("/api/auth/change-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.token}`,
+    },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(body.error ?? "Password change failed", response.status);
+  }
+  return response.json() as Promise<{ user: { mustChangePassword: boolean } }>;
 }
 
 // ─── Mobile QR ────────────────────────────────────────────────────────────────

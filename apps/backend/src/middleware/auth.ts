@@ -2,7 +2,7 @@ import type { FastifyRequest } from "fastify";
 import { AppError } from "../errors/app-error.js";
 import { listUserRows, type UserRow } from "../db/users-db.js";
 
-export function assertAuth(request: FastifyRequest): UserRow {
+export function resolveAuthUser(request: FastifyRequest): UserRow {
   const authHeader = request.headers["authorization"];
   let token = "";
   if (String(authHeader) === authHeader && authHeader.startsWith("Bearer ")) {
@@ -20,5 +20,15 @@ export function assertAuth(request: FastifyRequest): UserRow {
 
   const row = rows[0];
   if (!row) throw new AppError("Unauthorized", 401);
+  return row;
+}
+
+export function assertAuth(request: FastifyRequest): UserRow {
+  const row = resolveAuthUser(request);
+  if (row.must_change_password === 1) {
+    throw new AppError("Password change required", 403, {
+      code: "PASSWORD_CHANGE_REQUIRED",
+    });
+  }
   return row;
 }

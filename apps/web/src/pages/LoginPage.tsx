@@ -20,6 +20,10 @@ export function LoginPage() {
   useEffect(() => {
     const session = loadSession();
     if (session) {
+      if (session.mustChangePassword) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
       navigate(session.projectId ? `/projects/${session.projectId}/tasks` : "/projects", {
         replace: true,
       });
@@ -46,7 +50,12 @@ export function LoginPage() {
         userEmail: result.user.email,
         userRole: result.user.role as UserRole,
         isSystemAdmin: result.user.isSystemAdmin,
+        mustChangePassword: result.user.mustChangePassword,
       });
+      if (result.user.mustChangePassword) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
       navigate("/projects", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

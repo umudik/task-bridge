@@ -7,7 +7,6 @@ function createTaskTemplate(stageTitle: string, index: number): StageTaskTemplat
     id: `task-${crypto.randomUUID()}`,
     title: index === 0 ? "New task" : `${stageTitle} task ${index + 1}`,
     description: "",
-    execution: "parallel",
     dependsOn: [],
     children: [],
   };
@@ -20,7 +19,6 @@ export function sanitizeTaskNode(node: StageTaskTemplate): StageTaskTemplate {
     title: node.title,
     description: node.description ?? "",
     assigneeRole: node.assigneeRole ?? null,
-    execution: node.execution ?? "parallel",
     dependsOn: node.dependsOn ?? [],
     children,
   };
@@ -100,7 +98,6 @@ export function createSubtaskTemplate(parentTitle: string, index: number): Stage
     id: `task-${crypto.randomUUID()}`,
     title: index === 0 ? `${parentTitle} subtask` : `${parentTitle} subtask ${index + 1}`,
     description: "",
-    execution: "parallel",
     dependsOn: [],
     children: [],
   });

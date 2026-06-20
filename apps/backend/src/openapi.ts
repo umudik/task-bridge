@@ -95,7 +95,6 @@ const TaskTemplate = {
     assigneeRole: { type: "string" },
     assigneeKind: { $ref: "#/components/schemas/ActorKind" },
     kind: { type: "string", enum: ["task", "group"] },
-    execution: { type: "string", enum: ["parallel", "sequential"] },
     dependsOn: { type: "array", items: { type: "string" } },
     children: { type: "array", items: { $ref: "#/components/schemas/TaskTemplate" } },
   },

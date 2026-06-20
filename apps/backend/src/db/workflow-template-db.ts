@@ -64,8 +64,8 @@ function task(
   title: string,
   description = "",
   assigneeRole = "",
-  execution: "parallel" | "sequential" = "parallel",
   children: StageTaskTemplate[] = [],
+  dependsOn: string[] = [],
 ): StageTaskTemplate {
   const trimmedRole = assigneeRole.trim();
   return {
@@ -73,30 +73,28 @@ function task(
     title,
     description,
     assigneeRole: trimmedRole || null,
-    execution,
-    dependsOn: [],
+    dependsOn,
     children,
   };
 }
 
-function seq(
+function chain(
   id: string,
   title: string,
   description: string,
   assigneeRole: string,
-  children: StageTaskTemplate[],
+  steps: StageTaskTemplate[],
 ): StageTaskTemplate {
-  return task(id, title, description, assigneeRole, "sequential", children);
-}
-
-function group(
-  id: string,
-  title: string,
-  description: string,
-  execution: "parallel" | "sequential",
-  children: StageTaskTemplate[],
-): StageTaskTemplate {
-  return task(id, title, description, "", execution, children);
+  let previousId: string | null = null;
+  const children = steps.map((step) => {
+    const node: StageTaskTemplate = {
+      ...step,
+      dependsOn: previousId ? [previousId] : [],
+    };
+    previousId = step.id;
+    return node;
+  });
+  return task(id, title, description, assigneeRole, children);
 }
 
 const DEFAULT_TEMPLATE_SEEDS: TemplateSeed[] = [
@@ -145,7 +143,7 @@ Tech lead confirms constitution is enforceable — not aspirational markdown.`,
         position: 0,
         autoAssign: false,
         taskTemplates: [
-          seq(
+          task(
             "cn-agents-md",
             "Write AGENTS.md / CLAUDE.md",
             "**Output:** root agent instructions.\n\n- Language & framework versions\n- Test commands that must exit 0\n- Lint/typecheck commands\n- Branch naming & commit style\n- Files agents must never edit\n- Human gate policy: no PR without approval",
@@ -368,7 +366,7 @@ Product + tech lead sign-off. **No design work until this gate passes.**`,
         position: 4,
         autoAssign: true,
         taskTemplates: [
-          seq(
+          chain(
             "sa-product-review",
             "Product review",
             "**Action:** product owner reads all US-* and REQ-* artifacts.\n\nConfirm spec matches original intent. Reject if scope drift detected.",
@@ -484,7 +482,7 @@ Plan status: Approved. Constitution + spec alignment confirmed.
         position: 6,
         autoAssign: true,
         taskTemplates: [
-          seq(
+          chain(
             "pa-architect-review",
             "Architect review",
             "**Action:** review architecture.md against approved REQ-* set.\n\nVerify no spec requirements are orphaned.",
@@ -594,7 +592,7 @@ Human confirms scope per task is logical, complete, and not oversized.`,
         position: 8,
         autoAssign: true,
         taskTemplates: [
-          seq(
+          chain(
             "ta-scope-review",
             "Scope review",
             "**Action:** human reads tasks.md end-to-end.\n\nEach task independently reviewable in a future PR diff.",
@@ -700,11 +698,11 @@ One task at a time. Design gaps stop work — update spec/ADR, don't guess.
         position: 10,
         autoAssign: true,
         taskTemplates: [
-          group(
+          chain(
             "im-loop",
             "Task execution loop",
             "Repeat for each approved task until tasks.md is complete.",
-            "sequential",
+            "",
             [
               task(
                 "im-pick",
@@ -938,7 +936,7 @@ Written approval record: "authorized to open PR".
         position: 14,
         autoAssign: true,
         taskTemplates: [
-          seq(
+          chain(
             "hp-demo",
             "Demo or walkthrough",
             "**Action:** author demos feature to approver (live or recording).\n\nApprover understands what will appear in the PR.",

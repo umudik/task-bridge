@@ -7,6 +7,7 @@ export type Session = {
   userEmail: string;
   userRole: UserRole;
   isSystemAdmin: boolean;
+  mustChangePassword?: boolean;
   projectId?: string;
   projectName?: string;
 };

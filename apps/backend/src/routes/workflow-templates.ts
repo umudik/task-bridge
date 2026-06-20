@@ -21,7 +21,6 @@ const taskTemplateSchema: z.ZodTypeAny = z.lazy(() =>
     title: z.string().min(1),
     description: z.string().optional().default(""),
     assigneeRole: z.string().optional().default(""),
-    execution: z.enum(["parallel", "sequential"]).optional().default("parallel"),
     dependsOn: z.array(z.string()).optional().default([]),
     children: z.array(taskTemplateSchema).optional().default([]),
   }),
