@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { ZodError } from "zod";
 import type { AppErrorDetails } from "./errors/app-error.js";
-import { isAppError, statusCodeFromError } from "./errors/app-error.js";
+import { isAppError, statusCodeFromError, type HandledError } from "./errors/app-error.js";
 import { createLogger } from "./logger.js";
 import { config } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
@@ -48,7 +48,8 @@ async function main() {
     if (error instanceof ZodError) {
       return reply.status(400).send({ error: error.message });
     }
-    const statusCode = statusCodeFromError(error);
+    const handled = error as HandledError;
+    const statusCode = statusCodeFromError(handled);
     let message = "Internal error";
     if (error instanceof Error) {
       message = error.message;
@@ -57,8 +58,8 @@ async function main() {
       logger.error(message);
     }
     const body: { error: string; details: AppErrorDetails } = { error: message, details: null };
-    if (isAppError(error) && error.details !== null) {
-      body.details = error.details;
+    if (isAppError(handled) && handled.details !== null) {
+      body.details = handled.details;
     }
     return reply.status(statusCode).send(body);
   });

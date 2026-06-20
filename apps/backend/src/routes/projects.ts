@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { DEFAULT_WORKFLOW_TEMPLATE_ID } from "../domain/workflow-template-id.js";
-import { isAppError } from "../errors/app-error.js";
+import { isAppError, type HandledError } from "../errors/app-error.js";
 import { assertAuth } from "../middleware/auth.js";
 import {
   createProject,
@@ -85,8 +85,9 @@ export function projectRoutes(app: FastifyInstance) {
         workflowTemplateId: updated.workflowTemplateId,
       };
     } catch (error) {
-      if (isAppError(error)) {
-        return reply.status(error.statusCode).send({ error: error.message });
+      const handled = error as HandledError;
+      if (isAppError(handled)) {
+        return reply.status(handled.statusCode).send({ error: handled.message });
       }
       throw error;
     }
