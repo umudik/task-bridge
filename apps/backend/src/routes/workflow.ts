@@ -161,12 +161,12 @@ export function workflowRoutes(app: FastifyInstance) {
     if (updateMemberBody === null) { updateMemberBody = {}; }
     const body = updateMemberSchema.parse(updateMemberBody);
     let updateName: string | null = null;
-    if (body.name !== undefined) {
-      updateName = body.name;
+    if ("name" in body) {
+      updateName = body.name as string;
     }
     let updateRole: string | null = null;
-    if (body.role !== undefined) {
-      updateRole = body.role;
+    if ("role" in body) {
+      updateRole = body.role as string;
     }
     const member = updateProjectMember(memberId, {
       name: updateName,

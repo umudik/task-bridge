@@ -21,11 +21,22 @@ export class AppError extends Error {
   }
 }
 
-export function isAppError(error: unknown): error is AppError {
+type HandledError =
+  | AppError
+  | Error
+  | { statusCode: string | number | boolean | null }
+  | string
+  | number
+  | boolean
+  | null;
+
+export type { HandledError };
+
+export function isAppError(error: HandledError): error is AppError {
   return error instanceof AppError;
 }
 
-export function statusCodeFromError(error: unknown): number {
+export function statusCodeFromError(error: HandledError): number {
   if (isAppError(error)) return error.statusCode;
   if (error instanceof Object && "statusCode" in error) {
     const row = error as { statusCode: string | number | boolean | null };

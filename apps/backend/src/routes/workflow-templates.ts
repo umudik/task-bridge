@@ -43,14 +43,13 @@ const replaceTemplateSchema = z.object({
 });
 
 const createTemplateSchema = z.object({
-  id: z.string().min(1).optional(),
+  id: z.string().min(1).nullable().default(null),
   title: z.string().min(1),
   description: z.string().optional().default(""),
 });
 
 const importSchema = z.object({
-  // accept & ignore meta fields written by export (exportedFrom, version)
-  id: z.string().min(1).optional(),
+  id: z.string().min(1).nullable().default(null),
   title: z.string().min(1),
   description: z.string().optional().default(""),
   stages: z.array(stageSchema).min(1),
@@ -68,12 +67,8 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
     let importBody = request.body;
     if (importBody === null) { importBody = {}; }
     const body = importSchema.parse(importBody);
-    let importId: string | null = null;
-    if (body.id !== undefined) {
-      importId = body.id;
-    }
     const template = importWorkflowTemplate({
-      id: importId,
+      id: body.id,
       title: body.title,
       description: body.description,
       stages: body.stages.map((stage) => {
@@ -101,12 +96,8 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
     let createTemplateBody = request.body;
     if (createTemplateBody === null) { createTemplateBody = {}; }
     const body = createTemplateSchema.parse(createTemplateBody);
-    let createId: string | null = null;
-    if (body.id !== undefined) {
-      createId = body.id;
-    }
     const template = createWorkflowTemplate({
-      id: createId,
+      id: body.id,
       title: body.title,
       description: body.description,
     });
