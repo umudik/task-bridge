@@ -37,8 +37,8 @@ Aç: **http://localhost:3000/app/login**
 2. GitHub repo → **Settings → Secrets and variables → Actions**
    - **DOCKERHUB_USERNAME** — Variables veya Secrets (ikisi de olur)
    - **DOCKERHUB_ACCESS_TOKEN** — Secrets (Docker Hub access token)
-3. `main` push veya tag `v1.2.3` push → otomatik publish
-4. İsteğe bağlı: Actions → **Docker Hub Publish** → Run workflow
+3. `main` push veya tag `v1.2.3` push → CI geçerse otomatik publish
+4. İsteğe bağlı: Actions → **CI** → Run workflow (manuel tag / APK seçenekleri)
 
 ### Lokal
 
