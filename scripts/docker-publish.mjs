@@ -40,11 +40,12 @@ async function main() {
   const includeMobile = process.argv.includes("--mobile");
   const tag = args[0]?.trim() || "latest";
   const version = args[1]?.trim() || tag;
-  const user = env.DOCKER_USER?.trim() || env.DOCKERHUB_USER?.trim();
+  const user = env.DOCKER_USER?.trim() || env.DOCKERHUB_USER?.trim() || env.DOCKERHUB_USERNAME?.trim();
 
   if (!user) {
     console.error("Set DOCKER_USER (or DOCKERHUB_USER) in .env or environment.");
-    console.error("Example: DOCKER_USER=yourname node scripts/docker-publish.mjs latest");
+    console.error("Example: DOCKER_USER=yourname npm run docker:publish");
+    console.error("Log in first: docker login -u yourname");
     process.exit(1);
   }
 
@@ -54,18 +55,17 @@ async function main() {
   }
 
   const image = `${user}/task-bridge`;
-  const labels = [`${image}:${tag}`, `${image}:latest`];
+  const labels = tag === "latest" ? [`${image}:latest`] : [`${image}:${tag}`, `${image}:latest`];
 
   console.log(`[docker] Building ${labels.join(", ")} (version ${version})`);
+  console.log("[docker] Tip: use 'docker buildx build --platform linux/amd64,linux/arm64' for multi-arch (CI does this automatically).");
   await run("docker", [
     "build",
     "-f",
     "Dockerfile",
     "--build-arg",
     `VERSION=${version}`,
-    "-t",
-    `${image}:${tag}`,
-    ...(tag !== "latest" ? ["-t", `${image}:latest`] : []),
+    ...labels.flatMap((label) => ["-t", label]),
     ".",
   ]);
 

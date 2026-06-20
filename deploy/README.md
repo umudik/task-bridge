@@ -6,8 +6,8 @@ Tek container: API + Web UI aynı portta.
 
 ```bash
 mkdir task-bridge && cd task-bridge
-curl -O https://raw.githubusercontent.com/YOUR_ORG/task-bridge/main/deploy/docker-compose.yml
-curl -O https://raw.githubusercontent.com/YOUR_ORG/task-bridge/main/deploy/.env.example
+curl -O https://raw.githubusercontent.com/umudik/task-bridge/main/deploy/docker-compose.yml
+curl -O https://raw.githubusercontent.com/umudik/task-bridge/main/deploy/.env.example
 cp .env.example .env
 ```
 
@@ -28,6 +28,23 @@ docker compose up -d
 Aç: **http://localhost:3000/app/login**
 
 İlk açılışta web arayüzünden `/setup` ile admin hesabı oluştur.
+
+## Image publish (repo sahibi)
+
+### GitHub Actions
+
+1. Docker Hub access token oluştur
+2. GitHub repo secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`
+3. `main` push veya tag `v1.2.3` push → otomatik publish
+4. İsteğe bağlı: Actions → **Build & Push to Docker Hub** → Run workflow
+
+### Lokal
+
+```bash
+docker login -u YOUR_USER
+DOCKER_USER=YOUR_USER npm run docker:publish
+DOCKER_USER=YOUR_USER npm run docker:publish:mobile
+```
 
 ## Android APK
 

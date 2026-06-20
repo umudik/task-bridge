@@ -46,21 +46,58 @@ npm run docker:up
 
 ## Docker Hub
 
-Image build + push:
+Image adı: `your-dockerhub-user/task-bridge`
+
+### 1) Docker Hub hazırlığı
+
+1. [hub.docker.com](https://hub.docker.com) hesabı aç
+2. **Account Settings → Security → New Access Token** (Read & Write)
+3. Token'ı kaydet (bir daha gösterilmez)
+
+### 2) GitHub Actions (otomatik publish)
+
+Repo → **Settings → Secrets and variables → Actions** → **New repository secret**:
+
+| Secret | Değer |
+|--------|--------|
+| `DOCKERHUB_USERNAME` | Docker Hub kullanıcı adın |
+| `DOCKERHUB_TOKEN` | Access token |
+
+Workflow: [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml)
+
+| Tetikleyici | Ne olur |
+|-------------|---------|
+| `main` push | Test → build → push `latest` + `YYYYMMDD-<sha>` |
+| Tag `v1.2.3` | Test → build → push `1.2.3`, `1.2`, `latest` |
+| **Actions → Build & Push to Docker Hub → Run workflow** | Manuel sürüm / APK seçeneği |
+
+Manuel çalıştırırken **include mobile** işaretlenirse Android APK image içine gömülür (build süresi uzar).
+
+Durumu kontrol: **Actions** sekmesi → run summary'de `docker pull …` satırı.
+
+### 3) Lokal publish
 
 ```powershell
-# .env içine DOCKER_USER=your-dockerhub-user ekle
+copy .env.example .env
+# .env içine DOCKER_USER=your-dockerhub-user
+
+docker login -u your-dockerhub-user
+
 npm run docker:publish
-npm run docker:publish -- --mobile
-# veya: node scripts/docker-publish.mjs 0.1.0 0.1.0 --mobile
+npm run docker:publish:mobile
+# özel tag: node scripts/docker-publish.mjs 1.2.3 1.2.3
+# APK ile:   node scripts/docker-publish.mjs 1.2.3 1.2.3 --mobile
 ```
 
-Başka bir projede sadece pull ile çalıştır:
+Lokal build tek mimari (`linux/amd64` veya host). CI multi-arch (`amd64` + `arm64`) push eder.
+
+### 4) Başka makinede çalıştır
 
 ```powershell
 cd deploy
 copy .env.example .env
-# TASK_BRIDGE_IMAGE düzenle
+# TASK_BRIDGE_IMAGE=your-dockerhub-user/task-bridge:latest
+
 docker compose pull
 docker compose up -d
 ```
@@ -81,7 +118,7 @@ Web UI → **Mobile** → **Download APK** → telefona kur → QR tara.
 Tek seferde Hub'a API+UI+APK:
 
 ```powershell
-npm run docker:publish -- --mobile
+npm run docker:publish:mobile
 ```
 
 ### Android Studio
