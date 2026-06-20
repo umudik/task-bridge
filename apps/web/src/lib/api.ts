@@ -42,7 +42,7 @@ export type InboxItem = {
   stageTitle: string | null;
 };
 
-export type AssigneeKind = "human" | "ai";
+export type AssigneeKind = "ai" | "";
 
 export type StageTaskTemplate = {
   id: string;
@@ -71,7 +71,6 @@ export type ProjectMember = {
   projectId: string;
   name: string;
   role: string;
-  actorKind: AssigneeKind;
   openTasks: number;
 };
 
@@ -720,12 +719,15 @@ export async function exportProjectWorkflow(session: Session, projectId: string)
 export async function createMember(
   session: Session,
   projectId: string,
-  input: { name: string; role: string; actorKind: AssigneeKind },
+  input: { name: string; role: string },
 ) {
   return request<ProjectMember>(session, `/api/projects/${projectId}/members`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      name: input.name,
+      role: input.role,
+    }),
   });
 }
 
@@ -733,7 +735,7 @@ export async function updateMember(
   session: Session,
   projectId: string,
   memberId: string,
-  input: { name: string | null; role: string | null; actorKind: AssigneeKind | null },
+  input: { name: string | null; role: string | null },
 ) {
   return request<ProjectMember>(session, `/api/projects/${projectId}/members/${memberId}`, {
     method: "PATCH",

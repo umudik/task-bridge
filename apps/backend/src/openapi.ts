@@ -38,7 +38,7 @@ const WorkStatus = {
 
 const ActorKind = {
   type: "string",
-  enum: ["human", "ai"],
+  enum: ["ai", ""],
 } as const;
 
 const TaskSummary = {
@@ -75,13 +75,13 @@ const CreatedTaskResponse = {
 
 const Member = {
   type: "object",
-  required: ["id", "name", "role", "actorKind", "projectId"],
+  required: ["id", "name", "role", "projectId"],
   properties: {
     id: { type: "string" },
     projectId: { type: "string" },
     name: { type: "string" },
     role: { type: "string" },
-    actorKind: { $ref: "#/components/schemas/ActorKind" },
+    openTasks: { type: "integer" },
   },
 } as const;
 
@@ -656,7 +656,6 @@ export const openapiSpec = {
           properties: {
             name: { type: "string", minLength: 1 },
             role: { type: "string" },
-            actorKind: { $ref: "#/components/schemas/ActorKind" },
           },
         }),
         responses: mergeResponses(created({ $ref: "#/components/schemas/Member" }), err([400, 401, 404])),
@@ -676,7 +675,6 @@ export const openapiSpec = {
           properties: {
             name: { type: "string", minLength: 1 },
             role: { type: "string" },
-            actorKind: { $ref: "#/components/schemas/ActorKind" },
           },
         }),
         responses: mergeResponses(ok({ $ref: "#/components/schemas/Member" }), err([401, 404])),

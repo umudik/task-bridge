@@ -319,7 +319,7 @@ export function taskRoutes(app: FastifyInstance) {
       workStatus: "todo",
     });
 
-    applyTodoCascadeFromTask(task, "web", { descendants: false });
+    applyTodoCascadeFromTask(task, "web", { laterStages: null, descendants: false });
     syncEpicStage(epic.id);
 
     return reply.status(201).send(createdItemResponse(task));
@@ -533,6 +533,7 @@ export function taskRoutes(app: FastifyInstance) {
         }
         const updated = updateBridgeTaskSpec(id, {
           description: body.description,
+          title: null,
           by: commentBy,
         });
         if (!updated) {

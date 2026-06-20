@@ -99,8 +99,9 @@ export function migrateWorkflowTables() {
     db.exec("ALTER TABLE project_members ADD COLUMN role TEXT NOT NULL DEFAULT ''");
   }
   if (!memberNames.has("actor_kind")) {
-    db.exec("ALTER TABLE project_members ADD COLUMN actor_kind TEXT NOT NULL DEFAULT 'human'");
+    db.exec("ALTER TABLE project_members ADD COLUMN actor_kind TEXT NOT NULL DEFAULT ''");
   }
+  db.exec("UPDATE project_members SET actor_kind = '' WHERE actor_kind = 'human'");
 
   db.exec("DELETE FROM project_members WHERE role IS NULL OR trim(role) = ''");
   db.exec("DROP TABLE IF EXISTS project_decisions");
@@ -223,10 +224,15 @@ export function insertProjectMemberRow(row: {
   migrateWorkflowTables();
   getProjectsDb()
     .prepare(
-      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, updated_at)
-       VALUES (?, ?, ?, 1, '{}', ?, datetime('now'))`,
+      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, actor_kind, updated_at)
+       VALUES (?, ?, ?, 1, '{}', ?, '', datetime('now'))`,
     )
-    .run(row.id.trim(), row.projectId.trim(), row.name.trim(), row.role.trim());
+    .run(
+      row.id.trim(),
+      row.projectId.trim(),
+      row.name.trim(),
+      row.role.trim(),
+    );
 }
 
 export function updateProjectMemberRow(

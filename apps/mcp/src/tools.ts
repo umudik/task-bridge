@@ -4,7 +4,6 @@ import type { TaskBridgeApi } from "./api-client.js";
 import { TaskBridgeApiError } from "./api-client.js";
 import { jsonToolResult, toolError } from "./result.js";
 
-const actorKindSchema = z.enum(["human", "ai"]);
 const workStatusSchema = z.enum(["todo", "in_progress", "done"]);
 
 async function runTool<T>(handler: () => Promise<T>) {
@@ -207,55 +206,35 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
     {
       taskId: z.number().int().positive(),
       workStatus: workStatusSchema,
-      by: z.string().nullable(),
-      role: z.string().nullable(),
-      actorKind: actorKindSchema.nullable(),
+      claimedBy: z.string().nullable(),
     },
     async (input) =>
       runTool(() => {
-        const body: Record<string, string> = {
+        let claimedBy = "mcp";
+        if (input.claimedBy !== null) {
+          claimedBy = input.claimedBy;
+        }
+        return api.patch(`/api/tasks/${input.taskId}/work-status`, {
           workStatus: input.workStatus,
-        };
-        if (input.by !== null) {
-          body.by = input.by;
-        } else {
-          body.by = "mcp";
-        }
-        if (input.role !== null) {
-          body.role = input.role;
-        }
-        if (input.actorKind !== null) {
-          body.actorKind = input.actorKind;
-        }
-        return api.patch(`/api/tasks/${input.taskId}/work-status`, body);
+          claimedBy,
+        });
       }),
   );
 
   server.tool(
     "claim_task",
-    "Claim a specific task for a worker role.",
+    "Claim a specific task as a project member.",
     {
       taskId: z.number().int().positive(),
-      role: z.string().min(1),
       claimedBy: z.string().nullable(),
-      actorKind: actorKindSchema.nullable(),
     },
     async (input) =>
       runTool(() => {
-        const body: Record<string, string> = {
-          role: input.role,
-        };
+        let claimedBy = "mcp";
         if (input.claimedBy !== null) {
-          body.claimedBy = input.claimedBy;
-        } else {
-          body.claimedBy = "mcp";
+          claimedBy = input.claimedBy;
         }
-        if (input.actorKind !== null) {
-          body.actorKind = input.actorKind;
-        } else {
-          body.actorKind = "ai";
-        }
-        return api.post(`/api/tasks/${input.taskId}/claim`, body);
+        return api.post(`/api/tasks/${input.taskId}/claim`, { claimedBy });
       }),
   );
 
@@ -273,14 +252,12 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
     "List claimable pending tasks for a worker.",
     {
       projectId: z.string().nullable(),
-      role: z.string().nullable(),
       claimedBy: z.string().nullable(),
     },
     async (input) =>
       runTool(() => {
         const query: Record<string, string | null> = {
           projectId: input.projectId,
-          role: input.role,
           claimedBy: input.claimedBy,
         };
         return api.get("/api/worker/pending", query);
@@ -289,32 +266,21 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
 
   server.tool(
     "claim_next_task",
-    "Atomically claim the next available task for a role.",
+    "Atomically claim the next available task for a project member.",
     {
-      role: z.string().min(1),
-      projectId: z.string().nullable(),
+      projectId: z.string().min(1),
       claimedBy: z.string().nullable(),
-      actorKind: actorKindSchema.nullable(),
     },
     async (input) =>
       runTool(() => {
-        const body: Record<string, string> = {
-          role: input.role,
-        };
-        if (input.projectId !== null) {
-          body.projectId = input.projectId;
-        }
+        let claimedBy = "mcp";
         if (input.claimedBy !== null) {
-          body.claimedBy = input.claimedBy;
-        } else {
-          body.claimedBy = "mcp";
+          claimedBy = input.claimedBy;
         }
-        if (input.actorKind !== null) {
-          body.actorKind = input.actorKind;
-        } else {
-          body.actorKind = "ai";
-        }
-        return api.post("/api/worker/claim-next", body);
+        return api.post("/api/worker/claim-next", {
+          projectId: input.projectId,
+          claimedBy,
+        });
       }),
   );
 

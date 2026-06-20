@@ -29,7 +29,6 @@ import {
   deleteMember,
   fetchProjectWorkflow,
   saveProjectWorkflow,
-  updateMember,
   type ProjectMember,
   type WorkflowStage,
 } from "@/lib/api";
@@ -165,7 +164,7 @@ export function WorkflowPage() {
     setSidebarOpen(false);
   }
 
-  async function handleCreateMember(input: { name: string; role: string; actorKind: ProjectMember["actorKind"] }) {
+  async function handleCreateMember(input: { name: string; role: string }) {
     if (!session) return;
     const member = await createMember(session, projectId, input);
     setMembers((current) => current.concat([member]).sort((a, b) => a.name.localeCompare(b.name)));
@@ -375,19 +374,6 @@ export function WorkflowPage() {
                   await handleCreateMember(input);
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : "Failed to add member");
-                }
-              }}
-              onUpdateMember={async (memberId, patch) => {
-                if (!session) return;
-                try {
-                  const updated = await updateMember(session, projectId, memberId, {
-                    name: null,
-                    role: patch.role,
-                    actorKind: patch.actorKind,
-                  });
-                  setMembers((current) => current.map((item) => (item.id === memberId ? updated : item)));
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Failed to update member");
                 }
               }}
               onDeleteMember={async (id, name) => {

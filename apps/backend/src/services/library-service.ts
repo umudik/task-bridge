@@ -113,8 +113,9 @@ function mapLibraryDocument(row: {
 }): LibraryDocument {
   const libraries = listLibraryRows({ id: row.library_id });
   let libraryTitle: string;
-  if (libraries.length > 0 && libraries[0] !== null) {
-    libraryTitle = libraries[0].title;
+  const libraryRow = libraries[0];
+  if (libraryRow) {
+    libraryTitle = libraryRow.title;
   } else {
     libraryTitle = row.library_id;
   }
@@ -141,7 +142,7 @@ export function getLibrary(libraryId: string): LibraryDetail | null {
   const rows = listLibraryRows({ id: libraryId });
   if (rows.length === 0) return null;
   const row = rows[0];
-  if (row === null) return null;
+  if (!row) return null;
   return mapLibraryDetail(row);
 }
 
@@ -181,7 +182,7 @@ export function getLibraryDocument(documentId: string): LibraryDocument | null {
   const rows = listLibraryDocumentRows({ libraryId: "", documentId });
   if (rows.length === 0) return null;
   const row = rows[0];
-  if (row === null) return null;
+  if (!row) return null;
   return mapLibraryDocument(row);
 }
 
@@ -238,7 +239,7 @@ export function linkDocumentToTask(documentId: string, taskId: number) {
   const tasks = listTaskRows({ id: taskId });
   if (tasks.length === 0) throw new AppError("Task not found", 404);
   const task = tasks[0];
-  if (task === null) throw new AppError("Task not found", 404);
+  if (!task) throw new AppError("Task not found", 404);
   if (task.parentId !== null) {
     throw new AppError("Documents can only be linked to epics", 400);
   }
@@ -259,11 +260,12 @@ export function listTaskLibraryLinks(taskId: number): LibraryDocumentLink[] {
     const docs = listLibraryDocumentRows({ libraryId: "", documentId: link.document_id });
     if (docs.length === 0) return [];
     const document = docs[0];
-    if (document === null) return [];
+    if (!document) return [];
     const libraries = listLibraryRows({ id: document.library_id });
     let libraryTitle: string;
-    if (libraries.length > 0 && libraries[0] !== null) {
-      libraryTitle = libraries[0].title;
+    const libraryRow = libraries[0];
+    if (libraryRow) {
+      libraryTitle = libraryRow.title;
     } else {
       libraryTitle = document.library_id;
     }

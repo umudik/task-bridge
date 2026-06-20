@@ -60,7 +60,10 @@ export function computeEpicStageId(
   }
 
   if (ordered.length > 0) {
-    return ordered[ordered.length - 1].id;
+    const last = ordered[ordered.length - 1];
+    if (last) {
+      return last.id;
+    }
   }
   return null;
 }

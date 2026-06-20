@@ -21,11 +21,11 @@ export class AppError extends Error {
   }
 }
 
-export function isAppError(error: object | null): error is AppError {
+export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
 
-export function statusCodeFromError(error: object | null): number {
+export function statusCodeFromError(error: unknown): number {
   if (isAppError(error)) return error.statusCode;
   if (error instanceof Object && "statusCode" in error) {
     const row = error as { statusCode: string | number | boolean | null };

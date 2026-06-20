@@ -78,10 +78,10 @@ export async function webRoutes(app: FastifyInstance) {
   app.get("/app/setup", spa);
   app.get("/app/admin/users", spa);
   app.get("/app/*", async (request, reply) => {
-    const urlParts = request.url.split("?");
-    let path = "";
-    if (urlParts.length > 0) {
-      path = urlParts[0];
+    const questionIndex = request.url.indexOf("?");
+    let path = request.url;
+    if (questionIndex >= 0) {
+      path = request.url.slice(0, questionIndex);
     }
     if (path.startsWith("/app/assets/")) {
       return reply.status(404).send({ error: "Not found" });

@@ -21,7 +21,10 @@ export function turnIdForTask(task: BridgeTask): string {
   if (userAwaitingReply(task)) {
     for (let index = task.comments.length - 1; index >= 0; index -= 1) {
       const comment = task.comments[index];
-      if (comment !== null && comment.role === "user") return `user-${comment.id}`;
+      if (!comment) {
+        continue;
+      }
+      if (comment.role === "user") return `user-${comment.id}`;
     }
   }
   if (isTaskClaimed(task) && task.claimedAt) return `claimed-${task.claimedAt}`;

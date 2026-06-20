@@ -3,35 +3,27 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
-import type { AssigneeKind, ProjectMember } from "@/lib/api";
+import type { ProjectMember } from "@/lib/api";
 import { useConfirm } from "@/lib/confirm";
 
 type TeamPanelProps = {
   members: ProjectMember[];
-  onCreateMember: (input: { name: string; role: string; actorKind: AssigneeKind }) => Promise<void>;
-  onUpdateMember: (
-    memberId: string,
-    patch: { name: string | null; role: string | null; actorKind: AssigneeKind | null },
-  ) => Promise<void>;
+  onCreateMember: (input: { name: string; role: string }) => Promise<void>;
   onDeleteMember: (memberId: string, name: string) => Promise<void>;
 };
 
 export function TeamPanel({
   members,
   onCreateMember,
-  onUpdateMember,
   onDeleteMember,
 }: TeamPanelProps) {
   const { confirmDestructive } = useConfirm();
   const [name, setName] = useState("");
-  const [newMemberKind, setNewMemberKind] = useState<AssigneeKind>("human");
 
   async function submitMember() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    await onCreateMember({ name: trimmed, role: "", actorKind: newMemberKind });
+    await onCreateMember({ name: trimmed, role: "" });
     setName("");
   }
 
@@ -58,14 +50,6 @@ export function TeamPanel({
                 }
               }}
             />
-            <Select
-              value={newMemberKind}
-              onChange={(event) => setNewMemberKind(event.target.value as AssigneeKind)}
-              className="h-10 min-w-[7rem]"
-            >
-              <option value="human">Human</option>
-              <option value="ai">AI</option>
-            </Select>
             <Button disabled={!name.trim()} onClick={() => void submitMember()}>
               Add
             </Button>
@@ -82,22 +66,6 @@ export function TeamPanel({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-white">{member.name}</p>
                     <p className="text-xs text-muted-foreground">{member.openTasks} open tasks</p>
-                  </div>
-                  <div className="w-full space-y-1.5 sm:w-36">
-                    <Label className="text-xs text-muted-foreground">Kind</Label>
-                    <Select
-                      value={member.actorKind}
-                      onChange={(event) =>
-                        void onUpdateMember(member.id, {
-                          name: null,
-                          role: null,
-                          actorKind: event.target.value as AssigneeKind,
-                        })
-                      }
-                    >
-                      <option value="human">Human</option>
-                      <option value="ai">AI</option>
-                    </Select>
                   </div>
                   <Button
                     variant="ghost"

@@ -19,7 +19,7 @@ export type TaskEvent = {
   note: string | null;
 };
 
-export type AssigneeKind = "human" | "ai";
+export type AssigneeKind = "ai" | "";
 
 export type CommentMetadata = Record<string, string | number | boolean | null>;
 

@@ -156,7 +156,7 @@ function memberRowToProjectMember(
     id: row.id,
     projectId: row.project_id,
     name: row.name,
-    role: row.role.trim(),
+    role: row.role,
     openTasks: countOpenTasksForMember(
       tasks.filter((task) => task.projectId === row.project_id),
       row.name,
@@ -461,7 +461,7 @@ export function updateProjectMember(
   id: string,
   patch: { name: string | null; role: string | null },
 ): ProjectMember | null {
-  if (!updateProjectMemberRow(id, { name: patch.name, role: patch.role })) {
+  if (!updateProjectMemberRow(id, patch)) {
     return null;
   }
   const memberRows = listProjectMemberRows({ projectId: "", id });

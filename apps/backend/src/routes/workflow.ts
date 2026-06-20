@@ -58,13 +58,11 @@ const applyTemplateSchema = z.object({
 const createMemberSchema = z.object({
   name: z.string().min(1),
   role: z.string().optional().default(""),
-  actorKind: z.enum(["human", "ai"]),
 });
 
 const updateMemberSchema = z.object({
   name: z.string().min(1).optional(),
   role: z.string().optional(),
-  actorKind: z.enum(["human", "ai"]).optional(),
 });
 
 function assertProject(projectId: string) {
@@ -125,7 +123,7 @@ export function workflowRoutes(app: FastifyInstance) {
         if (trimmedRole) {
           autoAssignRole = trimmedRole;
         }
-        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole });
+        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole, activeTaskCount: null });
       }),
       body.roles,
     );
@@ -151,7 +149,6 @@ export function workflowRoutes(app: FastifyInstance) {
       projectId,
       name: body.name,
       role: body.role,
-      actorKind: body.actorKind,
     });
     return reply.status(201).send(member);
   });
@@ -163,7 +160,18 @@ export function workflowRoutes(app: FastifyInstance) {
     let updateMemberBody = request.body;
     if (updateMemberBody === null) { updateMemberBody = {}; }
     const body = updateMemberSchema.parse(updateMemberBody);
-    const member = updateProjectMember(memberId, body);
+    let updateName: string | null = null;
+    if (body.name !== undefined) {
+      updateName = body.name;
+    }
+    let updateRole: string | null = null;
+    if (body.role !== undefined) {
+      updateRole = body.role;
+    }
+    const member = updateProjectMember(memberId, {
+      name: updateName,
+      role: updateRole,
+    });
     if (!member || member.projectId !== projectId) {
       return reply.status(404).send({ error: "Member not found" });
     }

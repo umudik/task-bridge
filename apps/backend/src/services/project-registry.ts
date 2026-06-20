@@ -120,8 +120,9 @@ export function createProject(
   }
   copyTemplateStagesToProject(id, templateId);
   const rows = listProjectRowsById(id);
-  if (rows.length > 0) {
-    return rowToProject(rows[0]);
+  const row = rows[0];
+  if (row) {
+    return rowToProject(row);
   }
   return null;
 }
@@ -177,8 +178,9 @@ export function getProjectById(projectId: string): BridgeProject | null {
   const id = projectId.trim();
   if (!id) return null;
   const rows = listProjectRowsById(id);
-  if (rows.length > 0) {
-    return rowToProject(rows[0]);
+  const row = rows[0];
+  if (row) {
+    return rowToProject(row);
   }
   return null;
 }

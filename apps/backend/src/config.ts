@@ -1,12 +1,17 @@
 function getEnv(key: string): string | null {
-  if (!(key in process.env)) {
-    return null;
+  const keys = Object.keys(process.env);
+  for (let i = 0; i < keys.length; i += 1) {
+    const envKey = keys[i];
+    if (envKey !== key) {
+      continue;
+    }
+    const value = process.env[envKey];
+    if (value === null) {
+      return null;
+    }
+    return value as string;
   }
-  const value = process.env[key];
-  if (value === null) {
-    return null;
-  }
-  return value.trim();
+  return null;
 }
 
 let configPort = 3000;

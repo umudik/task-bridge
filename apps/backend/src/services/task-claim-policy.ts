@@ -216,11 +216,10 @@ function activeStageSortKey(task: BridgeTask, index: EpicClaimIndex): number {
   const positions = index.stagePositionByProject.get(task.projectId);
   const activeStageId = index.activeStageByEpic.get(task.parentId);
   if (!positions || !activeStageId) return Number.MAX_SAFE_INTEGER;
-  const pos = positions.get(activeStageId);
-  if (pos !== null) {
-    return pos;
+  if (!positions.has(activeStageId)) {
+    return Number.MAX_SAFE_INTEGER;
   }
-  return Number.MAX_SAFE_INTEGER;
+  return positions.get(activeStageId) as number;
 }
 
 function workStatusSortKey(task: BridgeTask): number {
@@ -317,15 +316,11 @@ export function workflowClaimBlockReason(
         } else {
           epicId = task.parentId;
         }
-        let activeStageId: string | null;
+        let activeStageId: string | null = null;
         if (epicId !== null) {
-          const looked = index.activeStageByEpic.get(epicId);
-          activeStageId = null;
-          if (looked !== null) {
-            activeStageId = looked;
+          if (index.activeStageByEpic.has(epicId)) {
+            activeStageId = index.activeStageByEpic.get(epicId) as string;
           }
-        } else {
-          activeStageId = null;
         }
         if (!activeStageId) return "Epic has no active pipeline step";
         return `Task is on a later pipeline step; epic is at "${activeStageId}"`;
@@ -341,15 +336,11 @@ export function workflowClaimBlockReason(
     } else {
       epicId = task.parentId;
     }
-    let activeStageId: string | null;
+    let activeStageId: string | null = null;
     if (epicId !== null) {
-      const looked = index.activeStageByEpic.get(epicId);
-      activeStageId = null;
-      if (looked !== null) {
-        activeStageId = looked;
+      if (index.activeStageByEpic.has(epicId)) {
+        activeStageId = index.activeStageByEpic.get(epicId) as string;
       }
-    } else {
-      activeStageId = null;
     }
     if (!activeStageId) return "Epic has no active pipeline step";
     return `Task is on a later pipeline step; epic is at "${activeStageId}"`;

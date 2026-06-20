@@ -68,8 +68,12 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
     let importBody = request.body;
     if (importBody === null) { importBody = {}; }
     const body = importSchema.parse(importBody);
+    let importId: string | null = null;
+    if (body.id !== undefined) {
+      importId = body.id;
+    }
     const template = importWorkflowTemplate({
-      id: body.id,
+      id: importId,
       title: body.title,
       description: body.description,
       stages: body.stages.map((stage) => {
@@ -86,7 +90,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
         if (trimmedRole) {
           autoAssignRole = trimmedRole;
         }
-        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole });
+        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole, activeTaskCount: null });
       }),
     });
     return reply.status(201).send(template);
@@ -97,7 +101,15 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
     let createTemplateBody = request.body;
     if (createTemplateBody === null) { createTemplateBody = {}; }
     const body = createTemplateSchema.parse(createTemplateBody);
-    const template = createWorkflowTemplate(body);
+    let createId: string | null = null;
+    if (body.id !== undefined) {
+      createId = body.id;
+    }
+    const template = createWorkflowTemplate({
+      id: createId,
+      title: body.title,
+      description: body.description,
+    });
     return reply.status(201).send(template);
   });
 
@@ -156,7 +168,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
         if (trimmedRole) {
           autoAssignRole = trimmedRole;
         }
-        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole });
+        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole, activeTaskCount: null });
       }),
     );
     return reply.status(200).send(template);
