@@ -9,13 +9,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/useSession";
 import { fetchInbox, type InboxItem } from "@/lib/api";
-import { isTaskRead } from "@/lib/read-tasks";
+import { isTaskRead, markTaskRead } from "@/lib/read-tasks";
 import { cn, formatWhen } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
 
 export function InboxPage() {
-  const { projectId } = useParams();
+  const params = useParams();
+  let projectId: string | null = null;
+  if (typeof params["projectId"] === "string" && params["projectId"].length > 0) {
+    projectId = params["projectId"];
+  }
   const session = useSession();
   const [items, setItems] = useState<InboxItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -24,7 +28,7 @@ export function InboxPage() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(
-    async (cursor: string | undefined, append: boolean) => {
+    async (cursor: string | null, append: boolean) => {
       if (!session || !projectId) return;
       if (append) setLoadingMore(true);
       else setLoading(true);
@@ -32,10 +36,11 @@ export function InboxPage() {
         const data = await fetchInbox(session, {
           projectId,
           commentsOnly: true,
+          epicsOnly: null,
           cursor,
           limit: PAGE_SIZE,
         });
-        setItems((prev) => (append ? [...prev, ...data.items] : data.items));
+        setItems((prev) => (append ? prev.concat(data.items) : data.items));
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
       } catch (error) {
@@ -49,28 +54,41 @@ export function InboxPage() {
   );
 
   const refresh = useCallback(() => {
-    void load(undefined, false);
+    void load(null, false);
   }, [load]);
 
   useEffect(() => {
-    void load(undefined, false);
+    void load(null, false);
   }, [load]);
 
   useEffect(() => {
-    const onRead = () => refresh();
+    const onRead = () => {
+      setItems((prev) => prev.slice());
+    };
     window.addEventListener("task-bridge:read", onRead);
     return () => window.removeEventListener("task-bridge:read", onRead);
-  }, [refresh]);
+  }, []);
 
   const unreadOnPage = items.filter((item) => !isTaskRead(item.taskId)).length;
+
+  let projectLabel = "Project";
+  if (session !== null && session.projectName !== null) {
+    projectLabel = session.projectName;
+  } else if (projectId !== null) {
+    projectLabel = projectId;
+  }
+  let projectTasksPath = "/projects";
+  if (projectId !== null) {
+    projectTasksPath = `/projects/${projectId}/tasks`;
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         breadcrumb={[
           { label: "Projects", to: "/projects" },
-          { label: session?.projectName ?? projectId ?? "Project", to: `/projects/${projectId}/tasks` },
-          { label: "Inbox" },
+          { label: projectLabel, to: projectTasksPath },
+          { label: "Inbox", to: null },
         ]}
         title="Inbox"
         subtitle={unreadOnPage > 0 ? `${unreadOnPage} unread` : "All caught up"}
@@ -108,6 +126,11 @@ export function InboxPage() {
                 <Link
                   key={item.taskId}
                   to={`/projects/${projectId}/tasks/${item.taskId}`}
+                  onClick={() => {
+                    if (unread) {
+                      markTaskRead(item.taskId);
+                    }
+                  }}
                   className={cn(
                     "flex items-center justify-between rounded-xl border px-4 py-3 transition-colors",
                     unread
@@ -126,7 +149,13 @@ export function InboxPage() {
                       <p className="line-clamp-1 text-xs text-muted-foreground">{item.preview}</p>
                     ) : null}
                     <p className="text-xs text-muted-foreground">
-                      {formatWhen(item.activityAt ?? item.updatedAt ?? item.createdAt)}
+                      {formatWhen(
+                        item.activityAt !== null
+                          ? item.activityAt
+                          : item.updatedAt !== null
+                            ? item.updatedAt
+                            : item.createdAt,
+                      )}
                     </p>
                   </div>
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -138,7 +167,10 @@ export function InboxPage() {
             loaded={items.length}
             hasMore={hasMore}
             loading={loadingMore}
-            onLoadMore={() => void load(nextCursor ?? undefined, true)}
+            onLoadMore={() => {
+              const cursor = nextCursor;
+              void load(cursor, true);
+            }}
           />
         </CardContent>
       </Card>

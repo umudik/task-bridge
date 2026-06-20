@@ -9,18 +9,30 @@ export type StageTaskTemplate = {
 
 export const SUBTASK_SPAWN_STAGE_ID = "in-progress";
 
+type TemplateScalar = string | number | boolean | null;
+
+type TemplateJsonRow = {
+  id: TemplateScalar | null;
+  title: TemplateScalar | null;
+  description: TemplateScalar | null;
+  assigneeRole: TemplateScalar | null;
+  dependsOn: TemplateScalar[] | null;
+  children: TemplateJsonRow[] | null;
+};
+
+function isStringRecord(value: object | null): value is Record<string, TemplateScalar> {
+  return value !== null && value instanceof Object && !Array.isArray(value);
+}
+
 export function parseStageRolesJson(
   raw: string | null,
 ): Record<string, string> {
   if (!raw || !raw.trim()) return {};
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || Array.isArray(parsed) || !(parsed instanceof Object))
-      return {};
+    const parsed = JSON.parse(raw) as Record<string, TemplateScalar>;
+    if (!isStringRecord(parsed)) return {};
     const result: Record<string, string> = {};
-    for (const [key, value] of Object.entries(
-      parsed as Record<string, unknown>,
-    )) {
+    for (const [key, value] of Object.entries(parsed)) {
       const valueStr = value as string;
       if (
         value !== null &&
@@ -42,16 +54,16 @@ export function serializeStageRolesJson(roles: Record<string, string>): string {
 
 export function parseRulesJson(raw: string): string[] {
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(raw) as TemplateScalar[];
     if (!Array.isArray(parsed)) return [];
     const result: string[] = [];
     for (const item of parsed) {
       if (
         item !== null &&
         String(item) === item &&
-        (item as string).trim().length > 0
+        (item).trim().length > 0
       ) {
-        result.push((item as string).trim());
+        result.push((item).trim());
       }
     }
     return result;
@@ -71,11 +83,11 @@ export function resolveEpicDescription(input: {
   if (description) parts.push(description);
   if (purpose && purpose !== description) parts.push(purpose);
   const rules = parseRulesJson(input.rulesJson);
-  if (rules.length > 0) parts.push(rules.join("\n"));
+  if (rules.length > 0) parts.push(rules.join("\n\n"));
   return parts.join("\n\n");
 }
 
-function resolveTaskDescription(row: Record<string, unknown>): string {
+function resolveTaskDescription(row: TemplateJsonRow): string {
   const descCandidate = row.description as string;
   if (row.description !== null && String(descCandidate) === descCandidate) {
     return descCandidate.trim();
@@ -84,22 +96,20 @@ function resolveTaskDescription(row: Record<string, unknown>): string {
 }
 
 function parseTemplateNode(
-  item: unknown,
+  item: TemplateJsonRow,
   index: number,
   fallbackTitle: string,
 ): StageTaskTemplate | null {
-  if (!item || Array.isArray(item) || !(item instanceof Object)) return null;
-  const row = item as Record<string, unknown>;
   let id: string;
-  const idCandidate = row.id as string;
-  if (row.id !== null && String(idCandidate) === idCandidate && idCandidate.trim()) {
+  const idCandidate = item.id as string;
+  if (item.id !== null && String(idCandidate) === idCandidate && idCandidate.trim()) {
     id = idCandidate.trim();
   } else {
     id = `tpl-${index}`;
   }
   let title: string;
-  const titleCandidate = row.title as string;
-  if (row.title !== null && String(titleCandidate) === titleCandidate) {
+  const titleCandidate = item.title as string;
+  if (item.title !== null && String(titleCandidate) === titleCandidate) {
     title = titleCandidate.trim();
   } else {
     title = "";
@@ -108,47 +118,48 @@ function parseTemplateNode(
   const template: StageTaskTemplate = {
     id,
     title: title || fallbackTitle,
-    description: resolveTaskDescription(row),
+    description: resolveTaskDescription(item),
     assigneeRole: null,
     dependsOn: [],
     children: [],
   };
-  const assigneeRoleCandidate = row.assigneeRole as string;
+  const assigneeRoleCandidate = item.assigneeRole as string;
   if (
-    row.assigneeRole !== null &&
+    item.assigneeRole !== null &&
     String(assigneeRoleCandidate) === assigneeRoleCandidate &&
     assigneeRoleCandidate.trim()
   ) {
     template.assigneeRole = assigneeRoleCandidate.trim();
   }
-  if (Array.isArray(row.dependsOn)) {
+  if (Array.isArray(item.dependsOn)) {
     const deps: string[] = [];
-    for (const entry of row.dependsOn) {
+    for (const entry of item.dependsOn) {
       if (
         entry !== null &&
         String(entry) === entry &&
-        (entry as string).trim().length > 0
+        (entry).trim().length > 0
       ) {
-        deps.push((entry as string).trim());
+        deps.push((entry).trim());
       }
     }
     template.dependsOn = deps;
   }
-  if (Array.isArray(row.children)) {
-    template.children = parseTaskTemplateNodes(row.children, "Task");
+  if (Array.isArray(item.children)) {
+    template.children = parseTaskTemplateNodes(item.children, "Task");
   }
   return template;
 }
 
 function parseTaskTemplateNodes(
-  raw: unknown,
+  raw: TemplateJsonRow[],
   fallbackTitle: string,
 ): StageTaskTemplate[] {
-  if (!Array.isArray(raw)) return [];
   const result: StageTaskTemplate[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    const node = parseTemplateNode(raw[i], i, fallbackTitle);
-    if (node !== null) result.push(node);
+  for (let i = 0; i < raw.length; i += 1) {
+    const node = raw[i];
+    if (!node) continue;
+    const parsed = parseTemplateNode(node, i, fallbackTitle);
+    if (parsed !== null) result.push(parsed);
   }
   return result;
 }
@@ -158,7 +169,7 @@ export function parseTaskTemplatesJson(
 ): StageTaskTemplate[] {
   if (!raw || !raw.trim()) return [];
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(raw) as TemplateJsonRow[];
     if (!Array.isArray(parsed)) return [];
     return parseTaskTemplateNodes(parsed, "Task");
   } catch {
@@ -168,20 +179,25 @@ export function parseTaskTemplatesJson(
 
 function serializeTemplateNode(
   template: StageTaskTemplate,
-): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
-    id: template.id,
-    title: template.title,
-    description: template.description,
-    dependsOn: template.dependsOn,
-  };
-  if (template.assigneeRole) payload.assigneeRole = template.assigneeRole;
+): TemplateJsonRow {
+  let assigneeRole: TemplateScalar | null = null;
+  if (template.assigneeRole) {
+    assigneeRole = template.assigneeRole;
+  }
+  let children: TemplateJsonRow[] | null = null;
   if (template.children.length > 0) {
-    payload.children = template.children.map((child) =>
+    children = template.children.map((child) =>
       serializeTemplateNode(child),
     );
   }
-  return payload;
+  return {
+    id: template.id,
+    title: template.title,
+    description: template.description,
+    assigneeRole,
+    dependsOn: template.dependsOn,
+    children,
+  };
 }
 
 export function serializeTaskTemplates(templates: StageTaskTemplate[]): string {

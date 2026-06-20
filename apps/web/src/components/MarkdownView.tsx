@@ -8,15 +8,30 @@ marked.setOptions({
 });
 
 type MarkdownViewProps = {
-  content: string | null | undefined;
-  className?: string;
-  variant?: "default" | "comment";
+  content: string | null;
+  className: string | null;
+  variant: "default" | "comment" | null;
 };
 
-export function MarkdownView({ content, className, variant = "default" }: MarkdownViewProps) {
+export function MarkdownView(rawProps: Partial<MarkdownViewProps> & { content: string | null }) {
+  let className: string | null = null;
+  if ("className" in rawProps) {
+    if (rawProps.className === null) {
+      className = null;
+    } else if (typeof rawProps.className === "string") {
+      className = rawProps.className;
+    }
+  }
+  let variant: "default" | "comment" = "default";
+  if ("variant" in rawProps && rawProps.variant === "comment") {
+    variant = "comment";
+  }
+  const { content } = rawProps;
+
   const html = useMemo(() => {
-    if (!content?.trim()) return "";
-    return marked.parse(content) as string;
+    const trimmed = content !== null ? content.trim() : "";
+    if (!trimmed) return "";
+    return marked.parse(trimmed);
   }, [content]);
 
   if (!html) return null;

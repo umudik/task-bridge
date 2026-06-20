@@ -46,7 +46,7 @@ export function computeEpicStageId(
   stageRows: WorkflowStageRow[],
   subtasks: BridgeTask[],
 ): string | null {
-  const ordered = [...stageRows].sort((a, b) => a.position - b.position);
+  const ordered = stageRows.slice().sort((a, b) => a.position - b.position);
   if (ordered.length === 0) return null;
 
   for (const row of ordered) {
@@ -59,39 +59,38 @@ export function computeEpicStageId(
     if (hasIncomplete || stageTasks.length === 0) return row.id;
   }
 
-  const last = ordered[ordered.length - 1];
-  if (last != null) {
-    return last.id;
+  if (ordered.length > 0) {
+    return ordered[ordered.length - 1].id;
   }
   return null;
 }
 
-export async function syncEpicStage(epicId: number): Promise<BridgeTask | null> {
-  const epic = await getBridgeTask(epicId);
+export function syncEpicStage(epicId: number): BridgeTask | null {
+  const epic = getBridgeTask(epicId);
   if (!epic || epic.parentId !== null) return epic;
 
   const rows = listWorkflowStageRows({ projectId: epic.projectId, stageId: "" }).sort((a, b) => a.position - b.position);
   let current = epic;
   for (let pass = 0; pass < rows.length + 1; pass += 1) {
-    const allTasks = await listBridgeTasks();
+    const allTasks = listBridgeTasks();
     const subtasks = listEpicWorkflowTasks(allTasks, epicId);
     const nextStageId = computeEpicStageId(rows, subtasks);
     if (!nextStageId || nextStageId === current.stageId) break;
-    const transitioned = await transitionBridgeTask(epicId, {
+    const transitioned = transitionBridgeTask(epicId, {
       stageId: nextStageId,
       assignee: null,
       by: "workflow",
     });
-    if (transitioned != null) {
+    if (transitioned !== null) {
       current = transitioned;
       syncEpicWorkflowStage(epicId, nextStageId);
     }
   }
-  await spawnUnlockedWorkflowTasks(current);
+  spawnUnlockedWorkflowTasks(current);
   return current;
 }
 
-export async function spawnEpicWorkflow(epic: BridgeTask): Promise<BridgeTask[]> {
+export function spawnEpicWorkflow(epic: BridgeTask): BridgeTask[] {
   return spawnEpicWorkflowGraph(epic);
 }
 
@@ -111,7 +110,7 @@ export function collectLaterStageTodoCascadeIds(
   }
   if (!epicId) return [];
 
-  const ordered = [...stageRows].sort((a, b) => a.position - b.position);
+  const ordered = stageRows.slice().sort((a, b) => a.position - b.position);
   const stageIndex = ordered.findIndex((row) => row.id === stageId);
   if (stageIndex < 0) return [];
 
@@ -127,17 +126,17 @@ export function collectLaterStageTodoCascadeIds(
     }
   }
 
-  return [...ids];
+  return Array.from(ids);
 }
 
-export async function applyTodoCascadeFromTask(
+export function applyTodoCascadeFromTask(
   source: BridgeTask,
   by: string,
   options: { laterStages: boolean | null; descendants: boolean | null } | null,
-): Promise<void> {
+): void {
   const includeLaterStages = options === null || options.laterStages !== false;
   const includeDescendants = options === null || options.descendants !== false;
-  const tasks = await listBridgeTasks();
+  const tasks = listBridgeTasks();
 
   let epicId: number | null;
   if (source.epicId !== null && source.epicId !== null) {
@@ -146,26 +145,29 @@ export async function applyTodoCascadeFromTask(
     epicId = resolveEpicId(tasks, source);
   }
 
-  let epicTask: BridgeTask | null;
-  if (epicId != null) {
-    const found = tasks.find((task) => task.id === epicId);
-    if (found != null) {
-      epicTask = found;
-    } else {
-      epicTask = null;
+  let epicTask: BridgeTask | null = null;
+  if (epicId !== null) {
+    for (const task of tasks) {
+      if (task.id === epicId) {
+        epicTask = task;
+        break;
+      }
     }
-  } else {
-    epicTask = null;
   }
 
   let projectId: string;
-  if (epicTask != null) {
+  if (epicTask !== null) {
     projectId = epicTask.projectId;
   } else {
     projectId = source.projectId;
   }
 
-  const stageRows = epicId !== null ? listWorkflowStageRows({ projectId, stageId: "" }) : [];
+  let stageRows: WorkflowStageRow[];
+  if (epicId !== null) {
+    stageRows = listWorkflowStageRows({ projectId, stageId: "" });
+  } else {
+    stageRows = [];
+  }
   const sourceStageId = resolveTaskStageId(tasks, source);
 
   const deleteIds = new Set<number>();
@@ -182,7 +184,7 @@ export async function applyTodoCascadeFromTask(
     }
   }
 
-  deleteTaskRows([...deleteIds]);
+  deleteTaskRows(Array.from(deleteIds));
 
   const at = new Date().toISOString();
   for (const cascadeId of resetIds) {
@@ -209,17 +211,17 @@ export async function applyTodoCascadeFromTask(
   }
 }
 
-export async function updateTaskWorkStatus(
+export function updateTaskWorkStatus(
   taskId: number,
   workStatus: WorkStatus,
   by: string,
   actor: ClaimActor,
-): Promise<BridgeTask | null> {
-  const existing = await getBridgeTask(taskId);
+): BridgeTask | null {
+  const existing = getBridgeTask(taskId);
   if (!existing || existing.parentId === null) {
     return existing;
   }
-  const tasksForPolicy = await listBridgeTasks();
+  const tasksForPolicy = listBridgeTasks();
   assertCanAdvanceWorkStatus(tasksForPolicy, existing, workStatus);
 
   const normalized = normalizeClaimActor(actor);
@@ -247,13 +249,13 @@ export async function updateTaskWorkStatus(
 
   if (workStatus === "todo" || workStatus === "in_progress") {
     const reopening = isWorkDone(existing);
-    await applyTodoCascadeFromTask(updated, by, {
+    applyTodoCascadeFromTask(updated, by, {
       laterStages: workStatus === "todo" || reopening,
       descendants: true,
     });
   }
   syncTaskIntoWorkflowState(updated);
-  const allTasks = await listBridgeTasks();
+  const allTasks = listBridgeTasks();
 
   let epicId: number | null;
   if (updated.epicId !== null && updated.epicId !== null) {
@@ -263,39 +265,42 @@ export async function updateTaskWorkStatus(
   }
 
   if (!epicId) return updated;
-  const epic = await getBridgeTask(epicId);
+  const epic = getBridgeTask(epicId);
   if (!epic) return updated;
-  await spawnUnlockedWorkflowTasks(epic);
-  await syncEpicStage(epicId);
+  spawnUnlockedWorkflowTasks(epic);
+  syncEpicStage(epicId);
   return updated;
 }
 
-export async function listEpicSubtasks(epicId: number): Promise<BridgeTask[]> {
-  const tasks = await listBridgeTasks();
+export function listEpicSubtasks(epicId: number): BridgeTask[] {
+  const tasks = listBridgeTasks();
   return listEpicWorkflowTasks(tasks, epicId);
 }
 
-export async function getEpicWithStage(epicId: number) {
-  const epic = await getBridgeTask(epicId);
+export function getEpicWithStage(epicId: number) {
+  const epic = getBridgeTask(epicId);
   if (!epic || epic.parentId !== null) return null;
-  const rawSynced = await syncEpicStage(epicId);
+  const rawSynced = syncEpicStage(epicId);
   let synced: BridgeTask;
-  if (rawSynced != null) {
+  if (rawSynced !== null) {
     synced = rawSynced;
   } else {
     synced = epic;
   }
-  const stageRows =
-    synced.stageId !== null && synced.stageId !== ""
-      ? listWorkflowStageRows({ projectId: synced.projectId, stageId: synced.stageId })
-      : [];
+  let stageRows: WorkflowStageRow[];
+  if (synced.stageId !== null && synced.stageId !== "") {
+    stageRows = listWorkflowStageRows({ projectId: synced.projectId, stageId: synced.stageId });
+  } else {
+    stageRows = [];
+  }
   let stageTitle: string | null;
   if (stageRows.length > 0) {
     const firstRow = stageRows[0];
-    if (firstRow == null) {
-      throw new Error("Expected stageRows[0] to exist but it was missing");
+    if (firstRow) {
+      stageTitle = firstRow.title;
+    } else {
+      stageTitle = synced.stageId;
     }
-    stageTitle = firstRow.title;
   } else {
     stageTitle = synced.stageId;
   }

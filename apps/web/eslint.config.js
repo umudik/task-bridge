@@ -4,6 +4,38 @@ import reactHooks from "eslint-plugin-react-hooks";
 
 const BANNED_EVERYWHERE = [
   {
+    selector: "SpreadElement",
+    message: "Spread (...) is banned.",
+  },
+  {
+    selector: "RestElement",
+    message: "Rest (...) is banned.",
+  },
+  {
+    selector: "JSXSpreadAttribute",
+    message: "JSX spread {...props} is banned.",
+  },
+  {
+    selector: "BinaryExpression[operator=/^(===|!==)$/] > UnaryExpression[operator='void']",
+    message: "void 0 is banned. Use null.",
+  },
+  {
+    selector: "TSUnknownKeyword",
+    message: "unknown is banned. Use a concrete type.",
+  },
+  {
+    selector: "TSTypeReference[typeName.name='JsonValue']",
+    message: "JsonValue is banned.",
+  },
+  {
+    selector: "TSTypeReference[typeName.name='JsonObject']",
+    message: "JsonObject is banned.",
+  },
+  {
+    selector: "Identifier[name='parseJsonValue']",
+    message: "parseJsonValue is banned.",
+  },
+  {
     selector: "LineComment",
     message: "Comments are banned.",
   },

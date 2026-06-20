@@ -21,7 +21,11 @@ function statusDot(status: string) {
 }
 
 export function TasksPage() {
-  const { projectId } = useParams();
+  const params = useParams();
+  let projectId: string | null = null;
+  if (typeof params["projectId"] === "string" && params["projectId"].length > 0) {
+    projectId = params["projectId"];
+  }
   const session = useSession();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -34,7 +38,7 @@ export function TasksPage() {
   const [showComposer, setShowComposer] = useState(false);
 
   const load = useCallback(
-    async (cursor: string | undefined, append: boolean) => {
+    async (cursor: string | null, append: boolean) => {
       if (!session || !projectId) return;
       if (append) setLoadingMore(true);
       else setLoading(true);
@@ -42,10 +46,11 @@ export function TasksPage() {
         const data = await fetchInbox(session, {
           projectId,
           epicsOnly: true,
+          commentsOnly: null,
           cursor,
           limit: PAGE_SIZE,
         });
-        setItems((prev) => (append ? [...prev, ...data.items] : data.items));
+        setItems((prev) => (append ? prev.concat(data.items) : data.items));
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
       } catch (error) {
@@ -59,11 +64,11 @@ export function TasksPage() {
   );
 
   const refresh = useCallback(() => {
-    void load(undefined, false);
+    void load(null, false);
   }, [load]);
 
   useEffect(() => {
-    void load(undefined, false);
+    void load(null, false);
   }, [load]);
 
   async function submit() {
@@ -89,13 +94,24 @@ export function TasksPage() {
     }
   }
 
+  let projectLabel = "Project";
+  if (session !== null && session.projectName !== null) {
+    projectLabel = session.projectName;
+  } else if (projectId !== null) {
+    projectLabel = projectId;
+  }
+  let projectTasksPath = "/projects";
+  if (projectId !== null) {
+    projectTasksPath = `/projects/${projectId}/tasks`;
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         breadcrumb={[
           { label: "Projects", to: "/projects" },
-          { label: session?.projectName ?? projectId ?? "Project", to: `/projects/${projectId}/tasks` },
-          { label: "Epics" },
+          { label: projectLabel, to: projectTasksPath },
+          { label: "Epics", to: null },
         ]}
         title="Epics"
         subtitle={items.length > 0 ? `${items.length}${hasMore ? "+" : ""} active` : "No epics yet"}
@@ -180,7 +196,13 @@ export function TasksPage() {
                   </p>
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{formatWhen(item.activityAt ?? item.updatedAt ?? item.createdAt)}</span>
+                  <span>{formatWhen(
+                    item.activityAt !== null
+                      ? item.activityAt
+                      : item.updatedAt !== null
+                        ? item.updatedAt
+                        : item.createdAt,
+                  )}</span>
                   <ChevronRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
                 </div>
               </Link>
@@ -192,7 +214,9 @@ export function TasksPage() {
           loaded={items.length}
           hasMore={hasMore}
           loading={loadingMore}
-          onLoadMore={() => void load(nextCursor ?? undefined, true)}
+          onLoadMore={() => {
+            void load(nextCursor, true);
+          }}
         />
       </div>
     </div>

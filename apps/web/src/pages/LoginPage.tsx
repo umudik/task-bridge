@@ -51,6 +51,8 @@ export function LoginPage() {
         userRole: result.user.role as UserRole,
         isSystemAdmin: result.user.isSystemAdmin,
         mustChangePassword: result.user.mustChangePassword,
+        projectId: null,
+        projectName: null,
       });
       if (result.user.mustChangePassword) {
         navigate("/change-password", { replace: true });
@@ -117,7 +119,11 @@ export function LoginPage() {
                   required
                   disabled={loading}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleSubmit(e as unknown as React.FormEvent);
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const form = e.currentTarget.form;
+                      if (form) form.requestSubmit();
+                    }
                   }}
                 />
               </div>

@@ -73,7 +73,7 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
   const linkedIds = useMemo(() => new Set(links.map((entry) => entry.documentId)), [links]);
 
   const visibleDocuments = useMemo(() => {
-    const docs = libraryDetail?.documents ?? [];
+    const docs = libraryDetail !== null ? libraryDetail.documents : [];
     const query = search.trim().toLowerCase();
     if (!query) return docs;
     return docs.filter(
@@ -81,7 +81,7 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
         entry.title.toLowerCase().includes(query) ||
         entry.description.toLowerCase().includes(query),
     );
-  }, [libraryDetail?.documents, search]);
+  }, [libraryDetail, search]);
 
   async function handleLink(documentId: string) {
     setLinking(true);
@@ -163,7 +163,7 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
               <Label htmlFor="library-select">Library</Label>
               <select
                 id="library-select"
-                value={selectedLibraryId ?? ""}
+                value={selectedLibraryId !== null ? selectedLibraryId : ""}
                 onChange={(event) => setSelectedLibraryId(event.target.value || null)}
                 className="h-10 w-full rounded-md border border-white/10 bg-[#0d0d0d] px-3 text-sm"
                 disabled={loading}

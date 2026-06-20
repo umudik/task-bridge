@@ -29,17 +29,17 @@ export type CreateProjectInput = {
 export type InboxItem = {
   taskId: number;
   title: string;
-  preview?: string;
+  preview: string | null;
   status: string;
-  parentId?: number | null;
-  activityAt?: string | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
-  projectId?: string | null;
-  projectName?: string | null;
-  assignee?: string | null;
-  stageId?: string | null;
-  stageTitle?: string | null;
+  parentId: number | null;
+  activityAt: string | null;
+  updatedAt: string | null;
+  createdAt: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  assignee: string | null;
+  stageId: string | null;
+  stageTitle: string | null;
 };
 
 export type AssigneeKind = "human" | "ai";
@@ -48,9 +48,9 @@ export type StageTaskTemplate = {
   id: string;
   title: string;
   description: string;
-  assigneeRole?: string | null;
-  dependsOn?: string[];
-  children?: StageTaskTemplate[];
+  assigneeRole: string | null;
+  dependsOn: string[];
+  children: StageTaskTemplate[];
 };
 
 export type WorkflowStage = {
@@ -58,12 +58,12 @@ export type WorkflowStage = {
   title: string;
   description: string;
   position: number;
-  autoAssignRole?: string;
-  layoutX?: number | null;
-  layoutY?: number | null;
-  spawnTaskCount?: number;
-  taskTemplates?: StageTaskTemplate[];
-  activeTaskCount?: number;
+  autoAssignRole: string | null;
+  layoutX: number | null;
+  layoutY: number | null;
+  spawnTaskCount: number;
+  taskTemplates: StageTaskTemplate[];
+  activeTaskCount: number | null;
 };
 
 export type ProjectMember = {
@@ -86,7 +86,7 @@ export type TaskStageSnapshot = {
   id: string;
   title: string;
   description: string;
-  taskTemplates?: StageTaskTemplate[];
+  taskTemplates: StageTaskTemplate[];
 };
 
 export type InboxResult = {
@@ -97,27 +97,27 @@ export type InboxResult = {
 };
 
 export type InboxQuery = {
-  projectId?: string;
-  commentsOnly?: boolean;
-  epicsOnly?: boolean;
-  cursor?: string;
-  limit?: number;
+  projectId: string | null;
+  commentsOnly: boolean | null;
+  epicsOnly: boolean | null;
+  cursor: string | null;
+  limit: number | null;
 };
 
 export type WorkStatus = "todo" | "in_progress" | "done";
 
 export type TaskSubtask = {
   taskId: number;
-  parentId?: number | null;
+  parentId: number | null;
   title: string;
-  stageId?: string | null;
-  stageTitle?: string | null;
+  stageId: string | null;
+  stageTitle: string | null;
   templateId: string | null;
-  assignee?: string | null;
-  assigneeKind?: AssigneeKind | null;
-  claimedBy?: string | null;
-  workStatus?: WorkStatus;
-  workStatusLabel?: string;
+  assignee: string | null;
+  assigneeKind: AssigneeKind | null;
+  claimedBy: string | null;
+  workStatus: WorkStatus | null;
+  workStatusLabel: string | null;
   done: boolean;
 };
 
@@ -128,7 +128,7 @@ export type TaskComment = {
   tags: string[];
   body: string;
   at: string;
-  metadata: Record<string, unknown> | null;
+  metadata: Record<string, string | number | boolean | null> | null;
   by: string;
   text: string;
 };
@@ -150,23 +150,23 @@ export type TaskDetail = {
   request: string;
   description: string;
   status: string;
-  parentId?: number | null;
-  parent?: { taskId: number; title: string; stageId?: string | null } | null;
-  subtasks?: TaskSubtask[];
-  createdAt?: string | null;
-  updatedAt?: string | null;
-  createdBy?: string;
-  projectId?: string | null;
-  projectName?: string | null;
-  assignee?: string | null;
-  stageId?: string | null;
-  stage?: TaskStageSnapshot | null;
-  isEpic?: boolean;
-  workStatus?: WorkStatus | null;
-  workStatusLabel?: string | null;
-  comments?: TaskComment[];
-  libraryLinks?: LibraryDocumentLink[];
-  workflowState?: WorkflowStateNode[];
+  parentId: number | null;
+  parent: { taskId: number; title: string; stageId: string | null } | null;
+  subtasks: TaskSubtask[];
+  createdAt: string | null;
+  updatedAt: string | null;
+  createdBy: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  assignee: string | null;
+  stageId: string | null;
+  stage: TaskStageSnapshot | null;
+  isEpic: boolean | null;
+  workStatus: WorkStatus | null;
+  workStatusLabel: string | null;
+  comments: TaskComment[];
+  libraryLinks: LibraryDocumentLink[];
+  workflowState: WorkflowStateNode[];
 };
 
 export type LibrarySummary = {
@@ -232,15 +232,16 @@ function authHeaders(session: Session): Record<string, string> {
 async function parseError(response: Response) {
   try {
     const body = (await response.json()) as {
-      error?: string;
-      details?: { code?: string };
+      error: string | null;
+      details: { code: string | null } | null;
     };
-    if (body.details?.code === "PASSWORD_CHANGE_REQUIRED") {
+    const details = body.details;
+    if (details !== null && details.code === "PASSWORD_CHANGE_REQUIRED") {
       return "PASSWORD_CHANGE_REQUIRED";
     }
     if (body.error) return body.error;
   } catch {
-    // ignore
+    return response.statusText || "Request failed";
   }
   return response.statusText || "Request failed";
 }
@@ -248,15 +249,21 @@ async function parseError(response: Response) {
 async function request<T>(
   session: Session,
   path: string,
-  init?: RequestInit,
+  init: RequestInit | null = null,
 ): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      ...authHeaders(session),
-      ...(init?.headers ?? {}),
-    },
-  });
+  let extraHeaders: HeadersInit = {};
+  if (init !== null) {
+    const headerValue = init.headers;
+    if (typeof headerValue !== "undefined" && headerValue !== null) {
+      extraHeaders = headerValue;
+    }
+  }
+  let fetchInit: RequestInit = {};
+  if (init !== null) {
+    fetchInit = init;
+  }
+  const headers = Object.assign({}, authHeaders(session), extraHeaders);
+  const response = await fetch(path, Object.assign({}, fetchInit, { headers }));
 
   if (response.status === 401) {
     clearSession();
@@ -269,7 +276,7 @@ async function request<T>(
     if (message === "PASSWORD_CHANGE_REQUIRED") {
       const current = loadSession();
       if (current) {
-        saveSession({ ...current, mustChangePassword: true });
+        saveSession(Object.assign({}, current, { mustChangePassword: true }));
       }
       window.location.href = "/app/change-password";
       throw new ApiError("Password change required", 403);
@@ -277,16 +284,14 @@ async function request<T>(
     throw new ApiError(message, response.status);
   }
   if (response.status === 204) {
-    return undefined as T;
+    return null as T;
   }
   const text = await response.text();
   if (!text) {
-    return undefined as T;
+    return null as T;
   }
   return JSON.parse(text) as T;
 }
-
-// ─── Auth (no session required) ───────────────────────────────────────────────
 
 export async function checkAuthStatus(): Promise<{ hasUsers: boolean }> {
   const response = await fetch("/api/auth/status");
@@ -301,10 +306,14 @@ export async function setupAdmin(params: { name: string; email: string; password
     body: JSON.stringify(params),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(body.error ?? "Setup failed", response.status);
+    const body = (await response.json().catch(() => ({}))) as { error: string | null };
+    let message = "Setup failed";
+    if (body.error !== null) {
+      message = body.error;
+    }
+    throw new ApiError(message, response.status);
   }
-  return response.json();
+  return response.json() as Promise<Record<string, never>>;
 }
 
 export async function loginUser(params: {
@@ -327,8 +336,12 @@ export async function loginUser(params: {
     body: JSON.stringify(params),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(body.error ?? "Login failed", response.status);
+    const body = (await response.json().catch(() => ({}))) as { error: string | null };
+    let message = "Login failed";
+    if (body.error !== null) {
+      message = body.error;
+    }
+    throw new ApiError(message, response.status);
   }
   return response.json() as Promise<{
     token: string;
@@ -356,24 +369,30 @@ export async function changePassword(
     body: JSON.stringify(params),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(body.error ?? "Password change failed", response.status);
+    const body = (await response.json().catch(() => ({}))) as { error: string | null };
+    let message = "Password change failed";
+    if (body.error !== null) {
+      message = body.error;
+    }
+    throw new ApiError(message, response.status);
   }
   return response.json() as Promise<{ user: { mustChangePassword: boolean } }>;
 }
 
-// ─── Mobile QR ────────────────────────────────────────────────────────────────
-
 export function buildMobileQrData(session: Session): string {
-  const server = typeof window !== "undefined" ? window.location.origin : "";
+  let server = "";
+  if (typeof window !== "undefined") {
+    server = window.location.origin;
+  }
   return `taskbridge://auth?server=${encodeURIComponent(server)}&token=${encodeURIComponent(session.token)}`;
 }
 
-// ─── Admin user management ────────────────────────────────────────────────────
-
 export async function fetchUsers(session: Session): Promise<PublicUser[]> {
   const data = await request<{ users: PublicUser[] }>(session, "/api/admin/users");
-  return data.users ?? [];
+  if (data.users !== null) {
+    return data.users;
+  }
+  return [];
 }
 
 export async function createAppUser(
@@ -391,7 +410,7 @@ export async function createAppUser(
 export async function updateAppUser(
   session: Session,
   userId: string,
-  params: { name?: string; role?: string },
+  params: { name: string | null; role: string | null },
 ): Promise<PublicUser> {
   const data = await request<{ user: PublicUser }>(session, `/api/admin/users/${userId}`, {
     method: "PATCH",
@@ -405,11 +424,12 @@ export async function deleteAppUser(session: Session, userId: string): Promise<v
   await request<void>(session, `/api/admin/users/${userId}`, { method: "DELETE" });
 }
 
-// ─── Projects ─────────────────────────────────────────────────────────────────
-
 export async function fetchProjects(session: Session) {
   const data = await request<{ projects: Project[] }>(session, "/api/projects");
-  return data.projects ?? [];
+  if (data.projects !== null) {
+    return data.projects;
+  }
+  return [];
 }
 
 export type WorkflowTemplateSummary = {
@@ -449,7 +469,10 @@ export async function fetchWorkflowTemplates(session: Session) {
     session,
     "/api/workflow-templates",
   );
-  return data.items ?? [];
+  if (data.items !== null) {
+    return data.items;
+  }
+  return [];
 }
 
 export async function fetchWorkflowTemplate(session: Session, templateId: string) {
@@ -458,7 +481,7 @@ export async function fetchWorkflowTemplate(session: Session, templateId: string
 
 export async function createWorkflowTemplate(
   session: Session,
-  input: { title: string; id?: string; description?: string },
+  input: { title: string; id: string | null; description: string | null },
 ) {
   return request<WorkflowTemplate>(session, "/api/workflow-templates", {
     method: "POST",
@@ -493,9 +516,19 @@ export async function exportWorkflowTemplate(session: Session, templateId: strin
   });
   if (!res.ok) throw new ApiError("Export failed", res.status);
   const blob = await res.blob();
-  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const dispositionHeader = res.headers.get("Content-Disposition");
+  let disposition = "";
+  if (dispositionHeader !== null) {
+    disposition = dispositionHeader;
+  }
   const match = /filename="([^"]+)"/.exec(disposition);
-  const filename = match?.[1] ?? `${templateId}.json`;
+  let filename = `${templateId}.json`;
+  if (match !== null && match.length > 1) {
+    const captured = match[1];
+    if (typeof captured === "string") {
+      filename = captured;
+    }
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -504,7 +537,14 @@ export async function exportWorkflowTemplate(session: Session, templateId: strin
   URL.revokeObjectURL(url);
 }
 
-export async function importWorkflowTemplate(session: Session, data: unknown): Promise<WorkflowTemplate> {
+export type WorkflowExport = {
+  projectId: string;
+  roles: string[];
+  stages: WorkflowStage[];
+  members: ProjectMember[];
+};
+
+export async function importWorkflowTemplate(session: Session, data: WorkflowTemplate): Promise<WorkflowTemplate> {
   return request<WorkflowTemplate>(session, "/api/workflow-templates/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -531,18 +571,27 @@ export async function applyWorkflowTemplate(
 export type CreateEpicInput = {
   projectId: string;
   title: string;
-  description?: string;
+  description: string | null;
 };
 
 export type CreateTaskInput = {
   parentId: number;
   title: string;
-  description?: string;
-  stageId?: string;
+  description: string | null;
+  stageId: string | null;
 };
 
 export async function createEpic(session: Session, input: CreateEpicInput) {
-  return request<{ id: string | number; title?: string; projectName?: string; parentId?: number | null }>(
+  let description = "";
+  if (input.description !== null) {
+    description = input.description;
+  }
+  return request<{
+    id: string | number;
+    title: string | null;
+    projectName: string | null;
+    parentId: number | null;
+  }>(
     session,
     "/api/epics",
     {
@@ -551,14 +600,23 @@ export async function createEpic(session: Session, input: CreateEpicInput) {
       body: JSON.stringify({
         projectId: input.projectId,
         title: input.title,
-        description: input.description ?? "",
+        description,
       }),
     },
   );
 }
 
 export async function createTask(session: Session, input: CreateTaskInput) {
-  return request<{ id: string | number; title?: string; projectName?: string; parentId?: number | null }>(
+  let description = "";
+  if (input.description !== null) {
+    description = input.description;
+  }
+  return request<{
+    id: string | number;
+    title: string | null;
+    projectName: string | null;
+    parentId: number | null;
+  }>(
     session,
     "/api/tasks",
     {
@@ -567,31 +625,54 @@ export async function createTask(session: Session, input: CreateTaskInput) {
       body: JSON.stringify({
         parentId: input.parentId,
         title: input.title,
-        description: input.description ?? "",
+        description,
         stageId: input.stageId,
       }),
     },
   );
 }
 
-export async function fetchInbox(session: Session, query: InboxQuery = {}) {
+export async function fetchInbox(session: Session, query: InboxQuery = {
+  projectId: null,
+  commentsOnly: null,
+  epicsOnly: null,
+  cursor: null,
+  limit: null,
+}) {
   const params = new URLSearchParams();
   if (query.projectId) params.set("projectId", query.projectId);
   if (query.commentsOnly) params.set("commentsOnly", "true");
   if (query.epicsOnly) params.set("epicsOnly", "true");
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit) params.set("limit", String(query.limit));
-  const suffix = params.toString() ? `?${params.toString()}` : "";
+  let suffix = "";
+  if (params.toString()) {
+    suffix = `?${params.toString()}`;
+  }
   return request<InboxResult>(session, `/api/inbox${suffix}`);
 }
 
-export async function fetchAllInbox(session: Session, query: Omit<InboxQuery, "cursor"> = {}) {
+export async function fetchAllInbox(
+  session: Session,
+  query: Omit<InboxQuery, "cursor"> = {
+    projectId: null,
+    commentsOnly: null,
+    epicsOnly: null,
+    limit: null,
+  },
+) {
   const items: InboxItem[] = [];
-  let cursor: string | undefined;
+  let cursor: string | null = null;
   do {
-    const page = await fetchInbox(session, { ...query, cursor, limit: query.limit ?? 100 });
-    items.push(...page.items);
-    cursor = page.nextCursor ?? undefined;
+    let pageLimit = 100;
+    if (query.limit !== null) {
+      pageLimit = query.limit;
+    }
+    const page = await fetchInbox(session, Object.assign({}, query, { cursor, limit: pageLimit }));
+    for (const item of page.items) {
+      items.push(item);
+    }
+    cursor = page.nextCursor;
   } while (cursor);
   return items;
 }
@@ -633,7 +714,7 @@ export async function saveProjectWorkflow(
 }
 
 export async function exportProjectWorkflow(session: Session, projectId: string) {
-  return request<Record<string, unknown>>(session, `/api/projects/${projectId}/workflow/export`);
+  return request<WorkflowExport>(session, `/api/projects/${projectId}/workflow/export`);
 }
 
 export async function createMember(
@@ -652,7 +733,7 @@ export async function updateMember(
   session: Session,
   projectId: string,
   memberId: string,
-  input: { name?: string; role?: string; actorKind?: AssigneeKind },
+  input: { name: string | null; role: string | null; actorKind: AssigneeKind | null },
 ) {
   return request<ProjectMember>(session, `/api/projects/${projectId}/members/${memberId}`, {
     method: "PATCH",
@@ -669,7 +750,10 @@ export async function deleteMember(session: Session, projectId: string, memberId
 
 export async function fetchLibraries(session: Session) {
   const data = await request<{ items: LibrarySummary[] }>(session, "/api/libraries");
-  return data.items ?? [];
+  if (data.items !== null) {
+    return data.items;
+  }
+  return [];
 }
 
 export async function fetchLibrary(session: Session, libraryId: string) {
@@ -678,7 +762,7 @@ export async function fetchLibrary(session: Session, libraryId: string) {
 
 export async function createLibrary(
   session: Session,
-  input: { title: string; id?: string; description?: string },
+  input: { title: string; id: string | null; description: string | null },
 ) {
   return request<LibraryDetail>(session, "/api/libraries", {
     method: "POST",
@@ -690,7 +774,7 @@ export async function createLibrary(
 export async function saveLibrary(
   session: Session,
   libraryId: string,
-  input: { title: string; description?: string },
+  input: { title: string; description: string | null },
 ) {
   return request<LibraryDetail>(session, `/api/libraries/${libraryId}`, {
     method: "PUT",
@@ -706,7 +790,7 @@ export async function deleteLibrary(session: Session, libraryId: string) {
 export async function createLibraryDocument(
   session: Session,
   libraryId: string,
-  input: { title: string; id?: string; description?: string },
+  input: { title: string; id: string | null; description: string | null },
 ) {
   return request<LibraryDocument>(session, `/api/libraries/${libraryId}/documents`, {
     method: "POST",
@@ -723,7 +807,7 @@ export async function saveLibraryDocument(
   session: Session,
   libraryId: string,
   documentId: string,
-  input: { title: string; description?: string },
+  input: { title: string; description: string | null },
 ) {
   return request<LibraryDocument>(
     session,
@@ -760,7 +844,10 @@ export async function linkLibraryDocument(
       body: JSON.stringify({ taskId }),
     },
   );
-  return data.items ?? [];
+  if (data.items !== null) {
+    return data.items;
+  }
+  return [];
 }
 
 export async function unlinkLibraryDocument(
@@ -778,7 +865,10 @@ export async function fetchTaskLibraryLinks(session: Session, taskId: number) {
     session,
     `/api/tasks/${taskId}/library-links`,
   );
-  return data.items ?? [];
+  if (data.items !== null) {
+    return data.items;
+  }
+  return [];
 }
 
 export async function claimTask(session: Session, taskId: number, claimedBy: string) {

@@ -152,7 +152,7 @@ export function passesWorkflowClaimGate(task: BridgeTask, index: EpicClaimIndex)
 export function canActorClaimTask(
   task: BridgeTask,
   index: EpicClaimIndex,
-  actor: ClaimActor,
+  _actor: ClaimActor,
 ): boolean {
   if (task.parentId === null || isWorkDone(task)) return false;
 
@@ -217,7 +217,7 @@ function activeStageSortKey(task: BridgeTask, index: EpicClaimIndex): number {
   const activeStageId = index.activeStageByEpic.get(task.parentId);
   if (!positions || !activeStageId) return Number.MAX_SAFE_INTEGER;
   const pos = positions.get(activeStageId);
-  if (pos != null) {
+  if (pos !== null) {
     return pos;
   }
   return Number.MAX_SAFE_INTEGER;
@@ -296,7 +296,7 @@ export function sortWorkflowClaimCandidates(
   tasks: BridgeTask[],
   index: EpicClaimIndex,
 ): BridgeTask[] {
-  return [...tasks].sort((a, b) => compareWorkflowClaimPriority(a, b, index));
+  return tasks.slice().sort((a, b) => compareWorkflowClaimPriority(a, b, index));
 }
 
 export function workflowClaimBlockReason(
@@ -321,7 +321,7 @@ export function workflowClaimBlockReason(
         if (epicId !== null) {
           const looked = index.activeStageByEpic.get(epicId);
           activeStageId = null;
-          if (looked != null) {
+          if (looked !== null) {
             activeStageId = looked;
           }
         } else {
@@ -344,7 +344,10 @@ export function workflowClaimBlockReason(
     let activeStageId: string | null;
     if (epicId !== null) {
       const looked = index.activeStageByEpic.get(epicId);
-      activeStageId = looked != null ? looked : null;
+      activeStageId = null;
+      if (looked !== null) {
+        activeStageId = looked;
+      }
     } else {
       activeStageId = null;
     }

@@ -3,17 +3,47 @@ import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type Crumb = { label: string; to?: string };
+export type Crumb = { label: string; to: string | null };
 
 type PageHeaderProps = {
-  breadcrumb?: Crumb[];
+  breadcrumb: Crumb[] | null;
   title: string;
-  subtitle?: string;
-  actions?: ReactNode;
-  className?: string;
+  subtitle: string | null;
+  actions: ReactNode | null;
+  className: string | null;
 };
 
-export function PageHeader({ breadcrumb, title, subtitle, actions, className }: PageHeaderProps) {
+export function PageHeader(rawProps: Partial<PageHeaderProps> & Pick<PageHeaderProps, "title">) {
+  let breadcrumb: Crumb[] | null = null;
+  if ("breadcrumb" in rawProps) {
+    if (rawProps.breadcrumb === null) {
+      breadcrumb = null;
+    } else if (Array.isArray(rawProps.breadcrumb)) {
+      breadcrumb = rawProps.breadcrumb;
+    }
+  }
+  let subtitle: string | null = null;
+  if ("subtitle" in rawProps) {
+    if (rawProps.subtitle === null) {
+      subtitle = null;
+    } else if (typeof rawProps.subtitle === "string") {
+      subtitle = rawProps.subtitle;
+    }
+  }
+  let actions: ReactNode | null = null;
+  if ("actions" in rawProps && rawProps.actions !== null) {
+    actions = rawProps.actions;
+  }
+  let className: string | null = null;
+  if ("className" in rawProps) {
+    if (rawProps.className === null) {
+      className = null;
+    } else if (typeof rawProps.className === "string") {
+      className = rawProps.className;
+    }
+  }
+  const { title } = rawProps;
+
   return (
     <div className={cn("page-toolbar flex-wrap", className)}>
       <div className="min-w-0">

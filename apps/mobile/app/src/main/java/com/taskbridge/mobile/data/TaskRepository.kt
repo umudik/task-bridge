@@ -288,35 +288,27 @@ class TaskRepository(
         return buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
-                val id = item.optString("id")
-                val body = item.optString("body").ifBlank { item.optString("text") }
-                if (id.isBlank() || body.isBlank()) continue
-                val roleField = item.optString("role")
-                val role = when {
-                    roleField == "user" || roleField == "system" -> roleField
-                    item.optString("authorType") == "human" -> "user"
-                    item.optString("authorType") == "system" || item.optString("authorType") == "ai" -> "system"
-                    else -> "user"
-                }
+                val id = item.optString("id").trim()
+                val body = item.optString("body").trim()
+                if (id.isEmpty() || body.isEmpty()) continue
+                val roleField = item.optString("role").trim()
+                if (roleField != "user" && roleField != "system") continue
+                val authorId = item.optString("authorId").trim()
+                if (authorId.isEmpty()) continue
                 val tags = buildList {
-                    val tagsArray = item.optJSONArray("tags")
-                    if (tagsArray != null) {
-                        for (index in 0 until tagsArray.length()) {
-                            val tag = tagsArray.optString(index).trim()
-                            if (tag.isNotEmpty()) add(tag)
-                        }
-                    } else {
-                        val legacyType = item.optString("type").trim()
-                        if (legacyType.isNotEmpty()) add(legacyType)
+                    val tagsArray = item.optJSONArray("tags") ?: return@buildList
+                    for (tagIndex in 0 until tagsArray.length()) {
+                        val tag = tagsArray.optString(tagIndex).trim()
+                        if (tag.isNotEmpty()) add(tag)
                     }
                 }
                 add(
                     TaskComment(
                         id = id,
-                        by = item.optString("authorId").ifBlank { item.optString("by", "You") },
+                        by = authorId,
                         text = body,
                         at = item.optString("at"),
-                        role = role,
+                        role = roleField,
                         tags = tags,
                     ),
                 )

@@ -15,20 +15,19 @@ type DescriptionEditorModalProps = {
   title: string;
   value: string;
   onSave: (value: string) => void;
-  placeholder?: string;
-  saving?: boolean;
+  placeholder: string | null;
+  saving: boolean | null;
 };
 
-export function DescriptionEditorModal({
-  open,
-  onOpenChange,
-  title,
-  value,
-  onSave,
-  placeholder,
-  saving = false,
-}: DescriptionEditorModalProps) {
+export function DescriptionEditorModal(props: DescriptionEditorModalProps) {
+  const { open, onOpenChange, title, value, onSave } = props;
+  let placeholder: string | null = null;
+  if (props.placeholder !== null) {
+    placeholder = props.placeholder;
+  }
+  const saving = props.saving === true;
   const [draft, setDraft] = useState(value);
+  const isSaving = saving;
 
   useEffect(() => {
     if (open) setDraft(value);
@@ -50,17 +49,17 @@ export function DescriptionEditorModal({
           />
         </div>
         <DialogFooter className="border-t border-white/[0.06] px-6 py-4">
-          <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" disabled={isSaving} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             type="button"
-            disabled={saving}
+            disabled={isSaving}
             onClick={() => {
               onSave(draft);
             }}
           >
-            {saving ? "Saving…" : "Save"}
+            {isSaving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

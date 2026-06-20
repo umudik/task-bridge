@@ -5,16 +5,17 @@ import { cn } from "@/lib/utils";
 type WorkflowInspectorSidebarProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  pulseKey?: number;
+  pulseKey: number | null;
   children: React.ReactNode;
 };
 
-export function WorkflowInspectorSidebar({
-  open,
-  onOpenChange,
-  pulseKey = 0,
-  children,
-}: WorkflowInspectorSidebarProps) {
+export function WorkflowInspectorSidebar(rawProps: Partial<WorkflowInspectorSidebarProps> & Pick<WorkflowInspectorSidebarProps, "open" | "onOpenChange" | "children">) {
+  let pulseKey = 0;
+  if ("pulseKey" in rawProps && typeof rawProps.pulseKey === "number") {
+    pulseKey = rawProps.pulseKey;
+  }
+  const { open, onOpenChange, children } = rawProps;
+
   return (
     <aside
       className={cn(

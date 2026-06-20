@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { ZodError } from "zod";
+import type { AppErrorDetails } from "./errors/app-error.js";
 import { isAppError, statusCodeFromError } from "./errors/app-error.js";
 import { createLogger } from "./logger.js";
 import { config } from "./config.js";
@@ -22,28 +23,25 @@ async function main() {
   const app = Fastify({ logger: false });
   await app.register(cors, { origin: true });
 
-  await initProjectRegistry();
-  await refreshProjectRegistry();
+  initProjectRegistry();
+  refreshProjectRegistry();
 
-  // Health (no prefix)
-  await healthRoutes(app);
+  healthRoutes(app);
 
-  // All API routes under /api prefix
   await app.register(
-    async (apiApp) => {
-      await docsRoutes(apiApp);
-      await authRoutes(apiApp);
-      await adminUserRoutes(apiApp);
-      await projectRoutes(apiApp);
-      await taskRoutes(apiApp);
-      await workflowRoutes(apiApp);
-      await workflowTemplateRoutes(apiApp);
-      await libraryRoutes(apiApp);
+    (apiApp) => {
+      docsRoutes(apiApp);
+      authRoutes(apiApp);
+      adminUserRoutes(apiApp);
+      projectRoutes(apiApp);
+      taskRoutes(apiApp);
+      workflowRoutes(apiApp);
+      workflowTemplateRoutes(apiApp);
+      libraryRoutes(apiApp);
     },
     { prefix: "/api" },
   );
 
-  // Web UI — serves static files + SPA fallback
   await webRoutes(app);
 
   app.setErrorHandler((error, _request, reply) => {
@@ -58,7 +56,7 @@ async function main() {
     if (statusCode >= 500) {
       logger.error(message);
     }
-    const body: { error: string; details: unknown } = { error: message, details: null };
+    const body: { error: string; details: AppErrorDetails } = { error: message, details: null };
     if (isAppError(error) && error.details !== null) {
       body.details = error.details;
     }

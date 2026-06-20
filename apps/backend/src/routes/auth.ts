@@ -98,10 +98,7 @@ export function authRoutes(app: FastifyInstance) {
     }
     updateUserPassword(userRow.id, body.newPassword);
     return {
-      user: {
-        ...mapAuthUser(userRow),
-        mustChangePassword: false,
-      },
+      user: Object.assign({}, mapAuthUser(userRow), { mustChangePassword: false }),
     };
   });
 }

@@ -10,8 +10,7 @@ Browser dashboard (shadcn/ui + React) — mobile-like flow without voice.
 | `/app/projects` | Project picker |
 | `/app/home` | Send text tasks |
 | `/app/inbox` | Answers |
-| `/app/mobile` | Optional mobile QR pairing |
-| `/setup` | Legacy mobile-only QR page |
+| `/app/mobile` | Mobile QR pairing |
 
 ## Dev
 

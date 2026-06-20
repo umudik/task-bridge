@@ -35,7 +35,11 @@ import {
 } from "@/lib/api";
 
 export function WorkflowPage() {
-  const { projectId = "" } = useParams();
+  const params = useParams();
+  let projectId = "";
+  if (typeof params["projectId"] === "string" && params["projectId"].length > 0) {
+    projectId = params["projectId"];
+  }
   const session = useSession();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,7 +94,7 @@ export function WorkflowPage() {
   }
 
   function markDirty(next: WorkflowStage[]) {
-    setStages([...next].sort((a, b) => a.position - b.position));
+    setStages(next.slice().sort((a, b) => a.position - b.position));
     setDirty(true);
   }
 
@@ -102,7 +106,7 @@ export function WorkflowPage() {
   }
 
   function addStageAtEnd() {
-    const next = [...stages, createEmptyStage(stages.length)];
+    const next = stages.concat([createEmptyStage(stages.length)]);
     selectNewStage(next, next.length - 1);
   }
 
@@ -145,13 +149,16 @@ export function WorkflowPage() {
       return;
     }
     const stage = stages[index];
-    const activeTasks = stage?.activeTaskCount ?? 0;
+    if (!stage) {
+      return;
+    }
+    const activeTasks = stage.activeTaskCount !== null ? stage.activeTaskCount : 0;
     if (activeTasks > 0) {
       toast.error(`${activeTasks} epic(s) are on this step and it cannot be deleted`);
       return;
     }
     markDirty(
-      stages.filter((_, idx) => idx !== index).map((stage, position) => ({ ...stage, position })),
+      stages.filter((_, idx) => idx !== index).map((stage, position) => Object.assign({}, stage, { position })),
     );
     setEditorIndex(null);
     setSelectedTaskTemplateId(null);
@@ -161,11 +168,17 @@ export function WorkflowPage() {
   async function handleCreateMember(input: { name: string; role: string; actorKind: ProjectMember["actorKind"] }) {
     if (!session) return;
     const member = await createMember(session, projectId, input);
-    setMembers((current) => [...current, member].sort((a, b) => a.name.localeCompare(b.name)));
+    setMembers((current) => current.concat([member]).sort((a, b) => a.name.localeCompare(b.name)));
     toast.success("Member added");
   }
 
-  const editingStage = editorIndex !== null ? stages[editorIndex] ?? null : null;
+  let editingStage: WorkflowStage | null = null;
+  if (editorIndex !== null && editorIndex >= 0 && editorIndex < stages.length) {
+    const stageAtIndex = stages[editorIndex];
+    if (stageAtIndex) {
+      editingStage = stageAtIndex;
+    }
+  }
 
   function setStageBySortedIndex(sortedIndex: number | null, taskTemplateId: string | null = null) {
     if (sortedIndex === null) {
@@ -173,7 +186,7 @@ export function WorkflowPage() {
       setSelectedTaskTemplateId(null);
       return;
     }
-    const sorted = [...stages].sort((a, b) => a.position - b.position);
+    const sorted = stages.slice().sort((a, b) => a.position - b.position);
     const stage = sorted[sortedIndex];
     if (!stage) return;
     const index = stages.findIndex((item) => item.id === stage.id);
@@ -193,7 +206,7 @@ export function WorkflowPage() {
   }
 
   function stageAtSortedIndex(sortedIndex: number) {
-    const sorted = [...stages].sort((a, b) => a.position - b.position);
+    const sorted = stages.slice().sort((a, b) => a.position - b.position);
     const stage = sorted[sortedIndex];
     if (!stage) return null;
     const index = stages.findIndex((item) => item.id === stage.id);
@@ -204,11 +217,11 @@ export function WorkflowPage() {
   function addStageTask(sortedIndex: number) {
     const entry = stageAtSortedIndex(sortedIndex);
     if (!entry) return;
-    const templates = entry.stage.taskTemplates ?? [];
+    const templates = (entry.stage.taskTemplates);
     const created = createStageTaskTemplate(entry.stage.title, templates.length);
     const next = stages.map((item, idx) =>
       idx === entry.index
-        ? syncStageTemplates({ ...item, taskTemplates: [...templates, created] })
+        ? syncStageTemplates(Object.assign({}, item, { taskTemplates: templates.concat([created]) }))
         : item,
     );
     selectNewStage(next, entry.index, created.id);
@@ -217,13 +230,14 @@ export function WorkflowPage() {
   function moveTaskTemplate(sortedIndex: number, templateId: string, delta: -1 | 1) {
     const entry = stageAtSortedIndex(sortedIndex);
     if (!entry) return;
-    const templates = entry.stage.taskTemplates ?? [];
+    const templates = (entry.stage.taskTemplates);
     const next = stages.map((item, idx) =>
       idx === entry.index
-        ? syncStageTemplates({
-            ...item,
-            taskTemplates: moveTemplateAmongSiblings(templates, templateId, delta),
-          })
+        ? syncStageTemplates(
+            Object.assign({}, item, {
+              taskTemplates: moveTemplateAmongSiblings(templates, templateId, delta),
+            }),
+          )
         : item,
     );
     markDirty(next);
@@ -232,19 +246,20 @@ export function WorkflowPage() {
   function addSubtask(sortedIndex: number, parentTemplateId: string) {
     const entry = stageAtSortedIndex(sortedIndex);
     if (!entry) return;
-    const templates = entry.stage.taskTemplates ?? [];
+    const templates = (entry.stage.taskTemplates);
     const parent = findTemplateInTree(templates, parentTemplateId);
     if (!parent) return;
     const created = createSubtaskTemplate(
       parent.template.title,
-      parent.template.children?.length ?? 0,
+      parent.template.children.length,
     );
     const next = stages.map((item, idx) =>
       idx === entry.index
-        ? syncStageTemplates({
-            ...item,
-            taskTemplates: addChildTemplate(templates, parentTemplateId, created),
-          })
+        ? syncStageTemplates(
+            Object.assign({}, item, {
+              taskTemplates: addChildTemplate(templates, parentTemplateId, created),
+            }),
+          )
         : item,
     );
     selectNewStage(next, entry.index, created.id);
@@ -260,13 +275,24 @@ export function WorkflowPage() {
     );
   }
 
+  let projectLabel = "Project";
+  if (session !== null && session.projectName !== null) {
+    projectLabel = session.projectName;
+  } else if (projectId.length > 0) {
+    projectLabel = projectId;
+  }
+  let projectTasksPath = "/projects";
+  if (projectId.length > 0) {
+    projectTasksPath = `/projects/${projectId}/tasks`;
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <PageHeader
         breadcrumb={[
           { label: "Projects", to: "/projects" },
-          { label: session?.projectName ?? projectId ?? "Project", to: `/projects/${projectId}/tasks` },
-          { label: "Pipeline" },
+          { label: projectLabel, to: projectTasksPath },
+          { label: "Pipeline", to: null },
         ]}
         title="Pipeline"
         subtitle="Pipeline steps and task templates · epics run this workflow"
@@ -301,7 +327,7 @@ export function WorkflowPage() {
           <WorkflowCanvas
               className="min-h-0 flex-1"
               stages={stages}
-              selectedStageId={editingStage?.id ?? null}
+              selectedStageId={editingStage !== null ? editingStage.id : null}
               selectedTaskTemplateId={selectedTaskTemplateId}
               onAddStage={addStageAtEnd}
               onInsertStageAfter={insertStageAfter}
@@ -354,7 +380,11 @@ export function WorkflowPage() {
               onUpdateMember={async (memberId, patch) => {
                 if (!session) return;
                 try {
-                  const updated = await updateMember(session, projectId, memberId, patch);
+                  const updated = await updateMember(session, projectId, memberId, {
+                    name: null,
+                    role: patch.role,
+                    actorKind: patch.actorKind,
+                  });
                   setMembers((current) => current.map((item) => (item.id === memberId ? updated : item)));
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : "Failed to update member");

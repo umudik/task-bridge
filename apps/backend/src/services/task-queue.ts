@@ -79,17 +79,17 @@ function scopeTasks(tasks: BridgeTask[], projectId: string | null): BridgeTask[]
   return tasks.filter((task) => task.projectId === projectId);
 }
 
-export async function listPendingTasks(
+export function listPendingTasks(
   projectId: string | null = null,
   rawActor: ClaimActor | null = null,
-): Promise<TaskClaimPayload[]> {
+): TaskClaimPayload[] {
   let actor: ClaimActor | null;
   if (rawActor !== null) {
     actor = normalizeClaimActor(rawActor);
   } else {
     actor = null;
   }
-  const tasks = scopeTasks(await listBridgeTasks(), projectId);
+  const tasks = scopeTasks(listBridgeTasks(), projectId);
   const index = buildEpicClaimIndex(tasks);
   return sortWorkflowClaimCandidates(
     tasks.filter((task) => isWorkflowClaimable(task, index, actor)),
@@ -97,10 +97,10 @@ export async function listPendingTasks(
   ).map((task) => buildClaimPayload(task, turnIdForTask(task)));
 }
 
-export async function claimNextTask(
+export function claimNextTask(
   rawActor: ClaimActor,
   options: { projectId: string | null } | null = null,
-): Promise<{ task: BridgeTask; item: TaskClaimPayload } | null> {
+): { task: BridgeTask; item: TaskClaimPayload } | null {
   const actor = normalizeClaimActor(rawActor);
   let projectId: string | null;
   if (options !== null) {
@@ -108,7 +108,7 @@ export async function claimNextTask(
   } else {
     projectId = null;
   }
-  const tasks = scopeTasks(await listBridgeTasks(), projectId);
+  const tasks = scopeTasks(listBridgeTasks(), projectId);
   const index = buildEpicClaimIndex(tasks);
   const candidates = sortWorkflowClaimCandidates(
     tasks.filter((task) => canActorClaimTask(task, index, actor)),
@@ -116,7 +116,7 @@ export async function claimNextTask(
   );
 
   for (const candidate of candidates) {
-    const claimed = await claimBridgeTask(candidate.id, actor.claimedBy);
+    const claimed = claimBridgeTask(candidate.id, actor.claimedBy);
     if (!claimed) continue;
     return {
       task: claimed,
@@ -127,12 +127,12 @@ export async function claimNextTask(
   return null;
 }
 
-export async function validateTaskClaim(
+export function validateTaskClaim(
   taskId: number,
   rawActor: ClaimActor,
-): Promise<string | null> {
+): string | null {
   const actor = normalizeClaimActor(rawActor);
-  const tasks = await listBridgeTasks();
+  const tasks = listBridgeTasks();
   const task = tasks.find((entry) => entry.id === taskId);
   if (!task) return "Task not found";
   const index = buildEpicClaimIndex(tasks);

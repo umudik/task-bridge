@@ -15,7 +15,9 @@ export function flattenTemplateNodes(
   for (const node of nodes) {
     result.push(node);
     if (node.children.length > 0) {
-      result.push(...flattenTemplateNodes(node.children));
+      for (const child of flattenTemplateNodes(node.children)) {
+        result.push(child);
+      }
     }
   }
   return result;
@@ -62,7 +64,9 @@ export function collectSpawnableTemplates(
 
     if (node.children.length > 0) {
       if (!ctx.doneTemplateIds.has(node.id)) continue;
-      result.push(...collectSpawnableTemplates(node.children, ctx));
+      for (const child of collectSpawnableTemplates(node.children, ctx)) {
+        result.push(child);
+      }
     }
   }
 
@@ -76,7 +80,9 @@ export function collectSiblingTemplateIds(
   for (const node of nodes) {
     ids.push(node.id);
     if (node.children.length > 0) {
-      ids.push(...collectSiblingTemplateIds(node.children));
+      for (const childId of collectSiblingTemplateIds(node.children)) {
+        ids.push(childId);
+      }
     }
   }
   return ids;

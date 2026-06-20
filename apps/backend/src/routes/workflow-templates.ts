@@ -75,18 +75,18 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
       stages: body.stages.map((stage) => {
         let layoutX: number | null = null;
         if (Number(stage.layoutX) === stage.layoutX) {
-          layoutX = stage.layoutX as number;
+          layoutX = stage.layoutX;
         }
         let layoutY: number | null = null;
         if (Number(stage.layoutY) === stage.layoutY) {
-          layoutY = stage.layoutY as number;
+          layoutY = stage.layoutY;
         }
         let autoAssignRole: string | null = null;
         const trimmedRole = stage.autoAssignRole.trim();
         if (trimmedRole) {
           autoAssignRole = trimmedRole;
         }
-        return { ...stage, layoutX, layoutY, autoAssignRole };
+        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole });
       }),
     });
     return reply.status(201).send(template);
@@ -145,18 +145,18 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
       body.stages.map((stage) => {
         let layoutX: number | null = null;
         if (Number(stage.layoutX) === stage.layoutX) {
-          layoutX = stage.layoutX as number;
+          layoutX = stage.layoutX;
         }
         let layoutY: number | null = null;
         if (Number(stage.layoutY) === stage.layoutY) {
-          layoutY = stage.layoutY as number;
+          layoutY = stage.layoutY;
         }
         let autoAssignRole: string | null = null;
         const trimmedRole = stage.autoAssignRole.trim();
         if (trimmedRole) {
           autoAssignRole = trimmedRole;
         }
-        return { ...stage, layoutX, layoutY, autoAssignRole };
+        return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole });
       }),
     );
     return reply.status(200).send(template);

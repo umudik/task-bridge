@@ -13,9 +13,13 @@ export const TASK_NODE_GAP = 8;
 export const STAGE_TASK_ADD_STACK = 16 + NODE_ADD_BTN_SIZE;
 
 export function taskRowCanvasWidth(depth: number): number {
+  let connectorWidth = 0;
+  if (depth > 0) {
+    connectorWidth = SUBTASK_CONNECTOR_WIDTH;
+  }
   return (
     depth * TASK_DEPTH_INDENT +
-    (depth > 0 ? SUBTASK_CONNECTOR_WIDTH : 0) +
+    connectorWidth +
     TASK_REORDER_WIDTH +
     TASK_NODE_WIDTH +
     TASK_ROW_LINK_WIDTH +
@@ -27,7 +31,7 @@ export function maxTaskTreeCanvasWidth(nodes: StageTaskTemplate[]): number {
   let max = 0;
   function walk(node: StageTaskTemplate, depth: number) {
     max = Math.max(max, taskRowCanvasWidth(depth));
-    for (const child of sanitizeStageTemplates(node.children ?? [])) {
+    for (const child of sanitizeStageTemplates(node.children)) {
       walk(child, depth + 1);
     }
   }
@@ -38,7 +42,7 @@ export function maxTaskTreeCanvasWidth(nodes: StageTaskTemplate[]): number {
 }
 
 function resolveStageColumnWidth(stage: WorkflowStage, stageCardWidth: number): number {
-  const templates = stage.taskTemplates ?? [];
+  const templates = stage.taskTemplates;
   if (templates.length === 0) return stageCardWidth;
   return Math.max(stageCardWidth, maxTaskTreeCanvasWidth(templates));
 }
@@ -46,7 +50,7 @@ function resolveStageColumnWidth(stage: WorkflowStage, stageCardWidth: number): 
 export function stageLayoutKey(stages: WorkflowStage[]): string {
   return stages
     .map((stage) => {
-      const templates = stage.taskTemplates ?? [];
+      const templates = stage.taskTemplates;
       return [
         stage.id,
         countSpawnableTemplates(templates),
@@ -83,7 +87,7 @@ export function slugify(value: string) {
 }
 
 export function stagesForDisplay(stages: WorkflowStage[]): DisplayStage[] {
-  const sorted = [...stages].sort((a, b) => a.position - b.position);
+  const sorted = stages.slice().sort((a, b) => a.position - b.position);
   const widths = sorted.map((stage) => resolveStageColumnWidth(stage, STAGE_CARD_WIDTH));
   const totalWidth =
     widths.reduce((sum, width) => sum + width, 0) +
@@ -95,15 +99,20 @@ export function stagesForDisplay(stages: WorkflowStage[]): DisplayStage[] {
   );
   const centerY = Math.max(48, (CANVAS_HEIGHT - maxStack) / 2);
   return sorted.map((stage, index) => {
-    const columnWidth = widths[index] ?? STAGE_CARD_WIDTH;
+    let columnWidth = STAGE_CARD_WIDTH;
+    if (index >= 0 && index < widths.length) {
+      const widthAtIndex = widths[index];
+      if (typeof widthAtIndex === "number") {
+        columnWidth = widthAtIndex;
+      }
+    }
     const displayX = cursorX;
     cursorX += columnWidth + STAGE_COLUMN_GAP;
-    return {
-      ...stage,
+    return Object.assign({}, stage, {
       displayX,
       displayY: centerY,
       columnWidth,
-    };
+    });
   });
 }
 
@@ -117,11 +126,12 @@ export function createEmptyStage(position: number): WorkflowStage {
     title: "New step",
     description: "",
     position,
-    autoAssignRole: undefined,
+    autoAssignRole: null,
     layoutX: null,
     layoutY: null,
     spawnTaskCount: 0,
     taskTemplates: [],
+    activeTaskCount: null,
   };
 }
 
@@ -130,45 +140,48 @@ export function insertStageAt(
   afterIndex: number | null,
   stage: WorkflowStage,
 ): WorkflowStage[] {
-  const sorted = [...stages].sort((a, b) => a.position - b.position);
-  const insertAt = afterIndex === null ? 0 : afterIndex + 1;
-  const next = [...sorted.slice(0, insertAt), stage, ...sorted.slice(insertAt)];
-  return next.map((item, position) => ({ ...item, position }));
+  const sorted = stages.slice().sort((a, b) => a.position - b.position);
+  let insertAt = 0;
+  if (afterIndex !== null) {
+    insertAt = afterIndex + 1;
+  }
+  const next = sorted.slice(0, insertAt).concat([stage], sorted.slice(insertAt));
+  return next.map((item, position) => Object.assign({}, item, { position }));
 }
 
 export function moveStageBy(stages: WorkflowStage[], index: number, delta: -1 | 1): WorkflowStage[] {
-  const sorted = [...stages].sort((a, b) => a.position - b.position);
+  const sorted = stages.slice().sort((a, b) => a.position - b.position);
   const target = index + delta;
   if (target < 0 || target >= sorted.length) return stages;
-  const next = [...sorted];
+  const next = sorted.slice();
   const current = next[index];
   const swap = next[target];
   if (!current || !swap) return stages;
   next[index] = swap;
   next[target] = current;
-  return next.map((item, position) => ({ ...item, position }));
+  return next.map((item, position) => Object.assign({}, item, { position }));
 }
 
 export function syncStageTemplates(stage: WorkflowStage): WorkflowStage {
-  const taskTemplates = sanitizeStageTemplates(stage.taskTemplates ?? []);
-  return {
-    ...stage,
+  const taskTemplates = sanitizeStageTemplates(stage.taskTemplates);
+  return Object.assign({}, stage, {
     taskTemplates,
     spawnTaskCount: countSpawnableTemplates(taskTemplates),
-  };
+  });
 }
 
 export function stageStackHeight(stage: WorkflowStage): number {
-  const templates = stage.taskTemplates ?? [];
+  const templates = stage.taskTemplates;
   const base = STAGE_CARD_HEIGHT + STAGE_TASK_ADD_STACK;
   if (templates.length === 0) return base;
   return base + STEP_TASK_GAP + templateStackHeight(templates);
 }
 
 export function normalizeStagePositions(stages: WorkflowStage[]): WorkflowStage[] {
-  return [...stages]
+  return stages
+    .slice()
     .sort((a, b) => a.position - b.position)
-    .map((stage, position) => ({ ...stage, position }));
+    .map((stage, position) => Object.assign({}, stage, { position }));
 }
 
 export function screenToCanvas(
@@ -205,7 +218,10 @@ export function bindCanvasWheelZoom(
     const pointerY = event.clientY - rect.top;
     const currentZoom = refs.getZoom();
     const currentPan = refs.getPan();
-    const factor = event.deltaY < 0 ? 1.08 : 0.92;
+    let factor = 0.92;
+    if (event.deltaY < 0) {
+      factor = 1.08;
+    }
     const nextZoom = Math.min(maxZoom, Math.max(minZoom, currentZoom * factor));
     const scale = nextZoom / currentZoom;
     refs.setPan({

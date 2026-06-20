@@ -30,14 +30,14 @@ import {
 import { markTaskRead } from "@/lib/read-tasks";
 import { formatWhen } from "@/lib/utils";
 
-function parseTime(value: string | null | undefined) {
+function parseTime(value: string | null) {
   if (!value) return 0;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function sortComments(comments: TaskComment[]) {
-  return [...comments].sort((a, b) => parseTime(a.at) - parseTime(b.at));
+  return comments.slice().sort((a, b) => parseTime(a.at) - parseTime(b.at));
 }
 
 function authorLabel(comment: TaskComment) {
@@ -85,7 +85,7 @@ export function TaskPage() {
         }
         setDetail(data);
         if (data.isEpic) {
-          const workflowProjectId = data.projectId ?? projectId;
+          const workflowProjectId = (data.projectId !== null ? data.projectId : projectId);
           if (workflowProjectId) {
             const workflow = await fetchProjectWorkflow(activeSession, workflowProjectId);
             if (active) {
@@ -93,7 +93,8 @@ export function TaskPage() {
               setMembers(workflow.members);
               setActAsMemberId((current) => {
                 if (current && workflow.members.some((member) => member.id === current)) return current;
-                return workflow.members[0]?.id ?? "";
+                const firstMember = workflow.members[0];
+                return firstMember ? firstMember.id : "";
               });
             }
           }
@@ -112,13 +113,17 @@ export function TaskPage() {
   }, [session, taskId, projectId]);
 
   const comments = useMemo(
-    () => sortComments(detail?.comments ?? []),
-    [detail?.comments],
+    () => sortComments(detail !== null ? detail.comments : []),
+    [detail],
   );
-  const description = detail?.description?.trim() ? detail.description : null;
-  const subtasks = detail?.subtasks ?? [];
+  const description =
+    detail !== null && detail.description.trim() !== "" ? detail.description : null;
+  const subtasks = detail !== null ? detail.subtasks : [];
   const selectedSubtask = useMemo(
-    () => subtasks.find((entry) => entry.taskId === selectedSubtaskId) ?? null,
+    () => {
+      const found = subtasks.find((entry) => entry.taskId === selectedSubtaskId);
+      return found ? found : null;
+    },
     [subtasks, selectedSubtaskId],
   );
   const epicProgress = useMemo(() => {
@@ -159,10 +164,11 @@ export function TaskPage() {
     const actor = members.find((member) => member.id === actAsMemberId);
     setUpdatingSubtaskStatus(true);
     try {
-      await updateTaskWorkStatus(session, subtaskId, workStatus, actor?.name ?? "web");
+      const actorName = actor ? actor.name : "web";
+      await updateTaskWorkStatus(session, subtaskId, workStatus, actorName);
       const data = await reloadEpic();
       if (data) {
-        const refreshed = data.subtasks?.find((entry) => entry.taskId === subtaskId);
+        const refreshed = data.subtasks.find((entry) => entry.taskId === subtaskId);
         if (refreshed) setSelectedSubtaskId(subtaskId);
       }
       toast.success("Status updated");
@@ -182,14 +188,14 @@ export function TaskPage() {
       const created = await createTask(session, {
         parentId: addTaskTarget.parentId,
         title: trimmed,
-        description: description.trim() || undefined,
-        stageId: addTaskTarget.stageId ?? undefined,
+        description: description.trim() || null,
+        stageId: addTaskTarget.stageId,
       });
       const data = await reloadEpic();
       const createdId = Number(created.id);
       if (Number.isFinite(createdId)) {
         setSelectedSubtaskId(createdId);
-      } else if (data?.subtasks?.length) {
+      } else if (data && data.subtasks.length > 0) {
         const match = data.subtasks.find((entry) => entry.title === trimmed);
         if (match) setSelectedSubtaskId(match.taskId);
       }
@@ -238,18 +244,23 @@ export function TaskPage() {
   const tasksPath = `/projects/${projectId}/tasks`;
   const crumbs = [
     { label: "Projects", to: "/projects" },
-    { label: session?.projectName ?? projectId ?? "Project", to: tasksPath },
+    { label: session !== null && session.projectName !== null ? session.projectName : projectId !== null ? projectId : "Project", to: tasksPath },
     { label: "Epics", to: tasksPath },
   ];
-  if (detail?.parent) {
+  if (detail !== null && detail.parent !== null) {
     crumbs.push({ label: detail.parent.title, to: `${tasksPath}/${detail.parent.taskId}` });
+  }
+
+  let pageTitle = "Task";
+  if (!loading && detail !== null) {
+    pageTitle = detail.title;
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         breadcrumb={crumbs}
-        title={loading ? "Loading…" : detail?.title ?? "Task"}
+        title={loading ? "Loading…" : pageTitle}
       />
 
       <div className="flex-1 overflow-y-auto px-8 py-5 pb-10">
@@ -268,7 +279,7 @@ export function TaskPage() {
                       Parent: {detail.parent.title}
                     </Link>
                   ) : null}
-                  {detail.isEpic && detail.stage?.title ? (
+                  {detail.isEpic && detail.stage !== null && detail.stage.title.length > 0 ? (
                     <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-primary">
                       Active step: {detail.stage.title}
                     </span>
@@ -311,9 +322,9 @@ export function TaskPage() {
             <TaskLibraryLinks
               session={session}
               taskId={taskId}
-              links={detail.libraryLinks ?? []}
+              links={(detail.libraryLinks !== null ? detail.libraryLinks : [])}
               onChange={(libraryLinks) =>
-                setDetail((current) => (current ? { ...current, libraryLinks } : current))
+                setDetail((current) => (current ? Object.assign({}, current, { libraryLinks }) : current))
               }
             />
           ) : null}
@@ -323,9 +334,9 @@ export function TaskPage() {
               <EpicProgressCanvas
                 stages={workflowStages}
                 epicId={taskId}
-                epicStageId={detail.stageId ?? null}
+                epicStageId={detail.stageId}
                 subtasks={subtasks}
-                workflowState={detail.workflowState ?? []}
+                workflowState={detail.workflowState}
                 selectedTaskId={selectedSubtaskId}
                 onSelectTask={setSelectedSubtaskId}
                 onAddTaskToStage={(stageId, stageTitle) =>
@@ -334,6 +345,7 @@ export function TaskPage() {
                 onAddSubtask={(parentTaskId, parentTitle, stageId) =>
                   setAddTaskTarget({ parentId: parentTaskId, stageId, label: `subtask of "${parentTitle}"` })
                 }
+                className={null}
               />
               <EpicTaskInspector
                 projectId={projectId}
@@ -357,7 +369,12 @@ export function TaskPage() {
               </CardHeader>
               <CardContent className="space-y-3 pt-0">
                 <p className="text-sm text-muted-foreground">
-                  Step: {detail.stage?.title ?? detail.stageId ?? "—"}
+                  Step: {(function () {
+                    const stageTitle = detail.stage !== null ? detail.stage.title : null;
+                    if (stageTitle !== null) return stageTitle;
+                    if (detail.stageId !== null) return detail.stageId;
+                    return "-";
+                  })()}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {(["todo", "in_progress", "done"] as WorkStatus[]).map((status) => (
@@ -392,7 +409,7 @@ export function TaskPage() {
               open={descriptionOpen}
               onOpenChange={setDescriptionOpen}
               title="Epic description"
-              value={detail.description ?? ""}
+              value={detail !== null ? detail.description : ""}
               onSave={(next) => void handleSaveDescription(next)}
               placeholder="Goals, scope, links, acceptance notes…"
               saving={savingDescription}
@@ -405,7 +422,7 @@ export function TaskPage() {
               onOpenChange={(open) => {
                 if (!open) setAddTaskTarget(null);
               }}
-              targetLabel={addTaskTarget?.label ?? null}
+              targetLabel={addTaskTarget !== null ? addTaskTarget.label : null}
               saving={creatingTask}
               onCreate={(title, description) => void handleCreateTask(title, description)}
             />
@@ -470,8 +487,11 @@ export function TaskPage() {
 
 function CommentRow({ comment }: { comment: TaskComment }) {
   const name = authorLabel(comment);
-  const body = comment.body ?? comment.text ?? null;
-  const tags = comment.tags ?? [];
+  let body = comment.body;
+  if (body === null) {
+    body = comment.text;
+  }
+  const tags = comment.tags;
 
   return (
     <article className="w-full py-3 first:pt-0 last:pb-0">

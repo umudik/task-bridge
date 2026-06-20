@@ -50,7 +50,12 @@ function walkTemplateNodes(
       comments: [],
       taskId: null,
     };
-    const children = node.children ?? [];
+    let children: StageTaskTemplate[];
+    if (node.children !== null) {
+      children = node.children;
+    } else {
+      children = [];
+    }
     if (children.length > 0) {
       walkTemplateNodes(children, stageId, node.id, out);
     }
@@ -83,14 +88,12 @@ export function buildInitialWorkflowState(input: {
 export function parseWorkflowStateData(raw: string | null): EpicWorkflowStateData | null {
   if (!raw || !raw.trim()) return null;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || Array.isArray(parsed) || !(parsed instanceof Object)) return null;
-    const row = parsed as Record<string, unknown>;
+    const row = JSON.parse(raw) as EpicWorkflowStateData;
     if (!row.nodes || !(row.nodes instanceof Object) || Array.isArray(row.nodes)) return null;
-    const nodes = row.nodes as Record<string, WorkflowStateNode>;
+    const nodes = row.nodes;
     let stageId: string | null = null;
     if (row.stageId !== null && String(row.stageId) === row.stageId) {
-      const trimmed = (row.stageId as string).trim();
+      const trimmed = row.stageId.trim();
       stageId = trimmed || null;
     }
     return { stageId, nodes };

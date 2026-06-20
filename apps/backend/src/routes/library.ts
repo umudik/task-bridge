@@ -62,8 +62,10 @@ export function libraryRoutes(app: FastifyInstance) {
 
   app.post("/libraries", async (request, reply) => {
     assertAuth(request);
-    let rawBody: unknown = request.body;
-    if (rawBody == null) { rawBody = {}; }
+    let rawBody = request.body;
+    if (rawBody === null) {
+      rawBody = {};
+    }
     const body = createLibrarySchema.parse(rawBody);
     const library = createLibrary(body);
     return reply.status(201).send(library);
@@ -80,8 +82,10 @@ export function libraryRoutes(app: FastifyInstance) {
   app.put("/libraries/:libraryId", (request) => {
     assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
-    let rawBody: unknown = request.body;
-    if (rawBody == null) { rawBody = {}; }
+    let rawBody = request.body;
+    if (rawBody === null) {
+      rawBody = {};
+    }
     const body = updateLibrarySchema.parse(rawBody);
     return updateLibrary(libraryId, body);
   });
@@ -96,8 +100,10 @@ export function libraryRoutes(app: FastifyInstance) {
   app.post("/libraries/:libraryId/documents", async (request, reply) => {
     assertAuth(request);
     const { libraryId } = libraryIdParamsSchema.parse(request.params);
-    let rawBody: unknown = request.body;
-    if (rawBody == null) { rawBody = {}; }
+    let rawBody = request.body;
+    if (rawBody === null) {
+      rawBody = {};
+    }
     const body = createDocumentSchema.parse(rawBody);
     const document = createLibraryDocument(libraryId, body);
     return reply.status(201).send(document);
@@ -114,8 +120,10 @@ export function libraryRoutes(app: FastifyInstance) {
   app.put("/libraries/:libraryId/documents/:documentId", async (request, reply) => {
     assertAuth(request);
     const { libraryId, documentId } = libraryDocumentParamsSchema.parse(request.params);
-    let rawBody: unknown = request.body;
-    if (rawBody == null) { rawBody = {}; }
+    let rawBody = request.body;
+    if (rawBody === null) {
+      rawBody = {};
+    }
     const body = updateLibrarySchema.parse(rawBody);
     const existing = getLibraryDocument(documentId);
     if (!existing || existing.libraryId !== libraryId) {
@@ -138,8 +146,10 @@ export function libraryRoutes(app: FastifyInstance) {
   app.post("/library-documents/:documentId/links", async (request, reply) => {
     assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
-    let rawBody: unknown = request.body;
-    if (rawBody == null) { rawBody = {}; }
+    let rawBody = request.body;
+    if (rawBody === null) {
+      rawBody = {};
+    }
     const body = linkDocumentSchema.parse(rawBody);
     const links = linkDocumentToTask(documentId, body.taskId);
     return reply.status(201).send({ items: links });

@@ -3,28 +3,35 @@ import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type ProjectRoleSelectProps = {
-  id?: string;
+  id: string | null;
   label: string;
   value: string;
   roles: string[];
   onChange: (value: string) => void;
-  emptyLabel?: string;
+  emptyLabel: string | null;
 };
 
-export function ProjectRoleSelect({
-  id,
-  label,
-  value,
-  roles,
-  onChange,
-  emptyLabel = "Off",
-}: ProjectRoleSelectProps) {
+export function ProjectRoleSelect(rawProps: Partial<ProjectRoleSelectProps> & Pick<ProjectRoleSelectProps, "label" | "value" | "roles" | "onChange">) {
+  let id: string | null = null;
+  if ("id" in rawProps) {
+    if (rawProps.id === null) {
+      id = null;
+    } else if (typeof rawProps.id === "string") {
+      id = rawProps.id;
+    }
+  }
+  let emptyLabel = "Off";
+  if ("emptyLabel" in rawProps && typeof rawProps.emptyLabel === "string") {
+    emptyLabel = rawProps.emptyLabel;
+  }
+  const { label, value, roles, onChange } = rawProps;
+
   const hasRoles = roles.length > 0;
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      {id !== null ? <Label htmlFor={id}>{label}</Label> : <Label>{label}</Label>}
       <Select
-        id={id}
+        id={id !== null ? id : ""}
         value={value}
         disabled={!hasRoles}
         onChange={(event) => onChange(event.target.value)}

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,7 +62,7 @@ export async function webRoutes(app: FastifyInstance) {
     wildcard: false,
   });
 
-  const spa = (_request: unknown, reply: { sendFile: (name: string, dir: string) => unknown }) =>
+  const spa = (_request: FastifyRequest, reply: FastifyReply) =>
     reply.sendFile("index.html", root);
 
   app.get("/", async (_request, reply) => reply.redirect("/app/login"));
@@ -79,11 +79,9 @@ export async function webRoutes(app: FastifyInstance) {
   app.get("/app/admin/users", spa);
   app.get("/app/*", async (request, reply) => {
     const urlParts = request.url.split("?");
-    let path: string;
-    if (urlParts[0] != null) {
+    let path = "";
+    if (urlParts.length > 0) {
       path = urlParts[0];
-    } else {
-      path = "";
     }
     if (path.startsWith("/app/assets/")) {
       return reply.status(404).send({ error: "Not found" });

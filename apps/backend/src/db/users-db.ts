@@ -70,7 +70,7 @@ export function createUser(params: {
   password: string;
   role: UserRole;
   isSystemAdmin: boolean;
-  mustChangePassword?: boolean;
+  mustChangePassword: boolean;
 }): PublicUser {
   const db = getProjectsDb();
   const id = randomBytes(8).toString("hex");
@@ -83,9 +83,9 @@ export function createUser(params: {
     isAdminFlag = 1;
   }
 
-  let mustChangePasswordFlag = 1;
-  if (params.mustChangePassword === false) {
-    mustChangePasswordFlag = 0;
+  let mustChangePasswordFlag = 0;
+  if (params.mustChangePassword) {
+    mustChangePasswordFlag = 1;
   }
 
   db.prepare(`

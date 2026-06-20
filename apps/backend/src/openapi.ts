@@ -172,6 +172,16 @@ function err(codes: number[]) {
 function json(schema: object) {
   return { required: true, content: { "application/json": { schema } } };
 }
+function mergeResponses(
+  first: Record<string, object>,
+  second: Record<string, object> | null = null,
+): Record<string, object> {
+  const result = Object.assign({}, first);
+  if (second !== null) {
+    Object.assign(result, second);
+  }
+  return result;
+}
 
 const bearer = [{ bearerAuth: [] }];
 
@@ -234,10 +244,10 @@ export const openapiSpec = {
             password: { type: "string", minLength: 6 },
           },
         }),
-        responses: {
-          ...created({ type: "object", properties: { user: { $ref: "#/components/schemas/User" }, message: { type: "string" } } }),
-          ...err([409]),
-        },
+        responses: mergeResponses(
+          created({ type: "object", properties: { user: { $ref: "#/components/schemas/User" }, message: { type: "string" } } }),
+          err([409]),
+        ),
       },
     },
     "/auth/login": {
@@ -253,8 +263,8 @@ export const openapiSpec = {
             password: { type: "string", minLength: 1 },
           },
         }),
-        responses: {
-          ...ok({
+        responses: mergeResponses(
+          ok({
             type: "object",
             required: ["token", "user"],
             properties: {
@@ -262,8 +272,8 @@ export const openapiSpec = {
               user: { $ref: "#/components/schemas/User" },
             },
           }),
-          ...err([401]),
-        },
+          err([401]),
+        ),
       },
     },
     "/auth/me": {
@@ -271,7 +281,7 @@ export const openapiSpec = {
         tags: ["auth"],
         summary: "Get the currently authenticated user",
         security: bearer,
-        responses: { ...ok({ $ref: "#/components/schemas/User" }), ...err([401]) },
+        responses: mergeResponses(ok({ $ref: "#/components/schemas/User" }), err([401])),
       },
     },
 
@@ -281,10 +291,10 @@ export const openapiSpec = {
         tags: ["admin"],
         summary: "List all users (admin only)",
         security: bearer,
-        responses: {
-          ...ok({ type: "object", required: ["users"], properties: { users: { type: "array", items: { $ref: "#/components/schemas/User" } } } }),
-          ...err([401, 403]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", required: ["users"], properties: { users: { type: "array", items: { $ref: "#/components/schemas/User" } } } }),
+          err([401, 403]),
+        ),
       },
       post: {
         tags: ["admin"],
@@ -300,10 +310,10 @@ export const openapiSpec = {
             role: { $ref: "#/components/schemas/UserRole" },
           },
         }),
-        responses: {
-          ...created({ type: "object", properties: { user: { $ref: "#/components/schemas/User" } } }),
-          ...err([400, 401, 403, 409]),
-        },
+        responses: mergeResponses(
+          created({ type: "object", properties: { user: { $ref: "#/components/schemas/User" } } }),
+          err([400, 401, 403, 409]),
+        ),
       },
     },
     "/admin/users/{userId}": {
@@ -319,17 +329,17 @@ export const openapiSpec = {
             role: { $ref: "#/components/schemas/UserRole" },
           },
         }),
-        responses: {
-          ...ok({ type: "object", properties: { user: { $ref: "#/components/schemas/User" } } }),
-          ...err([400, 401, 403, 404]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", properties: { user: { $ref: "#/components/schemas/User" } } }),
+          err([400, 401, 403, 404]),
+        ),
       },
       delete: {
         tags: ["admin"],
         summary: "Delete a user (admin only; system admin cannot be deleted)",
         security: bearer,
         parameters: [{ name: "userId", in: "path", required: true, schema: { type: "string" } }],
-        responses: { ...noContent(), ...err([400, 401, 403, 404]) },
+        responses: mergeResponses(noContent(), err([400, 401, 403, 404])),
       },
     },
     "/admin/users/{userId}/token": {
@@ -338,10 +348,10 @@ export const openapiSpec = {
         summary: "Get a user's bearer token — use for mobile QR code generation (admin only)",
         security: bearer,
         parameters: [{ name: "userId", in: "path", required: true, schema: { type: "string" } }],
-        responses: {
-          ...ok({ type: "object", required: ["token"], properties: { token: { type: "string" } } }),
-          ...err([401, 403, 404]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", required: ["token"], properties: { token: { type: "string" } } }),
+          err([401, 403, 404]),
+        ),
       },
     },
 
@@ -351,10 +361,10 @@ export const openapiSpec = {
         tags: ["projects"],
         summary: "List all projects",
         security: bearer,
-        responses: {
-          ...ok({ type: "object", required: ["projects"], properties: { projects: { type: "array", items: { $ref: "#/components/schemas/Project" } } } }),
-          ...err([401]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", required: ["projects"], properties: { projects: { type: "array", items: { $ref: "#/components/schemas/Project" } } } }),
+          err([401]),
+        ),
       },
       post: {
         tags: ["projects"],
@@ -370,10 +380,10 @@ export const openapiSpec = {
             workflowTemplateId: { type: "string", description: "Apply a workflow template on creation" },
           },
         }),
-        responses: {
-          ...created({ $ref: "#/components/schemas/Project" }),
-          ...err([400, 401, 409]),
-        },
+        responses: mergeResponses(
+          created({ $ref: "#/components/schemas/Project" }),
+          err([400, 401, 409]),
+        ),
       },
     },
     "/projects/{id}/repo-path": {
@@ -383,10 +393,10 @@ export const openapiSpec = {
         security: bearer,
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         requestBody: json({ type: "object", required: ["repoPath"], properties: { repoPath: { type: "string", minLength: 1 } } }),
-        responses: {
-          ...ok({ type: "object", properties: { id: { type: "string" }, name: { type: "string" }, repoPath: { type: "string" } } }),
-          ...err([401, 404]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", properties: { id: { type: "string" }, name: { type: "string" }, repoPath: { type: "string" } } }),
+          err([401, 404]),
+        ),
       },
     },
 
@@ -406,7 +416,7 @@ export const openapiSpec = {
             text: { type: "string", description: "Alternative: full markdown; first line becomes title" },
           },
         }),
-        responses: { ...created({ $ref: "#/components/schemas/CreatedTaskResponse" }), ...err([400, 401]) },
+        responses: mergeResponses(created({ $ref: "#/components/schemas/CreatedTaskResponse" }), err([400, 401])),
       },
     },
     "/tasks": {
@@ -414,10 +424,10 @@ export const openapiSpec = {
         tags: ["tasks"],
         summary: "List all tasks (epics + subtasks)",
         security: bearer,
-        responses: {
-          ...ok({ type: "object", required: ["items"], properties: { items: { type: "array", items: { $ref: "#/components/schemas/TaskSummary" } } } }),
-          ...err([401]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", required: ["items"], properties: { items: { type: "array", items: { $ref: "#/components/schemas/TaskSummary" } } } }),
+          err([401]),
+        ),
       },
       post: {
         tags: ["tasks"],
@@ -433,7 +443,7 @@ export const openapiSpec = {
             stageId: { type: "string" },
           },
         }),
-        responses: { ...created({ $ref: "#/components/schemas/CreatedTaskResponse" }), ...err([400, 401]) },
+        responses: mergeResponses(created({ $ref: "#/components/schemas/CreatedTaskResponse" }), err([400, 401])),
       },
     },
     "/tasks/{id}": {
@@ -442,7 +452,7 @@ export const openapiSpec = {
         summary: "Get task detail (includes comments, work-status, subtasks for epics)",
         security: bearer,
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
-        responses: { ...ok({ type: "object" }), ...err([401, 404]) },
+        responses: mergeResponses(ok({ type: "object" }), err([401, 404])),
       },
       patch: {
         tags: ["tasks"],
@@ -460,7 +470,7 @@ export const openapiSpec = {
             },
           },
         }),
-        responses: { ...ok({ type: "object" }), ...err([400, 401, 404]) },
+        responses: mergeResponses(ok({ type: "object" }), err([400, 401, 404])),
       },
     },
     "/tasks/{id}/claim": {
@@ -478,7 +488,7 @@ export const openapiSpec = {
             actorKind: { $ref: "#/components/schemas/ActorKind" },
           },
         }),
-        responses: { ...ok({ type: "object" }), ...err([401, 404, 409]) },
+        responses: mergeResponses(ok({ type: "object" }), err([401, 404, 409])),
       },
     },
     "/tasks/{id}/unclaim": {
@@ -487,10 +497,10 @@ export const openapiSpec = {
         summary: "Release a claimed task",
         security: bearer,
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
-        responses: {
-          ...ok({ type: "object", properties: { taskId: { type: "integer" }, stageId: { type: "string", nullable: true } } }),
-          ...err([401, 404]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", properties: { taskId: { type: "integer" }, stageId: { type: "string", nullable: true } } }),
+          err([401, 404]),
+        ),
       },
     },
     "/tasks/{id}/work-status": {
@@ -509,7 +519,7 @@ export const openapiSpec = {
             actorKind: { $ref: "#/components/schemas/ActorKind" },
           },
         }),
-        responses: { ...ok({ type: "object" }), ...err([400, 401, 404]) },
+        responses: mergeResponses(ok({ type: "object" }), err([400, 401, 404])),
       },
     },
     "/projects/{projectId}/epics/{epicId}/tasks": {
@@ -521,7 +531,7 @@ export const openapiSpec = {
           { name: "projectId", in: "path", required: true, schema: { type: "string" } },
           { name: "epicId", in: "path", required: true, schema: { type: "integer" } },
         ],
-        responses: { ...ok({ type: "object" }), ...err([401, 404]) },
+        responses: mergeResponses(ok({ type: "object" }), err([401, 404])),
       },
     },
 
@@ -536,10 +546,10 @@ export const openapiSpec = {
           { name: "role", in: "query", schema: { type: "string" } },
           { name: "claimedBy", in: "query", schema: { type: "string" } },
         ],
-        responses: {
-          ...ok({ type: "object", required: ["items"], properties: { items: { type: "array", items: { type: "object" } } } }),
-          ...err([401]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", required: ["items"], properties: { items: { type: "array", items: { type: "object" } } } }),
+          err([401]),
+        ),
       },
     },
     "/worker/claim-next": {
@@ -557,7 +567,7 @@ export const openapiSpec = {
             projectId: { type: "string" },
           },
         }),
-        responses: { ...ok({ type: "object" }), ...err([401, 404]) },
+        responses: mergeResponses(ok({ type: "object" }), err([401, 404])),
       },
     },
 
@@ -574,7 +584,7 @@ export const openapiSpec = {
           { name: "cursor", in: "query", schema: { type: "string" } },
           { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } },
         ],
-        responses: { ...ok({ type: "object" }), ...err([401]) },
+        responses: mergeResponses(ok({ type: "object" }), err([401])),
       },
     },
 
@@ -585,7 +595,7 @@ export const openapiSpec = {
         summary: "Get a project's workflow (stages + members + roles)",
         security: bearer,
         parameters: [{ name: "projectId", in: "path", required: true, schema: { type: "string" } }],
-        responses: { ...ok({ $ref: "#/components/schemas/Workflow" }), ...err([401, 404]) },
+        responses: mergeResponses(ok({ $ref: "#/components/schemas/Workflow" }), err([401, 404])),
       },
       put: {
         tags: ["workflow"],
@@ -600,7 +610,7 @@ export const openapiSpec = {
             roles: { type: "array", items: { type: "string" } },
           },
         }),
-        responses: { ...ok({ $ref: "#/components/schemas/Workflow" }), ...err([400, 401, 404]) },
+        responses: mergeResponses(ok({ $ref: "#/components/schemas/Workflow" }), err([400, 401, 404])),
       },
     },
     "/projects/{projectId}/workflow/export": {
@@ -609,7 +619,7 @@ export const openapiSpec = {
         summary: "Export workflow in human-readable format",
         security: bearer,
         parameters: [{ name: "projectId", in: "path", required: true, schema: { type: "string" } }],
-        responses: { ...ok({ type: "object" }), ...err([401, 404]) },
+        responses: mergeResponses(ok({ type: "object" }), err([401, 404])),
       },
     },
     "/projects/{projectId}/workflow/apply-template": {
@@ -619,7 +629,7 @@ export const openapiSpec = {
         security: bearer,
         parameters: [{ name: "projectId", in: "path", required: true, schema: { type: "string" } }],
         requestBody: json({ type: "object", required: ["templateId"], properties: { templateId: { type: "string", minLength: 1 } } }),
-        responses: { ...ok({ $ref: "#/components/schemas/Workflow" }), ...err([400, 401, 404]) },
+        responses: mergeResponses(ok({ $ref: "#/components/schemas/Workflow" }), err([400, 401, 404])),
       },
     },
 
@@ -630,10 +640,10 @@ export const openapiSpec = {
         summary: "List project members (workflow participants)",
         security: bearer,
         parameters: [{ name: "projectId", in: "path", required: true, schema: { type: "string" } }],
-        responses: {
-          ...ok({ type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Member" } } } }),
-          ...err([401, 404]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Member" } } } }),
+          err([401, 404]),
+        ),
       },
       post: {
         tags: ["workflow"],
@@ -649,7 +659,7 @@ export const openapiSpec = {
             actorKind: { $ref: "#/components/schemas/ActorKind" },
           },
         }),
-        responses: { ...created({ $ref: "#/components/schemas/Member" }), ...err([400, 401, 404]) },
+        responses: mergeResponses(created({ $ref: "#/components/schemas/Member" }), err([400, 401, 404])),
       },
     },
     "/projects/{projectId}/members/{memberId}": {
@@ -669,7 +679,7 @@ export const openapiSpec = {
             actorKind: { $ref: "#/components/schemas/ActorKind" },
           },
         }),
-        responses: { ...ok({ $ref: "#/components/schemas/Member" }), ...err([401, 404]) },
+        responses: mergeResponses(ok({ $ref: "#/components/schemas/Member" }), err([401, 404])),
       },
       delete: {
         tags: ["workflow"],
@@ -679,7 +689,7 @@ export const openapiSpec = {
           { name: "projectId", in: "path", required: true, schema: { type: "string" } },
           { name: "memberId", in: "path", required: true, schema: { type: "string" } },
         ],
-        responses: { ...noContent(), ...err([401, 404]) },
+        responses: mergeResponses(noContent(), err([401, 404])),
       },
     },
 
@@ -689,10 +699,10 @@ export const openapiSpec = {
         tags: ["workflow-templates"],
         summary: "List all workflow templates",
         security: bearer,
-        responses: {
-          ...ok({ type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/WorkflowTemplate" } } } }),
-          ...err([401]),
-        },
+        responses: mergeResponses(
+          ok({ type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/WorkflowTemplate" } } } }),
+          err([401]),
+        ),
       },
       post: {
         tags: ["workflow-templates"],
@@ -707,7 +717,7 @@ export const openapiSpec = {
             description: { type: "string" },
           },
         }),
-        responses: { ...created({ $ref: "#/components/schemas/WorkflowTemplate" }), ...err([400, 401]) },
+        responses: mergeResponses(created({ $ref: "#/components/schemas/WorkflowTemplate" }), err([400, 401])),
       },
     },
     "/workflow-templates/import": {
@@ -727,7 +737,7 @@ export const openapiSpec = {
             version: { type: "integer", description: "Ignored — present in export files for versioning" },
           },
         }),
-        responses: { ...created({ $ref: "#/components/schemas/WorkflowTemplate" }), ...err([400, 401]) },
+        responses: mergeResponses(created({ $ref: "#/components/schemas/WorkflowTemplate" }), err([400, 401])),
       },
     },
     "/workflow-templates/{templateId}": {
@@ -736,7 +746,7 @@ export const openapiSpec = {
         summary: "Get a workflow template by ID",
         security: bearer,
         parameters: [{ name: "templateId", in: "path", required: true, schema: { type: "string" } }],
-        responses: { ...ok({ $ref: "#/components/schemas/WorkflowTemplate" }), ...err([401, 404]) },
+        responses: mergeResponses(ok({ $ref: "#/components/schemas/WorkflowTemplate" }), err([401, 404])),
       },
       put: {
         tags: ["workflow-templates"],
@@ -750,7 +760,7 @@ export const openapiSpec = {
             stages: { type: "array", items: { $ref: "#/components/schemas/Stage" }, minItems: 1 },
           },
         }),
-        responses: { ...ok({ $ref: "#/components/schemas/WorkflowTemplate" }), ...err([400, 401, 404]) },
+        responses: mergeResponses(ok({ $ref: "#/components/schemas/WorkflowTemplate" }), err([400, 401, 404])),
       },
     },
     "/workflow-templates/{templateId}/export": {
@@ -759,28 +769,30 @@ export const openapiSpec = {
         summary: "Download a template as a JSON file (Content-Disposition: attachment)",
         security: bearer,
         parameters: [{ name: "templateId", in: "path", required: true, schema: { type: "string" } }],
-        responses: {
-          "200": {
-            description: "JSON file download",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["exportedFrom", "version", "id", "title", "stages"],
-                  properties: {
-                    exportedFrom: { type: "string", example: "task-bridge" },
-                    version: { type: "integer", example: 1 },
-                    id: { type: "string" },
-                    title: { type: "string" },
-                    description: { type: "string" },
-                    stages: { type: "array", items: { $ref: "#/components/schemas/Stage" } },
+        responses: mergeResponses(
+          {
+            "200": {
+              description: "JSON file download",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["exportedFrom", "version", "id", "title", "stages"],
+                    properties: {
+                      exportedFrom: { type: "string", example: "task-bridge" },
+                      version: { type: "integer", example: 1 },
+                      id: { type: "string" },
+                      title: { type: "string" },
+                      description: { type: "string" },
+                      stages: { type: "array", items: { $ref: "#/components/schemas/Stage" } },
+                    },
                   },
                 },
               },
             },
           },
-          ...err([401, 404]),
-        },
+          err([401, 404]),
+        ),
       },
     },
   },

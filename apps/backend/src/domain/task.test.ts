@@ -10,9 +10,7 @@ import {
   listEpicWorkflowTasks,
   listSubtasks,
   resolveTaskStageId,
-  normalizeTask,
   type BridgeTask,
-  type RawTask,
 } from "./task.js";
 import { AppError } from "../errors/app-error.js";
 
@@ -51,15 +49,6 @@ function makeTask(overrides: Partial<BridgeTask> & Pick<BridgeTask, "id" | "titl
 }
 
 describe("task domain", () => {
-  it("maps legacy status done to done stage", () => {
-    const task = normalizeTask({
-      ...makeTask({ id: 1, title: "A" }),
-      status: "done",
-      stageId: null,
-    } as RawTask);
-    assert.equal(task.stageId, DONE_STAGE_ID);
-  });
-
   it("blocks parent completion when subtasks are open", () => {
     const parent = makeTask({ id: 1, title: "Parent", stageId: "review" });
     const child = makeTask({ id: 2, title: "Child", parentId: 1, stageId: "development" });
@@ -68,7 +57,7 @@ describe("task domain", () => {
     assert.equal(incompleteSubtasks(tasks, 1).length, 1);
     assert.throws(
       () => assertCanCompleteTask(tasks, parent),
-      (error: unknown) => error instanceof AppError && error.statusCode === 409,
+      (error: Object | null) => error instanceof AppError && error.statusCode === 409,
     );
   });
 
@@ -85,7 +74,7 @@ describe("task domain", () => {
     const tasks = [epic, parent, child];
     assert.throws(
       () => assertCanAdvanceWorkStatus(tasks, child, "in_progress"),
-      (error: unknown) => error instanceof AppError && error.statusCode === 409,
+      (error: Object | null) => error instanceof AppError && error.statusCode === 409,
     );
   });
 

@@ -12,10 +12,8 @@ import {
 } from "./workflow-template-service.js";
 import { applyWorkflowTemplateToProject } from "./workflow-service.js";
 import {
-  DEFAULT_WORKFLOW_TEMPLATE_ID,
   normalizeWorkflowTemplateId,
 } from "../domain/workflow-template-id.js";
-
 export type BridgeProject = {
   id: string;
   name: string;
@@ -47,9 +45,9 @@ export type UpdateProjectInput = {
   workflowTemplateId: string;
 };
 
-function normalizeRepoPath(value: unknown): string | null {
+function normalizeRepoPath(value: string | number | boolean | null): string | null {
   if (String(value) !== value) return null;
-  const trimmed = (value as string).trim();
+  const trimmed = (value).trim();
   if (!trimmed) return null;
   return trimmed;
 }
@@ -105,9 +103,9 @@ export function listPublicProjects(): BridgeProjectPublic[] {
   }));
 }
 
-export async function createProject(
+export function createProject(
   input: CreateProjectInput,
-): Promise<BridgeProject | "duplicate" | null> {
+): BridgeProject | "duplicate" | null {
   const name = input.name.trim();
   const repoPath = input.repoPath.trim();
   if (!name || !repoPath) return null;
@@ -128,10 +126,10 @@ export async function createProject(
   return null;
 }
 
-export async function updateProject(
+export function updateProject(
   projectId: string,
   input: UpdateProjectInput,
-): Promise<BridgeProject | null> {
+): BridgeProject | null {
   const existing = getProjectById(projectId);
   if (!existing) return null;
 
@@ -144,7 +142,7 @@ export async function updateProject(
   const templateChanged = workflowTemplateId !== existing.workflowTemplateId;
 
   if (templateChanged) {
-    await applyWorkflowTemplateToProject(projectId, workflowTemplateId);
+    applyWorkflowTemplateToProject(projectId, workflowTemplateId);
   }
 
   if (
@@ -161,10 +159,10 @@ export async function updateProject(
   return getProjectById(projectId);
 }
 
-export async function updateProjectRepoPath(
+export function updateProjectRepoPath(
   projectId: string,
   repoPath: string,
-): Promise<BridgeProject | null> {
+): BridgeProject | null {
   const existing = getProjectById(projectId);
   if (!existing) return null;
   return updateProject(projectId, {

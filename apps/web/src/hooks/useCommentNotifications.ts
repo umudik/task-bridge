@@ -4,7 +4,7 @@ import { fetchAllInbox, type InboxItem } from "@/lib/api";
 import { markCommentNotified, wasCommentNotified } from "@/lib/read-tasks";
 import type { Session } from "@/lib/session";
 
-export function useCommentNotifications(session: Session | null, projectId: string | undefined) {
+export function useCommentNotifications(session: Session | null, projectId: string | null) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const initializedRef = useRef(false);
@@ -16,6 +16,7 @@ export function useCommentNotifications(session: Session | null, projectId: stri
       const commentItems = await fetchAllInbox(session, {
         projectId,
         commentsOnly: true,
+        epicsOnly: null,
         limit: 100,
       });
 
@@ -33,7 +34,12 @@ export function useCommentNotifications(session: Session | null, projectId: stri
       }
       initializedRef.current = true;
 
-      const all = await fetchAllInbox(session, { projectId, limit: 100 });
+      const all = await fetchAllInbox(session, {
+        projectId,
+        commentsOnly: null,
+        epicsOnly: null,
+        limit: 100,
+      });
       setItems(all);
     } finally {
       setLoading(false);

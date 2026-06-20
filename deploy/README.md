@@ -33,17 +33,22 @@ Aç: **http://localhost:3000/app/login**
 
 ### GitHub Actions
 
-1. Docker Hub access token oluştur
-2. GitHub repo secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`
+1. Docker Hub → **Account Settings → Security → New Access Token** (Read & Write)
+2. GitHub repo:
+   - **Variable:** `DOCKERHUB_USERNAME` = Docker Hub kullanıcı adın
+   - **Secret:** `DOCKER_HUB_SECRET_KEY` = access token
 3. `main` push veya tag `v1.2.3` push → otomatik publish
-4. İsteğe bağlı: Actions → **Build & Push to Docker Hub** → Run workflow
+4. İsteğe bağlı: Actions → **Docker Hub Publish** → Run workflow
 
 ### Lokal
 
 ```bash
-docker login -u YOUR_USER
-DOCKER_USER=YOUR_USER npm run docker:publish
-DOCKER_USER=YOUR_USER npm run docker:publish:mobile
+# .env
+# DOCKERHUB_USERNAME=YOUR_USER
+# DOCKER_HUB_SECRET_KEY=your-token
+
+npm run docker:publish
+npm run docker:publish:mobile
 ```
 
 ## Android APK

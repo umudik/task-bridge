@@ -7,9 +7,9 @@ export type Session = {
   userEmail: string;
   userRole: UserRole;
   isSystemAdmin: boolean;
-  mustChangePassword?: boolean;
-  projectId?: string;
-  projectName?: string;
+  mustChangePassword: boolean;
+  projectId: string | null;
+  projectName: string | null;
 };
 
 const KEY = "task-bridge.session.v2";
@@ -19,8 +19,13 @@ export function loadSession(): Session | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Session;
-    if (!parsed.token?.trim() || !parsed.userId?.trim()) return null;
-    return parsed;
+    const token = parsed.token;
+    const userId = parsed.userId;
+    if (token === null || token.trim() === "") return null;
+    if (userId === null || userId.trim() === "") return null;
+    return Object.assign({}, parsed, {
+      mustChangePassword: parsed.mustChangePassword === true,
+    });
   } catch {
     return null;
   }
@@ -37,12 +42,11 @@ export function clearSession() {
 export function setSelectedProject(projectId: string, projectName: string) {
   const current = loadSession();
   if (!current) return;
-  saveSession({ ...current, projectId, projectName });
+  saveSession(Object.assign({}, current, { projectId, projectName }));
 }
 
 export function clearSelectedProject() {
   const current = loadSession();
   if (!current) return;
-  const { projectId: _p, projectName: _n, ...rest } = current;
-  saveSession(rest);
+  saveSession(Object.assign({}, current, { projectId: null, projectName: null }));
 }

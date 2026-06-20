@@ -42,7 +42,15 @@ export function EpicTaskInspector({
   onStatusChange,
 }: EpicTaskInspectorProps) {
   const blockedByParent = selected ? parentBlocksAdvance(selected, epicId, subtasks) : false;
-  const actAs = members.find((member) => member.id === actAsMemberId) ?? null;
+  let actAs: ProjectMember | null = null;
+  if (actAsMemberId) {
+    for (const member of members) {
+      if (member.id === actAsMemberId) {
+        actAs = member;
+        break;
+      }
+    }
+  }
 
   return (
     <aside className="flex w-[340px] shrink-0 flex-col border-l border-white/[0.06] bg-[#0c0c0c]">
@@ -62,7 +70,7 @@ export function EpicTaskInspector({
           <div>
             <h2 className="text-sm font-semibold leading-snug text-white">{selected.title}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Step: {selected.stageTitle ?? selected.stageId ?? "—"}
+              Step: {selected.stageTitle !== null ? selected.stageTitle : selected.stageId !== null ? selected.stageId : "—"}
               {selected.templateId ? null : " · Ad-hoc"}
             </p>
             {selected.claimedBy ? (

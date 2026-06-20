@@ -41,12 +41,14 @@ export function rollbackEpicWorkflowFromStage(
   projectId: string,
 ): void {
   const stageRows = listWorkflowStageRows({ projectId, stageId: "" });
-  const ordered = [...stageRows].sort((a, b) => a.position - b.position);
+  const ordered = stageRows.slice().sort((a, b) => a.position - b.position);
   const stageIndex = ordered.findIndex((row) => row.id === sourceStageId);
-  const laterStageIds =
-    stageIndex < 0
-      ? new Set<string>()
-      : new Set(ordered.slice(stageIndex + 1).map((row) => row.id));
+  let laterStageIds: Set<string>;
+  if (stageIndex < 0) {
+    laterStageIds = new Set<string>();
+  } else {
+    laterStageIds = new Set(ordered.slice(stageIndex + 1).map((row) => row.id));
+  }
 
   updateEpicStageRow(epicId, sourceStageId);
   mutateEpicWorkflowState(epicId, (data) => {
@@ -132,7 +134,7 @@ export function syncTaskIntoWorkflowState(task: BridgeTask): void {
     if (!node) return;
     node.taskId = task.id;
     node.workStatus = resolveWorkStatus(task);
-    node.comments = [...task.comments];
+    node.comments = task.comments.slice();
     node.title = task.title;
     node.description = task.description;
   });
@@ -144,24 +146,39 @@ export function readWorkflowStateNode(
 ): EpicWorkflowStateData["nodes"][string] | null {
   const data = getEpicWorkflowStateData(epicId);
   if (!data) return null;
-  return data.nodes[templateId] ?? null;
+  const node = data.nodes[templateId];
+  if (node) {
+    return node;
+  }
+  return null;
 }
 
 export function patchWorkflowStateNode(
   epicId: number,
   templateId: string,
   patch: {
-    workStatus?: WorkStatus;
-    comments?: BridgeTask["comments"];
-    taskId?: number | null;
+    workStatus: WorkStatus | null;
+    comments: BridgeTask["comments"] | null;
+    taskId: number | null;
+  },
+  apply: {
+    workStatus: boolean;
+    comments: boolean;
+    taskId: boolean;
   },
 ): void {
   mutateEpicWorkflowState(epicId, (data) => {
     const node = data.nodes[templateId];
     if (!node) return;
-    if (patch.workStatus !== undefined) node.workStatus = patch.workStatus;
-    if (patch.comments !== undefined) node.comments = [...patch.comments];
-    if (patch.taskId !== undefined) node.taskId = patch.taskId;
+    if (apply.workStatus && patch.workStatus !== null) {
+      node.workStatus = patch.workStatus;
+    }
+    if (apply.comments && patch.comments !== null) {
+      node.comments = patch.comments.slice();
+    }
+    if (apply.taskId) {
+      node.taskId = patch.taskId;
+    }
   });
 }
 
@@ -193,6 +210,6 @@ export function applyWorkflowStateNodeToTaskInput(
   if (!node) return defaults;
   return {
     workStatus: node.workStatus,
-    comments: [...node.comments],
+    comments: node.comments.slice(),
   };
 }

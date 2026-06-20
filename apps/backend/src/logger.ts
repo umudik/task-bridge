@@ -1,3 +1,5 @@
+type LogMeta = Record<string, string | number | boolean | null>;
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 const LEVEL_ORDER: Record<LogLevel, number> = {
@@ -8,7 +10,7 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 export function createLogger(name: string, minLevel: LogLevel = "info") {
-  const log = (level: LogLevel, message: string, meta: Record<string, unknown> | null = null) => {
+  const log = (level: LogLevel, message: string, meta: LogMeta | null = null) => {
     if (LEVEL_ORDER[level] < LEVEL_ORDER[minLevel]) return;
     let suffix = "";
     if (meta !== null && Object.keys(meta).length > 0) {
@@ -23,9 +25,9 @@ export function createLogger(name: string, minLevel: LogLevel = "info") {
   };
 
   return {
-    debug: (message: string, meta: Record<string, unknown> | null = null) => log("debug", message, meta),
-    info: (message: string, meta: Record<string, unknown> | null = null) => log("info", message, meta),
-    warn: (message: string, meta: Record<string, unknown> | null = null) => log("warn", message, meta),
-    error: (message: string, meta: Record<string, unknown> | null = null) => log("error", message, meta),
+    debug: (message: string, meta: LogMeta | null = null) => log("debug", message, meta),
+    info: (message: string, meta: LogMeta | null = null) => log("info", message, meta),
+    warn: (message: string, meta: LogMeta | null = null) => log("warn", message, meta),
+    error: (message: string, meta: LogMeta | null = null) => log("error", message, meta),
   };
 }

@@ -2,17 +2,36 @@ import { Link, useLocation } from "react-router-dom";
 import { Link2, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function BrandMark({
-  className,
-  compact = false,
-  linkTo,
-}: {
-  className?: string;
-  compact?: boolean;
-  linkTo?: string | null;
-}) {
+type BrandMarkProps = {
+  className: string | null;
+  compact: boolean;
+  linkTo: string | null;
+};
+
+export function BrandMark(rawProps: Partial<BrandMarkProps> = {}) {
+  let className: string | null = null;
+  if ("className" in rawProps) {
+    if (rawProps.className === null) {
+      className = null;
+    } else if (typeof rawProps.className === "string") {
+      className = rawProps.className;
+    }
+  }
+  let compact = false;
+  if ("compact" in rawProps && rawProps.compact === true) {
+    compact = true;
+  }
+  let linkTo: string | null = "/projects";
+  if ("linkTo" in rawProps) {
+    if (rawProps.linkTo === null) {
+      linkTo = null;
+    } else if (typeof rawProps.linkTo === "string") {
+      linkTo = rawProps.linkTo;
+    }
+  }
+
   const location = useLocation();
-  const href = linkTo === undefined ? "/projects" : linkTo;
+  const href = linkTo;
   const inner = (
     <>
       <div
@@ -40,10 +59,15 @@ export function BrandMark({
     return <div className={cn("flex items-center gap-2.5", className)}>{inner}</div>;
   }
 
+  let linkState: { from: string } | null = null;
+  if (location.pathname.startsWith("/projects/")) {
+    linkState = { from: location.pathname };
+  }
+
   return (
     <Link
       to={href}
-      state={location.pathname.startsWith("/projects/") ? { from: location.pathname } : undefined}
+      state={linkState}
       className={cn(
         "flex items-center gap-2.5 rounded-lg transition-colors hover:bg-white/[0.04]",
         compact ? "-mx-1 px-1 py-0.5" : "px-1 py-0.5",

@@ -3,15 +3,23 @@ import { Copy, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function SensitiveField({
-  label,
-  value,
-  onCopy,
-}: {
+type SensitiveFieldProps = {
   label: string;
   value: string;
-  onCopy?: () => void;
-}) {
+  onCopy: (() => void) | null;
+};
+
+export function SensitiveField(rawProps: Partial<SensitiveFieldProps> & Pick<SensitiveFieldProps, "label" | "value">) {
+  let onCopy: (() => void) | null = null;
+  if ("onCopy" in rawProps) {
+    if (rawProps.onCopy === null) {
+      onCopy = null;
+    } else if (typeof rawProps.onCopy === "function") {
+      onCopy = rawProps.onCopy;
+    }
+  }
+  const { label, value } = rawProps;
+
   const [revealed, setRevealed] = useState(false);
   const hidden = value !== "—" && !revealed;
 
@@ -42,7 +50,7 @@ export function SensitiveField({
               {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           ) : null}
-          {onCopy && revealed ? (
+          {onCopy !== null && revealed ? (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onCopy}>
               <Copy className="h-4 w-4" />
             </Button>
@@ -53,15 +61,23 @@ export function SensitiveField({
   );
 }
 
-export function SensitiveReveal({
-  children,
-  label = "Show",
-  hideLabel = "Hide",
-}: {
+type SensitiveRevealProps = {
   children: React.ReactNode;
-  label?: string;
-  hideLabel?: string;
-}) {
+  label: string | null;
+  hideLabel: string | null;
+};
+
+export function SensitiveReveal(rawProps: Partial<SensitiveRevealProps> & { children: React.ReactNode }) {
+  let label = "Show";
+  if ("label" in rawProps && typeof rawProps.label === "string") {
+    label = rawProps.label;
+  }
+  let hideLabel = "Hide";
+  if ("hideLabel" in rawProps && typeof rawProps.hideLabel === "string") {
+    hideLabel = rawProps.hideLabel;
+  }
+  const { children } = rawProps;
+
   const [revealed, setRevealed] = useState(false);
 
   if (!revealed) {

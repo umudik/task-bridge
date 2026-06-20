@@ -87,10 +87,13 @@ function chain(
 ): StageTaskTemplate {
   let previousId: string | null = null;
   const children = steps.map((step) => {
-    const node: StageTaskTemplate = {
-      ...step,
-      dependsOn: previousId ? [previousId] : [],
-    };
+    let dependsOn: string[];
+    if (previousId !== null) {
+      dependsOn = [previousId];
+    } else {
+      dependsOn = [];
+    }
+    const node: StageTaskTemplate = Object.assign({}, step, { dependsOn });
     previousId = step.id;
     return node;
   });

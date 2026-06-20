@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 type DescriptionEditorProps = {
   value: string;
   onChange: (value: string) => void;
-  placeholder?: string;
-  minRows?: number;
-  className?: string;
+  placeholder: string | null;
+  minRows: number | null;
+  className: string | null;
 };
 
 export function DescriptionEditor({
@@ -15,10 +15,15 @@ export function DescriptionEditor({
   onChange,
   placeholder = "Write in markdown…",
   minRows = 10,
-  className,
+  className = null,
 }: DescriptionEditorProps) {
   const [mode, setMode] = useState<"write" | "preview">("write");
   const trimmed = value.trim();
+  const rows = minRows !== null ? minRows : 10;
+  let placeholderText = "Write in markdown…";
+  if (placeholder !== null) {
+    placeholderText = placeholder;
+  }
 
   return (
     <div className={cn("overflow-hidden rounded-lg border border-white/[0.08] bg-[#0f0f0f]", className)}>
@@ -37,8 +42,8 @@ export function DescriptionEditor({
         <textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          rows={minRows}
+          placeholder={placeholderText}
+          rows={rows}
           className="w-full resize-y border-0 bg-transparent px-3 py-2.5 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60"
         />
       ) : (

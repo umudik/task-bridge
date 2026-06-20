@@ -46,8 +46,8 @@ export function LibraryPage() {
 
   const docFromUrl = searchParams.get("doc");
 
-  const reloadLibraries = useCallback(async () => {
-    if (!session) return;
+  const reloadLibraries = useCallback(async (): Promise<LibrarySummary[]> => {
+    if (!session) return [];
     const items = await fetchLibraries(session);
     setLibraries(items);
     return items;
@@ -90,8 +90,11 @@ export function LibraryPage() {
         if (docFromUrl) {
           const doc = await loadDocument(docFromUrl);
           if (doc) await loadLibrary(doc.libraryId);
-        } else if (items?.[0]) {
-          setSelectedLibraryId(items[0].id);
+        } else if (items.length > 0) {
+          const first = items[0];
+          if (first) {
+            setSelectedLibraryId(first.id);
+          }
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load library");
@@ -123,11 +126,12 @@ export function LibraryPage() {
   }, [session, selectedDocumentId, loadDocument]);
 
   const documents = useMemo<LibraryDocumentSummary[]>(
-    () => libraryDetail?.documents ?? [],
-    [libraryDetail?.documents],
+    () => (libraryDetail !== null ? libraryDetail.documents : []),
+    [libraryDetail],
   );
 
-  const selectedLibrary = libraries.find((entry) => entry.id === selectedLibraryId) ?? null;
+  const foundLibrary = libraries.find((entry) => entry.id === selectedLibraryId);
+  const selectedLibrary = foundLibrary ? foundLibrary : null;
 
   function selectDocument(documentId: string) {
     setSelectedDocumentId(documentId);
@@ -144,7 +148,11 @@ export function LibraryPage() {
     if (!session) return;
     setCreatingLibrary(true);
     try {
-      const created = await createLibrary(session, { title: UNTITLED_LIBRARY });
+      const created = await createLibrary(session, {
+        title: UNTITLED_LIBRARY,
+        id: null,
+        description: null,
+      });
       await reloadLibraries();
       setSelectedLibraryId(created.id);
       setLibraryDetail(created);
@@ -184,7 +192,8 @@ export function LibraryPage() {
     try {
       await deleteLibrary(session, selectedLibraryId);
       const items = await reloadLibraries();
-      setSelectedLibraryId(items?.[0]?.id ?? null);
+      const firstItem = items.length > 0 ? items[0] : null;
+      setSelectedLibraryId(firstItem ? firstItem.id : null);
       setSelectedDocumentId(null);
       setSearchParams({});
       toast.success("Library deleted");
@@ -199,6 +208,8 @@ export function LibraryPage() {
     try {
       const created = await createLibraryDocument(session, selectedLibraryId, {
         title: UNTITLED_DOCUMENT,
+        id: null,
+        description: null,
       });
       await loadLibrary(selectedLibraryId);
       selectDocument(created.id);

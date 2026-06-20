@@ -34,7 +34,7 @@ function ChangePasswordForm({ session }: { session: Session }) {
         currentPassword,
         newPassword,
       });
-      saveSession({ ...session, mustChangePassword: false });
+      saveSession(Object.assign({}, session, { mustChangePassword: false }));
       navigate("/projects", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Password change failed");

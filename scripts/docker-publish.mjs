@@ -19,13 +19,17 @@ function loadEnv() {
   return vars;
 }
 
-function run(command, args) {
+function run(command, args, input) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      stdio: "inherit",
+      stdio: input ? ["pipe", "inherit", "inherit"] : "inherit",
       shell: isWin,
       cwd: root,
     });
+    if (input) {
+      child.stdin.write(input);
+      child.stdin.end();
+    }
     child.on("exit", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`${command} ${args.join(" ")} failed with exit ${code}`));
@@ -34,19 +38,33 @@ function run(command, args) {
   });
 }
 
+async function ensureDockerLogin(user, token) {
+  console.log(`[docker] Logging in as ${user}`);
+  await run("docker", ["login", "-u", user, "--password-stdin"], `${token}\n`);
+}
+
 async function main() {
   const env = { ...process.env, ...loadEnv() };
   const args = process.argv.slice(2).filter((entry) => entry !== "--mobile");
   const includeMobile = process.argv.includes("--mobile");
   const tag = args[0]?.trim() || "latest";
   const version = args[1]?.trim() || tag;
-  const user = env.DOCKER_USER?.trim() || env.DOCKERHUB_USER?.trim() || env.DOCKERHUB_USERNAME?.trim();
+  const user =
+    env.DOCKERHUB_USERNAME?.trim() ||
+    env.DOCKER_USER?.trim() ||
+    env.DOCKERHUB_USER?.trim();
+  const token = env.DOCKER_HUB_SECRET_KEY?.trim();
 
   if (!user) {
-    console.error("Set DOCKER_USER (or DOCKERHUB_USER) in .env or environment.");
-    console.error("Example: DOCKER_USER=yourname npm run docker:publish");
-    console.error("Log in first: docker login -u yourname");
+    console.error("Set DOCKERHUB_USERNAME in .env or environment.");
+    console.error("Example: DOCKERHUB_USERNAME=yourname npm run docker:publish");
     process.exit(1);
+  }
+
+  if (token) {
+    await ensureDockerLogin(user, token);
+  } else {
+    console.log("[docker] DOCKER_HUB_SECRET_KEY not set — assuming docker login already done.");
   }
 
   if (includeMobile) {
@@ -58,7 +76,7 @@ async function main() {
   const labels = tag === "latest" ? [`${image}:latest`] : [`${image}:${tag}`, `${image}:latest`];
 
   console.log(`[docker] Building ${labels.join(", ")} (version ${version})`);
-  console.log("[docker] Tip: use 'docker buildx build --platform linux/amd64,linux/arm64' for multi-arch (CI does this automatically).");
+  console.log("[docker] Tip: CI pushes multi-arch (amd64 + arm64) via GitHub Actions.");
   await run("docker", [
     "build",
     "-f",

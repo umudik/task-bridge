@@ -10,28 +10,47 @@ import {
 } from "@/components/ui/dialog";
 
 type ConfirmOptions = {
-  title?: string;
+  title: string | null;
   message: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
+  confirmLabel: string | null;
+  cancelLabel: string | null;
 };
 
 type ConfirmContextValue = {
-  confirmDestructive: (message: string, options?: Omit<ConfirmOptions, "message">) => Promise<boolean>;
+  confirmDestructive: (
+    message: string,
+    options: Omit<ConfirmOptions, "message"> | null,
+  ) => Promise<boolean>;
 };
 
 const ConfirmContext = createContext<ConfirmContextValue | null>(null);
 
 export function ConfirmDialogProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [options, setOptions] = useState<ConfirmOptions>({ message: "" });
+  const [options, setOptions] = useState<ConfirmOptions>({
+    title: null,
+    message: "",
+    confirmLabel: null,
+    cancelLabel: null,
+  });
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
 
   const confirmDestructive = useCallback(
-    (message: string, extra?: Omit<ConfirmOptions, "message">) => {
+    (message: string, extra: Omit<ConfirmOptions, "message"> | null = null) => {
       return new Promise<boolean>((resolve) => {
         resolveRef.current = resolve;
-        setOptions({ message, ...extra });
+        const merged: ConfirmOptions = {
+          title: null,
+          confirmLabel: null,
+          cancelLabel: null,
+          message,
+        };
+        if (extra !== null) {
+          merged.title = extra.title;
+          merged.confirmLabel = extra.confirmLabel;
+          merged.cancelLabel = extra.cancelLabel;
+        }
+        setOptions(merged);
         setOpen(true);
       });
     },
@@ -40,8 +59,24 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
 
   function finish(result: boolean) {
     setOpen(false);
-    resolveRef.current?.(result);
+    const resolve = resolveRef.current;
+    if (resolve !== null) {
+      resolve(result);
+    }
     resolveRef.current = null;
+  }
+
+  let dialogTitle = "Delete?";
+  if (options.title !== null) {
+    dialogTitle = options.title;
+  }
+  let cancelLabel = "Cancel";
+  if (options.cancelLabel !== null) {
+    cancelLabel = options.cancelLabel;
+  }
+  let confirmLabel = "Delete";
+  if (options.confirmLabel !== null) {
+    confirmLabel = options.confirmLabel;
   }
 
   return (
@@ -55,15 +90,15 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
       >
         <DialogContent className="max-w-md border-white/[0.1] bg-[#111] sm:rounded-xl [&>button]:hidden">
           <DialogHeader>
-            <DialogTitle>{options.title ?? "Delete?"}</DialogTitle>
+            <DialogTitle>{dialogTitle}</DialogTitle>
             <DialogDescription>{options.message}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button type="button" variant="outline" onClick={() => finish(false)}>
-              {options.cancelLabel ?? "Cancel"}
+              {cancelLabel}
             </Button>
             <Button type="button" variant="destructive" onClick={() => finish(true)}>
-              {options.confirmLabel ?? "Delete"}
+              {confirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

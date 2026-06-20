@@ -31,12 +31,12 @@ type EpicProgressCanvasProps = {
   epicId: number;
   epicStageId: string | null;
   subtasks: TaskSubtask[];
-  workflowState?: WorkflowStateNode[];
-  selectedTaskId?: number | null;
-  onSelectTask?: (taskId: number) => void;
-  onAddTaskToStage?: (stageId: string, stageTitle: string) => void;
-  onAddSubtask?: (parentTaskId: number, parentTitle: string, stageId: string | null) => void;
-  className?: string;
+  workflowState: WorkflowStateNode[] | null;
+  selectedTaskId: number | null;
+  onSelectTask: ((taskId: number) => void) | null;
+  onAddTaskToStage: ((stageId: string, stageTitle: string) => void) | null;
+  onAddSubtask: ((parentTaskId: number, parentTitle: string, stageId: string | null) => void) | null;
+  className: string | null;
 };
 
 type Point = { x: number; y: number };
@@ -77,11 +77,18 @@ function resolveStagePhase(
 }
 
 function toRuntime(subtask: TaskSubtask): TemplateRuntimeStatus {
-  const workStatus = subtask.workStatus ?? (subtask.done ? "done" : "todo");
+  let workStatus = subtask.workStatus;
+  if (workStatus === null) {
+    workStatus = subtask.done ? "done" : "todo";
+  }
+  let workStatusLabel = subtask.workStatusLabel;
+  if (workStatusLabel === null) {
+    workStatusLabel = workStatus;
+  }
   return {
     taskId: subtask.taskId,
     workStatus,
-    workStatusLabel: subtask.workStatusLabel ?? workStatus,
+    workStatusLabel,
   };
 }
 
@@ -108,14 +115,28 @@ function prepareCanvasSubtasks(
   epicId: number,
 ) {
   const stageIds = new Set(stages.map((stage) => stage.id));
-  const fallbackStageId =
-    (epicStageId && stageIds.has(epicStageId) ? epicStageId : null) ??
-    stages.find((stage) => (stage.taskTemplates ?? []).length > 0)?.id ??
-    stages[0]?.id ??
-    null;
+  let fallbackStageId: string | null = null;
+  if (epicStageId && stageIds.has(epicStageId)) {
+    fallbackStageId = epicStageId;
+  }
+  if (fallbackStageId === null) {
+    const stageWithTemplates = stages.find((stage) => stage.taskTemplates.length > 0);
+    if (stageWithTemplates) {
+      fallbackStageId = stageWithTemplates.id;
+    }
+  }
+  if (fallbackStageId === null && stages.length > 0) {
+    const firstStage = stages[0];
+    if (firstStage) {
+      fallbackStageId = firstStage.id;
+    }
+  }
 
   return subtasks.map((subtask) => {
-    let stageId = resolveSubtaskStageId(subtasks, subtask, epicId) ?? subtask.stageId ?? null;
+    let stageId = resolveSubtaskStageId(subtasks, subtask, epicId);
+    if (stageId === null) {
+      stageId = subtask.stageId;
+    }
     if (stageId && !stageIds.has(stageId) && fallbackStageId) {
       stageId = fallbackStageId;
     }
@@ -123,7 +144,7 @@ function prepareCanvasSubtasks(
       stageId = fallbackStageId;
     }
     if (stageId === subtask.stageId) return subtask;
-    return { ...subtask, stageId };
+    return Object.assign({}, subtask, { stageId });
   });
 }
 
@@ -134,14 +155,18 @@ function hasRenderedParentOnStage(
   epicId: number,
   renderedTaskIds: Set<number>,
 ) {
-  let parentId = entry.parentId ?? null;
+  let parentId = (entry.parentId !== null ? entry.parentId : null);
   while (parentId && parentId !== epicId) {
     if (renderedTaskIds.has(parentId)) {
       const parent = subtasks.find((candidate) => candidate.taskId === parentId);
       if (parent && parent.stageId === stageId) return true;
     }
-    const parent = subtasks.find((candidate) => candidate.taskId === parentId);
-    parentId = parent?.parentId ?? null;
+    const parentEntry = subtasks.find((candidate) => candidate.taskId === parentId);
+    if (parentEntry) {
+      parentId = parentEntry.parentId;
+    } else {
+      parentId = null;
+    }
   }
   return false;
 }
@@ -204,8 +229,10 @@ function collectTemplatePlacedTaskIds(
   function walk(nodes: ReturnType<typeof sanitizeStageTemplates>) {
     for (const node of nodes) {
       const runtime = runtimeForTemplate(node.id, stageId, subtasks, statusByTemplateId);
-      if (runtime?.taskId != null) ids.add(runtime.taskId);
-      if (node.children?.length) walk(sanitizeStageTemplates(node.children));
+      if (runtime !== null && runtime.taskId !== null) {
+        ids.add(runtime.taskId);
+      }
+      if (node.children.length > 0) walk(sanitizeStageTemplates(node.children));
     }
   }
   walk(templates);
@@ -334,7 +361,15 @@ function ProgressStageCard({
   );
 }
 
-function NodeLink({ className }: { className?: string }) {
+function NodeLink(rawProps: Partial<{ className: string | null }> = {}) {
+  let className: string | null = null;
+  if ("className" in rawProps) {
+    if (rawProps.className === null) {
+      className = null;
+    } else if (typeof rawProps.className === "string") {
+      className = rawProps.className;
+    }
+  }
   return <div className={cn("shrink-0 bg-white/[0.14]", className)} />;
 }
 
@@ -351,12 +386,12 @@ function ProgressTaskNode({
   depth: number;
   runtime: TemplateRuntimeStatus | null;
   selected: boolean;
-  adHoc?: boolean;
-  onSelect?: () => void;
-  onAddSubtask?: () => void;
+  adHoc: boolean | null;
+  onSelect: (() => void) | null;
+  onAddSubtask: (() => void) | null;
 }) {
-  const spawned = runtime?.taskId != null;
-  const workStatus = runtime?.workStatus ?? null;
+  const spawned = runtime !== null && runtime.taskId !== null;
+  const workStatus = runtime !== null ? runtime.workStatus : null;
   const indent = depth * TASK_DEPTH_INDENT;
 
   return (
@@ -374,7 +409,9 @@ function ProgressTaskNode({
           disabled={!spawned}
           onClick={(event) => {
             event.stopPropagation();
-            if (spawned) onSelect?.();
+            if (spawned && onSelect !== null) {
+              onSelect();
+            }
           }}
           className={cn(
             "pointer-events-auto flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
@@ -386,13 +423,23 @@ function ProgressTaskNode({
           <StatusIcon workStatus={workStatus} spawned={spawned} />
           <span className="min-w-0 flex-1 truncate text-xs font-medium">{title}</span>
           <span className="shrink-0 text-[10px] opacity-80">
-            {adHoc ? "Ad-hoc" : spawned ? (runtime?.workStatusLabel ?? "Todo") : workStatus ? runtime?.workStatusLabel ?? "Todo" : "Pending"}
+            {adHoc
+              ? "Ad-hoc"
+              : spawned
+                ? runtime !== null && runtime.workStatusLabel !== null
+                  ? runtime.workStatusLabel
+                  : "Todo"
+                : workStatus
+                  ? runtime !== null && runtime.workStatusLabel !== null
+                    ? runtime.workStatusLabel
+                    : "Todo"
+                  : "Pending"}
           </span>
         </button>
         {spawned && onAddSubtask ? (
           <>
             <NodeLink className="mx-1 h-px w-3" />
-            <NodeAddButton title="Add subtask" data-epic-add="true" onClick={onAddSubtask} />
+            <NodeAddButton title="Add subtask" dataEpicAdd="true" onClick={onAddSubtask} className={null} disabled={null} style={null} dataNodeInsert={null} dataStageInsert={null} />
           </>
         ) : null}
       </div>
@@ -416,8 +463,8 @@ function ProgressChildTasks({
   excludeTaskIds: Set<number>;
   renderedTaskIds: Set<number>;
   selectedTaskId: number | null;
-  onSelectTask?: (taskId: number) => void;
-  onAddSubtask?: (parentTaskId: number, parentTitle: string) => void;
+  onSelectTask: ((taskId: number) => void) | null;
+  onAddSubtask: ((parentTaskId: number, parentTitle: string) => void) | null;
 }) {
   const children = childSubtasksForParent(subtasks, parentTaskId, excludeTaskIds, renderedTaskIds);
   if (children.length === 0) return null;
@@ -434,9 +481,13 @@ function ProgressChildTasks({
               runtime={runtime}
               selected={subtask.taskId === selectedTaskId}
               adHoc
-              onSelect={() => onSelectTask?.(subtask.taskId)}
+              onSelect={() => {
+                if (onSelectTask !== null) {
+                  onSelectTask(subtask.taskId);
+                }
+              }}
               onAddSubtask={
-                onAddSubtask ? () => onAddSubtask(subtask.taskId, subtask.title) : undefined
+                onAddSubtask ? () => onAddSubtask(subtask.taskId, subtask.title) : null
               }
             />
             <ProgressChildTasks
@@ -476,13 +527,18 @@ function buildProgressTaskTree({
   renderedTaskIds: Set<number>;
   statusByTemplateId: Map<string, TemplateRuntimeStatus>;
   selectedTaskId: number | null;
-  onSelectTask?: (taskId: number) => void;
-  onAddSubtask?: (parentTaskId: number, parentTitle: string) => void;
+  onSelectTask: ((taskId: number) => void) | null;
+  onAddSubtask: ((parentTaskId: number, parentTitle: string) => void) | null;
 }) {
   return templates.map((template) => {
     const runtime = runtimeForTemplate(template.id, stageId, subtasks, statusByTemplateId);
-    if (runtime?.taskId != null) {
+    if (runtime !== null && runtime.taskId !== null) {
       renderedTaskIds.add(runtime.taskId);
+    }
+    let addSubtaskHandler: (() => void) | null = null;
+    if (runtime !== null && runtime.taskId !== null && onAddSubtask !== null) {
+      const taskId = runtime.taskId;
+      addSubtaskHandler = () => onAddSubtask(taskId, template.title);
     }
     return (
       <div key={template.id} className="flex flex-col gap-2">
@@ -490,17 +546,16 @@ function buildProgressTaskTree({
           title={template.title}
           depth={depth}
           runtime={runtime}
-          selected={runtime?.taskId === selectedTaskId}
+          selected={runtime !== null && runtime.taskId === selectedTaskId}
+          adHoc={null}
           onSelect={() => {
-            if (runtime?.taskId) onSelectTask?.(runtime.taskId);
+            if (runtime !== null && runtime.taskId !== null && onSelectTask !== null) {
+              onSelectTask(runtime.taskId);
+            }
           }}
-          onAddSubtask={
-            runtime?.taskId && onAddSubtask
-              ? () => onAddSubtask(runtime.taskId!, template.title)
-              : undefined
-          }
+          onAddSubtask={addSubtaskHandler}
         />
-        {runtime?.taskId ? (
+        {runtime !== null && runtime.taskId !== null ? (
           <ProgressChildTasks
             parentTaskId={runtime.taskId}
             depth={depth + 1}
@@ -512,9 +567,9 @@ function buildProgressTaskTree({
             onAddSubtask={onAddSubtask}
           />
         ) : null}
-        {(template.children?.length ?? 0) > 0
+        {template.children.length > 0
           ? buildProgressTaskTree({
-              templates: sanitizeStageTemplates(template.children ?? []),
+              templates: sanitizeStageTemplates(template.children),
               depth: depth + 1,
               stageId,
               subtasks,
@@ -538,9 +593,9 @@ function renderSubtaskBranch(
   templatePlacedTaskIds: Set<number>,
   renderedTaskIds: Set<number>,
   selectedTaskId: number | null,
-  onSelectTask?: (taskId: number) => void,
-  onAddSubtask?: (parentTaskId: number, parentTitle: string) => void,
-  adHoc?: boolean,
+  onSelectTask: ((taskId: number) => void) | null,
+  onAddSubtask: ((parentTaskId: number, parentTitle: string) => void) | null,
+  adHoc: boolean | null,
 ) {
   renderedTaskIds.add(subtask.taskId);
   const runtime = toRuntime(subtask);
@@ -552,9 +607,13 @@ function renderSubtaskBranch(
         runtime={runtime}
         selected={subtask.taskId === selectedTaskId}
         adHoc={adHoc}
-        onSelect={() => onSelectTask?.(subtask.taskId)}
+        onSelect={() => {
+          if (onSelectTask !== null) {
+            onSelectTask(subtask.taskId);
+          }
+        }}
         onAddSubtask={
-          onAddSubtask ? () => onAddSubtask(subtask.taskId, subtask.title) : undefined
+          onAddSubtask ? () => onAddSubtask(subtask.taskId, subtask.title) : null
         }
       />
       <ProgressChildTasks
@@ -592,11 +651,11 @@ function ProgressStageColumn({
   workflowState: WorkflowStateNode[];
   renderedTaskIds: Set<number>;
   selectedTaskId: number | null;
-  onSelectTask?: (taskId: number) => void;
-  onAddTaskToStage?: () => void;
-  onAddSubtask?: (parentTaskId: number, parentTitle: string) => void;
+  onSelectTask: ((taskId: number) => void) | null;
+  onAddTaskToStage: (() => void) | null;
+  onAddSubtask: ((parentTaskId: number, parentTitle: string) => void) | null;
 }) {
-  const templates = sanitizeStageTemplates(stage.taskTemplates ?? []);
+  const templates = sanitizeStageTemplates(stage.taskTemplates);
   const statusByTemplateId = buildStatusLookup(subtasks, stage.id, workflowState);
   const templatePlacedTaskIds = collectTemplatePlacedTaskIds(
     templates,
@@ -612,7 +671,7 @@ function ProgressStageColumn({
     renderedTaskIds,
   );
   const stats = stageSubtaskStats(stage.id, subtasks);
-  const columnWidth = stage.columnWidth ?? STAGE_CARD_WIDTH;
+  const columnWidth = (stage.columnWidth !== null ? stage.columnWidth : STAGE_CARD_WIDTH);
   const hasTemplates = templates.length > 0;
   const hasStageSubtasks = subtasks.some((entry) => entry.stageId === stage.id);
   const hasTasks = hasTemplates || epicRoots.length > 0 || hasStageSubtasks;
@@ -692,7 +751,7 @@ function ProgressStageColumn({
         {onAddTaskToStage ? (
           <div className="pointer-events-auto flex flex-col items-center">
             <NodeLink className="h-4 w-px" />
-            <NodeAddButton title="Add task to this step" data-epic-add="true" onClick={onAddTaskToStage} />
+            <NodeAddButton title="Add task to this step" dataEpicAdd="true" onClick={onAddTaskToStage} className={null} disabled={null} style={null} dataNodeInsert={null} dataStageInsert={null} />
           </div>
         ) : null}
       </div>
@@ -711,18 +770,22 @@ function ProgressStageColumn({
   );
 }
 
-export function EpicProgressCanvas({
-  stages,
-  epicId,
-  epicStageId,
-  subtasks,
-  workflowState = [],
-  selectedTaskId = null,
-  onSelectTask,
-  onAddTaskToStage,
-  onAddSubtask,
-  className,
-}: EpicProgressCanvasProps) {
+export function EpicProgressCanvas(props: EpicProgressCanvasProps) {
+  const {
+    stages,
+    epicId,
+    epicStageId,
+    subtasks,
+    selectedTaskId,
+    onSelectTask,
+    onAddTaskToStage,
+    onAddSubtask,
+    className,
+  } = props;
+  let workflowState: WorkflowStateNode[] = [];
+  if (props.workflowState !== null) {
+    workflowState = props.workflowState;
+  }
   const viewportRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<Point>({ x: 48, y: 48 });
   const zoomRef = useRef(0.85);
@@ -739,7 +802,7 @@ export function EpicProgressCanvas({
   zoomRef.current = zoom;
 
   const sortedStages = useMemo(
-    () => [...stages].sort((a, b) => a.position - b.position),
+    () => stages.slice().sort((a, b) => a.position - b.position),
     [stages],
   );
   const displayStages = useMemo(() => stagesForDisplay(stages), [stages]);
@@ -835,7 +898,7 @@ export function EpicProgressCanvas({
   const templateCount = useMemo(
     () =>
       sortedStages.reduce(
-        (sum, stage) => sum + flattenTemplates(stage.taskTemplates ?? []).length,
+        (sum, stage) => sum + flattenTemplates(stage.taskTemplates).length,
         0,
       ),
     [sortedStages],
@@ -914,12 +977,12 @@ export function EpicProgressCanvas({
               selectedTaskId={selectedTaskId}
               onSelectTask={onSelectTask}
               onAddTaskToStage={
-                onAddTaskToStage ? () => onAddTaskToStage(stage.id, stage.title) : undefined
+                onAddTaskToStage ? () => onAddTaskToStage(stage.id, stage.title) : null
               }
               onAddSubtask={
                 onAddSubtask
                   ? (parentTaskId, parentTitle) => onAddSubtask(parentTaskId, parentTitle, stage.id)
-                  : undefined
+                  : null
               }
             />
           ))}

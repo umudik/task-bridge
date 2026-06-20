@@ -1,5 +1,4 @@
 import { AppError } from "../errors/app-error.js";
-import { emptyToNull } from "../lib/strings.js";
 import { isWorkDone, type WorkStatus } from "./work-status.js";
 
 export const DONE_STAGE_ID = "done";
@@ -22,7 +21,7 @@ export type TaskEvent = {
 
 export type AssigneeKind = "human" | "ai";
 
-export type AuthorType = "human" | "ai" | "system";
+export type CommentMetadata = Record<string, string | number | boolean | null>;
 
 export type TaskComment = {
   id: string;
@@ -31,7 +30,7 @@ export type TaskComment = {
   tags: string[];
   body: string;
   at: string;
-  metadata: Record<string, unknown> | null;
+  metadata: CommentMetadata | null;
 };
 
 export type BridgeTask = {
@@ -63,8 +62,6 @@ export type BridgeTask = {
   events: TaskEvent[];
 };
 
-export type RawTask = BridgeTask & { status: string | null };
-
 export function isDoneStage(stageId: string | null): boolean {
   return stageId === DONE_STAGE_ID;
 }
@@ -78,7 +75,7 @@ export function touchTask(task: BridgeTask): void {
 }
 
 export function sortTasks(tasks: BridgeTask[]): BridgeTask[] {
-  return [...tasks].sort((a, b) => {
+  return tasks.slice().sort((a, b) => {
     const aTime = Date.parse(a.updatedAt || a.createdAt);
     const bTime = Date.parse(b.updatedAt || b.createdAt);
     if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime !== bTime) {
@@ -102,7 +99,9 @@ export function listDescendantIds(
   const ids: number[] = [];
   for (const child of listSubtasks(tasks, parentId)) {
     ids.push(child.id);
-    ids.push(...listDescendantIds(tasks, child.id));
+    for (const descendantId of listDescendantIds(tasks, child.id)) {
+      ids.push(descendantId);
+    }
   }
   return ids;
 }
@@ -184,117 +183,4 @@ export function assertCanCompleteTask(
 
 export function canonicalDescription(task: BridgeTask): string {
   return task.description.trim();
-}
-
-function parseTags(raw: unknown, legacyType: unknown): string[] {
-  if (Array.isArray(raw)) {
-    const result: string[] = [];
-    for (const item of raw) {
-      if (item !== null && String(item) === item) {
-        const s = (item as string).trim();
-        if (s) result.push(s);
-      }
-    }
-    return result;
-  }
-  if (legacyType !== null) {
-    const legacyTypeStr = legacyType as string;
-    const s = String(legacyTypeStr).trim();
-    if (s && s !== "null") {
-      return [s];
-    }
-  }
-  return [];
-}
-
-export function migrateComment(
-  raw: Record<string, unknown>,
-  taskId: number,
-  index: number,
-): TaskComment | null {
-  let rawBody: string | null = null;
-  const bodyCandidate = raw.body as string;
-  const textCandidate = raw.text as string;
-  if (raw.body !== null && String(bodyCandidate) === bodyCandidate) {
-    rawBody = bodyCandidate;
-  } else if (raw.text !== null && String(textCandidate) === textCandidate) {
-    rawBody = textCandidate;
-  }
-  const body = emptyToNull(rawBody);
-  if (!body) return null;
-
-  let rawRole = "";
-  const roleCandidate = raw.role as string;
-  if (raw.role !== null && String(roleCandidate) === roleCandidate) {
-    rawRole = roleCandidate;
-  }
-
-  let rawBy: string | null = null;
-  const byCandidate = raw.by as string;
-  if (raw.by !== null && String(byCandidate) === byCandidate) {
-    const trimmed = byCandidate.trim();
-    rawBy = trimmed || null;
-  }
-
-  let rawAuthorId: string | null = null;
-  const authorIdCandidate = raw.authorId as string;
-  if (raw.authorId !== null && String(authorIdCandidate) === authorIdCandidate) {
-    const trimmed = authorIdCandidate.trim();
-    rawAuthorId = trimmed || null;
-  }
-
-  let authorId = "unknown";
-  if (rawBy !== null) {
-    authorId = rawBy;
-  } else if (rawAuthorId !== null) {
-    authorId = rawAuthorId;
-  }
-
-  let commentRole: "user" | "system" = "system";
-  if (rawRole === "user" || rawRole === "system") {
-    commentRole = rawRole;
-  } else if (raw.authorType === "human") {
-    commentRole = "user";
-  } else if (raw.authorType === "system" || raw.authorType === "ai") {
-    commentRole = "system";
-  }
-
-  let id: string;
-  const idCandidate = raw.id as string;
-  if (raw.id !== null && String(idCandidate) !== "null") {
-    id = String(idCandidate);
-  } else {
-    id = `legacy-${taskId}-${index}`;
-  }
-
-  let at: string;
-  const atCandidate = raw.at as string;
-  if (raw.at !== null && String(atCandidate) !== "null") {
-    at = String(atCandidate);
-  } else {
-    at = new Date().toISOString();
-  }
-
-  let metadata: Record<string, unknown> | null = null;
-  if (raw.metadata instanceof Object && !Array.isArray(raw.metadata)) {
-    metadata = raw.metadata as Record<string, unknown>;
-  }
-
-  return {
-    id,
-    role: commentRole,
-    authorId,
-    tags: parseTags(raw.tags, raw.type),
-    body,
-    at,
-    metadata,
-  };
-}
-
-export function normalizeTask(raw: RawTask): BridgeTask {
-  if (!raw.stageId && raw.status === "done") {
-    raw.stageId = DONE_STAGE_ID;
-  }
-  const { status: _ignored, ...task } = raw;
-  return task;
 }

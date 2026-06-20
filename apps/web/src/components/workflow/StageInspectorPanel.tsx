@@ -67,6 +67,7 @@ function DescriptionField({
           setOpen(false);
         }}
         placeholder={placeholder}
+        saving={null}
       />
     </div>
   );
@@ -82,21 +83,21 @@ export function StageInspectorPanel({
   onClose,
 }: StageInspectorPanelProps) {
   const { confirmDestructive } = useConfirm();
-  const activeTasks = stage.activeTaskCount ?? 0;
+  const activeTasks = stage.activeTaskCount !== null ? stage.activeTaskCount : 0;
   const canDeleteStage = stageCount > 1 && activeTasks === 0;
-  const templates = stage.taskTemplates ?? [];
+  const templates = stage.taskTemplates;
   const selected = selectedTaskTemplateId
     ? findTemplateInTree(templates, selectedTaskTemplateId)
     : null;
-  const activeTemplate = selected?.template ?? null;
-  const nodeDepth = selected?.depth ?? 0;
+  const activeTemplate = selected !== null ? selected.template : null;
+  const nodeDepth = selected !== null ? selected.depth : 0;
 
   function updateStage(patch: Partial<WorkflowStage>) {
-    onChange(syncStageTemplates({ ...stage, ...patch }));
+    onChange(syncStageTemplates(Object.assign({}, stage, patch)));
   }
 
   function updateTemplates(next: typeof templates) {
-    onChange(syncStageTemplates({ ...stage, taskTemplates: next }));
+    onChange(syncStageTemplates(Object.assign({}, stage, { taskTemplates: next })));
   }
 
   function patchTemplate(templateId: string, patch: Parameters<typeof patchTemplateInTree>[2]) {
@@ -149,7 +150,7 @@ export function StageInspectorPanel({
             className="w-full justify-start text-destructive hover:text-destructive"
             onClick={() => {
               void (async () => {
-                if (!(await confirmDestructive(`Delete "${activeTemplate.title}"?`))) {
+                if (!(await confirmDestructive(`Delete "${activeTemplate.title}"?`, null))) {
                   return;
                 }
                 updateTemplates(removeTemplateFromTree(templates, activeTemplate.id));
@@ -192,7 +193,7 @@ export function StageInspectorPanel({
             onClick={() => {
               if (!canDeleteStage) return;
               void (async () => {
-                if (!(await confirmDestructive(`Delete step "${stage.title || "Untitled"}"?`))) return;
+                if (!(await confirmDestructive(`Delete step "${stage.title || "Untitled"}"?`, null))) return;
                 onDeleteStage();
               })();
             }}

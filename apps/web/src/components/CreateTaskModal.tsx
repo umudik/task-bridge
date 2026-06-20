@@ -15,7 +15,7 @@ type CreateTaskModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   targetLabel: string | null;
-  saving?: boolean;
+  saving: boolean | null;
   onCreate: (title: string, description: string) => void;
 };
 
@@ -36,7 +36,13 @@ export function CreateTaskModal({
     }
   }, [open]);
 
-  const canCreate = title.trim().length > 0 && !saving;
+  const isSaving = saving === true;
+  const canCreate = title.trim().length > 0 && !isSaving;
+
+  let labelText = "this epic";
+  if (targetLabel !== null) {
+    labelText = targetLabel;
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -45,7 +51,7 @@ export function CreateTaskModal({
           <DialogTitle>New task</DialogTitle>
           <p className="text-xs text-muted-foreground">
             Adding to{" "}
-            <span className="font-medium text-foreground">{targetLabel ?? "this epic"}</span>
+            <span className="font-medium text-foreground">{labelText}</span>
           </p>
         </DialogHeader>
 
@@ -56,7 +62,7 @@ export function CreateTaskModal({
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Task title"
-              disabled={saving}
+              disabled={isSaving}
               autoFocus
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && canCreate) {
@@ -73,14 +79,14 @@ export function CreateTaskModal({
               onChange={(event) => setDescription(event.target.value)}
               placeholder="What needs to happen? (optional)"
               rows={5}
-              disabled={saving}
+              disabled={isSaving}
               className="resize-y rounded-xl border-white/[0.1] bg-[#111111]"
             />
           </div>
         </div>
 
         <DialogFooter className="border-t border-white/[0.06] px-6 py-4">
-          <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" disabled={isSaving} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
@@ -88,7 +94,7 @@ export function CreateTaskModal({
             disabled={!canCreate}
             onClick={() => onCreate(title.trim(), description.trim())}
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Create task
           </Button>
         </DialogFooter>

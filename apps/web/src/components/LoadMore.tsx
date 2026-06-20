@@ -1,17 +1,20 @@
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function LoadMore({
-  loaded,
-  hasMore,
-  loading,
-  onLoadMore,
-}: {
+type LoadMoreProps = {
   loaded: number;
   hasMore: boolean;
-  loading?: boolean;
+  loading: boolean | null;
   onLoadMore: () => void;
-}) {
+};
+
+export function LoadMore(rawProps: Partial<LoadMoreProps> & Pick<LoadMoreProps, "loaded" | "hasMore" | "onLoadMore">) {
+  let loading = false;
+  if ("loading" in rawProps) {
+    loading = rawProps.loading === true;
+  }
+  const { loaded, hasMore, onLoadMore } = rawProps;
+
   if (loaded === 0 && !hasMore) return null;
 
   return (

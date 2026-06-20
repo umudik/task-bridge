@@ -1,15 +1,20 @@
 function getEnv(key: string): string | null {
-  const value = process.env[key];
-  if (value != null) {
-    return value.trim();
+  if (!(key in process.env)) {
+    return null;
   }
-  return null;
+  const value = process.env[key];
+  if (value === null) {
+    return null;
+  }
+  return value.trim();
 }
 
 let configPort = 3000;
-const rawPort = process.env["PORT"];
-if (rawPort != null) {
-  configPort = Number(rawPort);
+if ("PORT" in process.env) {
+  const rawPort = process.env["PORT"];
+  if (rawPort !== null) {
+    configPort = Number(rawPort);
+  }
 }
 
 export const config = {

@@ -47,6 +47,7 @@ export function adminUserRoutes(app: FastifyInstance) {
       password: body.password,
       role: body.role,
       isSystemAdmin: false,
+      mustChangePassword: true,
     });
     return reply.status(201).send({ user });
   });

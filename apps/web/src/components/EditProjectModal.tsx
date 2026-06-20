@@ -87,11 +87,14 @@ export function EditProjectModal({
 
   const canSubmit = Boolean(name.trim() && repoPath.trim());
 
-  const currentTemplate = templates.find((item) => item.id === project?.workflowTemplateId);
+  const currentTemplate = project !== null
+    ? templates.find((item) => item.id === project.workflowTemplateId)
+    : null;
   const selectedTemplateId = workflowTemplateId.trim();
   const pipelineWillChange =
     selectedTemplateId !== "" &&
-    selectedTemplateId !== project?.workflowTemplateId.trim();
+    project !== null &&
+    selectedTemplateId !== project.workflowTemplateId.trim();
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
 
   return (
@@ -140,7 +143,7 @@ export function EditProjectModal({
                 <p className="text-xs text-muted-foreground">
                   Current: {currentTemplate.title}
                 </p>
-              ) : project?.workflowTemplateId ? (
+              ) : project !== null && project.workflowTemplateId ? (
                 <p className="text-xs text-muted-foreground">
                   Current: {project.workflowTemplateId}
                 </p>
@@ -160,7 +163,7 @@ export function EditProjectModal({
               </Select>
               {pipelineWillChange ? (
                 <p className="text-xs text-amber-400/90">
-                  Switching to {selectedTemplate?.title ?? selectedTemplateId} resets existing epic
+                  Switching to {selectedTemplate ? selectedTemplate.title : selectedTemplateId} resets existing epic
                   workflows and removes their spawned subtasks.
                 </p>
               ) : null}

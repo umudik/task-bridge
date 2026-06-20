@@ -114,15 +114,15 @@ function mapSubtaskSummary(
   };
 }
 
-export async function mapTaskDetail(task: BridgeTask) {
+export function mapTaskDetail(task: BridgeTask) {
   if (task.parentId === null) {
-    await syncEpicStage(task.id);
-    const refreshed = (await listBridgeTasks()).find((entry) => entry.id === task.id);
+    syncEpicStage(task.id);
+    const refreshed = listBridgeTasks().find((entry) => entry.id === task.id);
     if (refreshed) task = refreshed;
   }
 
-  const stage = await getStageSnapshot(task.projectId, task.stageId);
-  const allTasks = await listBridgeTasks();
+  const stage = getStageSnapshot(task.projectId, task.stageId);
+  const allTasks = listBridgeTasks();
   const stageTitles = getStageTitleLookup(task.projectId);
   let workflowSubtasks: BridgeTask[];
   if (task.parentId === null) {
@@ -154,10 +154,9 @@ export async function mapTaskDetail(task: BridgeTask) {
 
   let workflowState = null;
   if (task.parentId === null) {
-    workflowState = listWorkflowStateSummaries(task.id).map((node) => ({
-      ...node,
-      workStatusLabel: workStatusLabel(node.workStatus),
-    }));
+    workflowState = listWorkflowStateSummaries(task.id).map((node) =>
+      Object.assign({}, node, { workStatusLabel: workStatusLabel(node.workStatus) }),
+    );
   }
 
   return {
@@ -207,7 +206,7 @@ function parseActivityTime(item: {
 function sortInboxByActivity<
   T extends { taskId: number; activityAt: string | null; createdAt: string | null },
 >(items: T[]): T[] {
-  return [...items].sort((a, b) => {
+  return items.slice().sort((a, b) => {
     const aTime = parseActivityTime(a);
     const bTime = parseActivityTime(b);
     if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime !== bTime) {
@@ -217,14 +216,14 @@ function sortInboxByActivity<
   });
 }
 
-export async function buildInboxItems(query: {
+export function buildInboxItems(query: {
   projectId: string | null;
   commentsOnly: boolean | null;
   epicsOnly: boolean | null;
   cursor: string | null;
   limit: number;
 }) {
-  const bridgeTasks = await listBridgeTasks();
+  const bridgeTasks = listBridgeTasks();
   const stageTitles = new Map<string, string>();
   for (const task of bridgeTasks) {
     if (stageTitles.has(task.projectId)) continue;
@@ -263,7 +262,7 @@ export async function buildInboxItems(query: {
     };
   });
 
-  if (query.projectId != null) {
+  if (query.projectId !== null) {
     items = items.filter((item) => item.projectId === query.projectId);
   }
   if (query.commentsOnly) {
@@ -275,7 +274,7 @@ export async function buildInboxItems(query: {
 
   items = sortInboxByActivity(items);
 
-  if (query.cursor != null) {
+  if (query.cursor !== null) {
     const decoded = decodeInboxCursor(query.cursor);
     if (!decoded) throw new AppError("Invalid cursor", 400);
     const cursorTime = Date.parse(decoded.activityAt);

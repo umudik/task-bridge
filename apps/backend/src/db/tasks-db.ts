@@ -18,6 +18,10 @@ function resolveDatabasePath(): string {
 }
 let db: Database.Database | null = null;
 
+type TaskSqliteCell = string | number | bigint | Uint8Array | null;
+
+type TaskSqliteRow = Record<string, TaskSqliteCell>;
+
 function migrate(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
@@ -53,7 +57,7 @@ function migrate(database: Database.Database) {
   `);
 }
 
-function rowToTask(row: Record<string, unknown>): BridgeTask {
+function rowToTask(row: TaskSqliteRow): BridgeTask {
   let parentId: number | null = null;
   if (row.parent_id !== null) {
     parentId = Number(row.parent_id);
@@ -130,10 +134,6 @@ function rowToTask(row: Record<string, unknown>): BridgeTask {
     stageId = String(rawStageId).trim() || null;
   }
 
-  if (!stageId && row.status === "done") {
-    stageId = DONE_STAGE_ID;
-  }
-
   let workStatus: WorkStatus | null = null;
   if (isWorkStatus(row.work_status as string)) {
     workStatus = row.work_status as WorkStatus;
@@ -169,7 +169,7 @@ function rowToTask(row: Record<string, unknown>): BridgeTask {
   };
 }
 
-function taskToRow(task: BridgeTask): Record<string, unknown> {
+function taskToRow(task: BridgeTask): TaskSqliteRow {
   return {
     id: task.id,
     project_id: task.projectId,
@@ -218,8 +218,10 @@ export function deleteEpicSubtasks(epicId: number): void {
 export function deleteTaskRows(ids: number[]): void {
   if (ids.length === 0) return;
   const database = getTasksDb();
-  const placeholders = ids.map(() => "?").join(", ");
-  database.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
+  const statement = database.prepare("DELETE FROM tasks WHERE id = ?");
+  for (const id of ids) {
+    statement.run(id);
+  }
 }
 
 export function countActiveTasksOnStage(
@@ -240,13 +242,13 @@ export function listTaskRows(filter: { id: number }): BridgeTask[] {
   const database = getTasksDb();
   if (filter.id > 0) {
     const rows = database.prepare("SELECT * FROM tasks WHERE id = ?").all(filter.id);
-    return rows.map((row) => rowToTask(row as Record<string, unknown>));
+    return rows.map((row) => rowToTask(row as TaskSqliteRow));
   }
   const rows = database
     .prepare("SELECT * FROM tasks ORDER BY updated_at DESC, id DESC")
     .all();
   return sortTasks(
-    rows.map((row) => rowToTask(row as Record<string, unknown>)),
+    rows.map((row) => rowToTask(row as TaskSqliteRow)),
   );
 }
 

@@ -13,7 +13,7 @@ type TeamPanelProps = {
   onCreateMember: (input: { name: string; role: string; actorKind: AssigneeKind }) => Promise<void>;
   onUpdateMember: (
     memberId: string,
-    patch: { role?: string; actorKind?: AssigneeKind },
+    patch: { name: string | null; role: string | null; actorKind: AssigneeKind | null },
   ) => Promise<void>;
   onDeleteMember: (memberId: string, name: string) => Promise<void>;
 };
@@ -89,6 +89,8 @@ export function TeamPanel({
                       value={member.actorKind}
                       onChange={(event) =>
                         void onUpdateMember(member.id, {
+                          name: null,
+                          role: null,
                           actorKind: event.target.value as AssigneeKind,
                         })
                       }
@@ -103,7 +105,7 @@ export function TeamPanel({
                     className="shrink-0 text-destructive hover:text-destructive"
                     onClick={() => {
                       void (async () => {
-                        if (!(await confirmDestructive(`Delete member "${member.name}"?`))) {
+                        if (!(await confirmDestructive(`Delete member "${member.name}"?`, null))) {
                           return;
                         }
                         await onDeleteMember(member.id, member.name);

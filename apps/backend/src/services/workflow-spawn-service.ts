@@ -31,13 +31,18 @@ function buildSpawnContext(
   epicId: number,
 ): TemplateSpawnContext {
   const state = loadEpicWorkflowState(epicId);
-  const activeStageId = state?.stageId ?? computeEpicStageId(stageRows, workflowTasks);
-  const foundActiveStage = stageRows.find((stage) => stage.id === activeStageId);
-  let activeStage: WorkflowStageRow;
-  if (foundActiveStage != null) {
-    activeStage = foundActiveStage;
+  let activeStageId: string | null;
+  if (state !== null && state.stageId !== null) {
+    activeStageId = state.stageId;
   } else {
-    activeStage = stageRow;
+    activeStageId = computeEpicStageId(stageRows, workflowTasks);
+  }
+  let activeStage = stageRow;
+  for (const stage of stageRows) {
+    if (stage.id === activeStageId) {
+      activeStage = stage;
+      break;
+    }
   }
   let spawnedTemplateIds: Set<string>;
   let doneTemplateIds: Set<string>;
@@ -67,7 +72,7 @@ function buildSpawnContext(
   };
 }
 
-async function spawnTemplateTask(input: {
+function spawnTemplateTask(input: {
   epic: BridgeTask;
   stageRow: WorkflowStageRow;
   template: {
@@ -77,7 +82,7 @@ async function spawnTemplateTask(input: {
     assigneeRole: string | null;
   };
   parentTaskId: number;
-}): Promise<BridgeTask> {
+}): BridgeTask {
   const templateRole = emptyToNull(input.template.assigneeRole);
   const stageRole = emptyToNull(input.stageRow.auto_assign_role);
   let assigneeRole: string | null;
@@ -88,12 +93,12 @@ async function spawnTemplateTask(input: {
   }
   let assignee: string | null;
   if (assigneeRole !== null) {
-    assignee = await pickMemberByProjectRole(input.epic.projectId, assigneeRole);
+    assignee = pickMemberByProjectRole(input.epic.projectId, assigneeRole);
   } else {
     assignee = null;
   }
 
-  const id = await allocateTaskId();
+  const id = allocateTaskId();
   let description: string;
   if (input.template.description !== null) {
     description = input.template.description;
@@ -104,7 +109,7 @@ async function spawnTemplateTask(input: {
     workStatus: "todo",
     comments: [],
   });
-  const task = await upsertBridgeTask({
+  const task = upsertBridgeTask({
     id,
     projectId: input.epic.projectId,
     projectName: input.epic.projectName,
@@ -123,12 +128,12 @@ async function spawnTemplateTask(input: {
   });
   if (nodeDefaults.comments.length > 0 || nodeDefaults.workStatus !== "todo") {
     mutateTaskRow(id, (row) => {
-      row.comments = [...nodeDefaults.comments];
+      row.comments = nodeDefaults.comments.slice();
       row.workStatus = nodeDefaults.workStatus;
     });
   }
   linkSpawnedTemplateTask(input.epic.id, input.template.id, id);
-  const refreshed = (await listBridgeTasks()).find((entry) => entry.id === id);
+  const refreshed = listBridgeTasks().find((entry) => entry.id === id);
   if (refreshed) {
     syncTaskIntoWorkflowState(refreshed);
     return refreshed;
@@ -142,9 +147,10 @@ function resolveParentTaskId(
   templateParentId: string | null,
 ): number {
   if (!templateParentId) return epic.id;
-  const parent = workflowTasks.find((task) => task.templateId === templateParentId);
-  if (parent != null) {
-    return parent.id;
+  for (const task of workflowTasks) {
+    if (task.templateId === templateParentId) {
+      return task.id;
+    }
   }
   return epic.id;
 }
@@ -157,7 +163,7 @@ function findTemplateParentId(
   for (const node of nodes) {
     if (node.id === templateId) return parentTemplateId;
     if (node.children.length > 0) {
-      let nextParent = node.id;
+      const nextParent = node.id;
       const found = findTemplateParentId(node.children, templateId, nextParent);
       if (found !== null) return found;
     }
@@ -165,11 +171,11 @@ function findTemplateParentId(
   return null;
 }
 
-export async function spawnUnlockedWorkflowTasks(epic: BridgeTask): Promise<BridgeTask[]> {
+export function spawnUnlockedWorkflowTasks(epic: BridgeTask): BridgeTask[] {
   if (epic.parentId !== null) return [];
 
   const rows = listWorkflowStageRows({ projectId: epic.projectId, stageId: "" }).sort((a, b) => a.position - b.position);
-  const allTasks = await listBridgeTasks();
+  const allTasks = listBridgeTasks();
   const workflowTasks = listEpicWorkflowTasks(allTasks, epic.id);
   const created: BridgeTask[] = [];
 
@@ -182,7 +188,7 @@ export async function spawnUnlockedWorkflowTasks(epic: BridgeTask): Promise<Brid
     if (!stageHasActionableTemplates(templateInput)) continue;
 
     const roots = resolveStageTaskTemplateRoots(templateInput);
-    const ctx = buildSpawnContext(row, [...workflowTasks, ...created], rows, epic.id);
+    const ctx = buildSpawnContext(row, workflowTasks.concat(created), rows, epic.id);
     let progressed = true;
     while (progressed) {
       progressed = false;
@@ -191,10 +197,10 @@ export async function spawnUnlockedWorkflowTasks(epic: BridgeTask): Promise<Brid
         const templateParentId = findTemplateParentId(roots, template.id);
         const parentTaskId = resolveParentTaskId(
           epic,
-          [...workflowTasks, ...created],
+          workflowTasks.concat(created),
           templateParentId,
         );
-        const task = await spawnTemplateTask({
+        const task = spawnTemplateTask({
           epic,
           stageRow: row,
           template: {
@@ -215,6 +221,6 @@ export async function spawnUnlockedWorkflowTasks(epic: BridgeTask): Promise<Brid
   return created;
 }
 
-export async function spawnEpicWorkflowGraph(epic: BridgeTask): Promise<BridgeTask[]> {
+export function spawnEpicWorkflowGraph(epic: BridgeTask): BridgeTask[] {
   return spawnUnlockedWorkflowTasks(epic);
 }

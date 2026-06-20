@@ -31,10 +31,24 @@ export function AppSidebar() {
   const session = useSession();
 
   const projectMatch = matchPath("/projects/:projectId/*", location.pathname);
-  const activeProjectId = projectMatch?.params.projectId;
-  const fallbackProjectId = activeProjectId ?? session?.projectId;
+  let activeProjectId: string | null = null;
+  if (projectMatch !== null) {
+    const paramId = projectMatch.params.projectId;
+    if (typeof paramId === "string" && paramId.length > 0) {
+      activeProjectId = paramId;
+    }
+  }
+  let fallbackProjectId: string | null = activeProjectId;
+  if (fallbackProjectId === null && session !== null && session.projectId !== null) {
+    fallbackProjectId = session.projectId;
+  }
   const projectId = activeProjectId;
-  const projectName = session?.projectName ?? projectId ?? fallbackProjectId;
+  let projectName: string | null = projectId;
+  if (session !== null && session.projectName !== null) {
+    projectName = session.projectName;
+  } else if (projectId === null && fallbackProjectId !== null) {
+    projectName = fallbackProjectId;
+  }
 
   const { commentItems } = useCommentNotifications(session, projectId);
   const unread = unreadCommentCount(commentItems);
@@ -44,7 +58,21 @@ export function AppSidebar() {
     navigate("/login", { replace: true });
   }
 
-  const isAdmin = session?.userRole === "admin";
+  const isAdmin = session !== null && session.userRole === "admin";
+
+  let roleLabel = "";
+  if (session !== null) {
+    const roleKey = session.userRole;
+    if (roleKey in ROLE_LABELS) {
+      const label = ROLE_LABELS[roleKey];
+      if (typeof label === "string") {
+        roleLabel = label;
+      }
+    }
+    if (roleLabel === "") {
+      roleLabel = roleKey;
+    }
+  }
 
   return (
     <aside className="app-sidebar">
@@ -76,11 +104,11 @@ export function AppSidebar() {
             </p>
             <NavItem
               to={`/projects/${fallbackProjectId}/tasks`}
-              label={projectName ?? "Open project"}
+              label={projectName !== null ? projectName : "Open project"}
               icon={Layers}
             />
           </div>
-        ) : undefined}
+        ) : null}
 
         {isAdmin ? (
           <div className="space-y-0.5">
@@ -89,10 +117,9 @@ export function AppSidebar() {
             </p>
             <NavItem to="/admin/users" label="Team members" icon={Users} />
           </div>
-        ) : undefined}
+        ) : null}
       </nav>
 
-      {/* Current user info + sign out */}
       <div className="shrink-0 border-t border-white/[0.07] p-2 space-y-1">
         {session ? (
           <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
@@ -104,14 +131,14 @@ export function AppSidebar() {
                 {session.userName}
               </p>
               <p className="truncate text-[11px] text-muted-foreground mt-0.5">
-                {ROLE_LABELS[session.userRole] ?? session.userRole}
+                {roleLabel}
               </p>
             </div>
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 hidden sm:flex">
-              {ROLE_LABELS[session.userRole] ?? session.userRole}
+              {roleLabel}
             </Badge>
           </div>
-        ) : undefined}
+        ) : null}
 
         <Button
           variant="ghost"
@@ -127,19 +154,25 @@ export function AppSidebar() {
   );
 }
 
-function NavItem({
-  to,
-  label,
-  icon: Icon,
-  badge = 0,
-  end = false,
-}: {
+type NavItemProps = {
   to: string;
   label: string;
   icon: LucideIcon;
-  badge?: number;
-  end?: boolean;
-}) {
+  badge: number | null;
+  end: boolean | null;
+};
+
+function NavItem(rawProps: Partial<NavItemProps> & Pick<NavItemProps, "to" | "label" | "icon">) {
+  let badge = 0;
+  if ("badge" in rawProps && typeof rawProps.badge === "number") {
+    badge = rawProps.badge;
+  }
+  let end = false;
+  if ("end" in rawProps && rawProps.end === true) {
+    end = true;
+  }
+  const { to, label, icon: Icon } = rawProps;
+
   return (
     <NavLink
       to={to}

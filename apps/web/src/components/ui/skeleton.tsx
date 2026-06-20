@@ -1,7 +1,13 @@
-import { cn } from "@/lib/utils";
+import * as React from "react";
+import { cn, omitProps, type PropBag } from "@/lib/utils";
 
-function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("animate-pulse rounded-md bg-muted", className)} {...props} />;
+function Skeleton(rawProps: React.HTMLAttributes<HTMLDivElement>) {
+  return React.createElement(
+    "div",
+    Object.assign({}, omitProps(rawProps as PropBag, ["className"]), {
+      className: cn("animate-pulse rounded-md bg-muted", rawProps.className),
+    }),
+  );
 }
 
 export { Skeleton };

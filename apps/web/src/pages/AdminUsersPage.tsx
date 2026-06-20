@@ -70,7 +70,7 @@ export function AdminUsersPage() {
         password: newPassword,
         role: newRole,
       });
-      setUsers((prev) => [...prev, user]);
+      setUsers((prev) => prev.concat([user]));
       setAddOpen(false);
       setNewName("");
       setNewEmail("");
@@ -99,7 +99,7 @@ export function AdminUsersPage() {
   async function handleRoleChange(userId: string, role: string) {
     if (!session) return;
     try {
-      const updated = await updateAppUser(session, userId, { role });
+      const updated = await updateAppUser(session, userId, { name: null, role });
       setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
       toast.success("Role updated");
     } catch (err) {
@@ -217,8 +217,8 @@ export function AdminUsersPage() {
 
                 <div className="ml-4 flex shrink-0 items-center gap-3">
                   {user.isSystemAdmin ? (
-                    <Badge variant={ROLE_VARIANT[user.role] ?? "outline"}>
-                      {ROLE_LABELS[user.role] ?? user.role}
+                    <Badge variant={user.role in ROLE_VARIANT ? ROLE_VARIANT[user.role] : "outline"}>
+                      {user.role in ROLE_LABELS ? ROLE_LABELS[user.role] : user.role}
                     </Badge>
                   ) : (
                     <Select

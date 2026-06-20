@@ -29,6 +29,7 @@ import {
   PROTECTED_WORKFLOW_TEMPLATE_IDS,
   saveWorkflowTemplate,
   type WorkflowStage,
+  type WorkflowTemplate,
   type WorkflowTemplateSummary,
 } from "@/lib/api";
 import { useConfirm } from "@/lib/confirm";
@@ -56,7 +57,10 @@ export function WorkflowTemplatesPage() {
     const items = await fetchWorkflowTemplates(session);
     setTemplates(items);
     if (items.length > 0 && !selectedId) {
-      setSelectedId(items[0]?.id ?? null);
+      const first = items[0];
+      if (first) {
+        setSelectedId(first.id);
+      }
     }
   }, [session, selectedId]);
 
@@ -89,7 +93,7 @@ export function WorkflowTemplatesPage() {
   }, [loadTemplateStages, selectedId]);
 
   function markDirty(next: WorkflowStage[]) {
-    setStages([...next].sort((a, b) => a.position - b.position));
+    setStages(next.slice().sort((a, b) => a.position - b.position));
     setDirty(true);
   }
 
@@ -100,7 +104,7 @@ export function WorkflowTemplatesPage() {
   }
 
   function addStageAtEnd() {
-    const next = [...stages, createEmptyStage(stages.length)];
+    const next = stages.concat([createEmptyStage(stages.length)]);
     selectNewStage(next, next.length - 1);
   }
 
@@ -122,11 +126,15 @@ export function WorkflowTemplatesPage() {
     if (dirty && !window.confirm("You have unsaved changes. Continue anyway?")) return;
     setCreatingTemplate(true);
     try {
-      const template = await createWorkflowTemplate(session, { title: newTemplateTitle.trim() });
+      const template = await createWorkflowTemplate(session, {
+        title: newTemplateTitle.trim(),
+        id: null,
+        description: null,
+      });
       setTemplates((current) =>
-        [...current, { id: template.id, title: template.title, description: template.description }].sort((a, b) =>
-          a.title.localeCompare(b.title),
-        ),
+        current
+          .concat([{ id: template.id, title: template.title, description: template.description }])
+          .sort((a, b) => a.title.localeCompare(b.title)),
       );
       setSelectedId(template.id);
       setStages(template.stages);
@@ -156,12 +164,12 @@ export function WorkflowTemplatesPage() {
     setImporting(true);
     try {
       const text = await file.text();
-      const data: unknown = JSON.parse(text);
+      const data = JSON.parse(text) as WorkflowTemplate;
       const template = await importWorkflowTemplate(session, data);
       setTemplates((current) =>
-        [...current, { id: template.id, title: template.title, description: template.description }].sort(
-          (a, b) => a.title.localeCompare(b.title),
-        ),
+        current
+          .concat([{ id: template.id, title: template.title, description: template.description }])
+          .sort((a, b) => a.title.localeCompare(b.title)),
       );
       setSelectedId(template.id);
       setStages(template.stages);
@@ -179,7 +187,7 @@ export function WorkflowTemplatesPage() {
 
   async function handleDeleteTemplate(template: WorkflowTemplateSummary) {
     if (!session || PROTECTED_WORKFLOW_TEMPLATE_IDS.has(template.id)) return;
-    if (!(await confirmDestructive(`Delete template "${template.title}"? This cannot be undone.`))) {
+    if (!(await confirmDestructive(`Delete template "${template.title}"? This cannot be undone.`, null))) {
       return;
     }
     setDeleting(true);
@@ -188,7 +196,14 @@ export function WorkflowTemplatesPage() {
       const remaining = templates.filter((item) => item.id !== template.id);
       setTemplates(remaining);
       if (selectedId === template.id) {
-        setSelectedId(remaining[0]?.id ?? null);
+        let nextSelectedId: string | null = null;
+        if (remaining.length > 0) {
+          const nextSelected = remaining[0];
+          if (nextSelected) {
+            nextSelectedId = nextSelected.id;
+          }
+        }
+        setSelectedId(nextSelectedId);
         setStages([]);
         setDirty(false);
         setEditorIndex(null);
@@ -202,7 +217,7 @@ export function WorkflowTemplatesPage() {
     }
   }
 
-  const selectedTemplate = templates.find((item) => item.id === selectedId) ?? null;
+  const selectedTemplate = (function(){ const f = templates.find((item) => item.id === selectedId); return f ? f : null; })();
   const canDeleteSelected =
     selectedTemplate !== null && !PROTECTED_WORKFLOW_TEMPLATE_IDS.has(selectedTemplate.id);
 
@@ -221,7 +236,13 @@ export function WorkflowTemplatesPage() {
     }
   }
 
-  const editingStage = editorIndex !== null ? stages[editorIndex] ?? null : null;
+  let editingStage: WorkflowStage | null = null;
+  if (editorIndex !== null && editorIndex >= 0 && editorIndex < stages.length) {
+    const stageAtIndex = stages[editorIndex];
+    if (stageAtIndex) {
+      editingStage = stageAtIndex;
+    }
+  }
 
   function setStageBySortedIndex(sortedIndex: number | null, taskTemplateId: string | null = null) {
     if (sortedIndex === null) {
@@ -229,7 +250,7 @@ export function WorkflowTemplatesPage() {
       setSelectedTaskTemplateId(null);
       return;
     }
-    const sorted = [...stages].sort((a, b) => a.position - b.position);
+    const sorted = stages.slice().sort((a, b) => a.position - b.position);
     const stage = sorted[sortedIndex];
     if (!stage) return;
     const index = stages.findIndex((item) => item.id === stage.id);
@@ -238,7 +259,7 @@ export function WorkflowTemplatesPage() {
   }
 
   function stageAtSortedIndex(sortedIndex: number) {
-    const sorted = [...stages].sort((a, b) => a.position - b.position);
+    const sorted = stages.slice().sort((a, b) => a.position - b.position);
     const stage = sorted[sortedIndex];
     if (!stage) return null;
     const index = stages.findIndex((item) => item.id === stage.id);
@@ -249,11 +270,11 @@ export function WorkflowTemplatesPage() {
   function addStageTask(sortedIndex: number) {
     const entry = stageAtSortedIndex(sortedIndex);
     if (!entry) return;
-    const templates = entry.stage.taskTemplates ?? [];
+    const templates = (entry.stage.taskTemplates);
     const created = createStageTaskTemplate(entry.stage.title, templates.length);
     const next = stages.map((item, idx) =>
       idx === entry.index
-        ? syncStageTemplates({ ...item, taskTemplates: [...templates, created] })
+        ? syncStageTemplates(Object.assign({}, item, { taskTemplates: templates.concat([created]) }))
         : item,
     );
     selectNewStage(next, entry.index, created.id);
@@ -262,13 +283,14 @@ export function WorkflowTemplatesPage() {
   function moveTaskTemplate(sortedIndex: number, templateId: string, delta: -1 | 1) {
     const entry = stageAtSortedIndex(sortedIndex);
     if (!entry) return;
-    const templates = entry.stage.taskTemplates ?? [];
+    const templates = (entry.stage.taskTemplates);
     const next = stages.map((item, idx) =>
       idx === entry.index
-        ? syncStageTemplates({
-            ...item,
-            taskTemplates: moveTemplateAmongSiblings(templates, templateId, delta),
-          })
+        ? syncStageTemplates(
+            Object.assign({}, item, {
+              taskTemplates: moveTemplateAmongSiblings(templates, templateId, delta),
+            }),
+          )
         : item,
     );
     markDirty(next);
@@ -277,19 +299,20 @@ export function WorkflowTemplatesPage() {
   function addSubtask(sortedIndex: number, parentTemplateId: string) {
     const entry = stageAtSortedIndex(sortedIndex);
     if (!entry) return;
-    const templates = entry.stage.taskTemplates ?? [];
+    const templates = (entry.stage.taskTemplates);
     const parent = findTemplateInTree(templates, parentTemplateId);
     if (!parent) return;
     const created = createSubtaskTemplate(
       parent.template.title,
-      parent.template.children?.length ?? 0,
+      parent.template.children.length,
     );
     const next = stages.map((item, idx) =>
       idx === entry.index
-        ? syncStageTemplates({
-            ...item,
-            taskTemplates: addChildTemplate(templates, parentTemplateId, created),
-          })
+        ? syncStageTemplates(
+            Object.assign({}, item, {
+              taskTemplates: addChildTemplate(templates, parentTemplateId, created),
+            }),
+          )
         : item,
     );
     selectNewStage(next, entry.index, created.id);
@@ -334,7 +357,7 @@ export function WorkflowTemplatesPage() {
             accept=".json,application/json"
             className="hidden"
             onChange={(e) => {
-              const file = e.target.files?.[0];
+              const file = (e.target.files !== null ? e.target.files[0] : null);
               if (file) void handleImportFile(file);
             }}
           />
@@ -344,7 +367,11 @@ export function WorkflowTemplatesPage() {
             size="sm"
             className="h-9 w-full"
             disabled={importing}
-            onClick={() => importInputRef.current?.click()}
+            onClick={() => {
+              if (importInputRef.current !== null) {
+                importInputRef.current.click();
+              }
+            }}
           >
             {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
             Import JSON
@@ -421,7 +448,7 @@ export function WorkflowTemplatesPage() {
 
       <div className="flex min-h-0 flex-1 flex-col">
         <PageHeader
-          title={selectedTemplate?.title ?? "Template"}
+          title={selectedTemplate !== null ? selectedTemplate.title : "Template"}
           subtitle="Stages and task templates"
           actions={
             <>
@@ -464,7 +491,7 @@ export function WorkflowTemplatesPage() {
             <WorkflowCanvas
               className="min-h-0 flex-1"
               stages={stages}
-              selectedStageId={editingStage?.id ?? null}
+              selectedStageId={editingStage !== null ? editingStage.id : null}
               selectedTaskTemplateId={selectedTaskTemplateId}
               onAddStage={addStageAtEnd}
               onInsertStageAfter={insertStageAfter}
@@ -496,7 +523,7 @@ export function WorkflowTemplatesPage() {
                     return;
                   }
                   markDirty(
-                    stages.filter((_, idx) => idx !== editorIndex).map((stage, position) => ({ ...stage, position })),
+                    stages.filter((_, idx) => idx !== editorIndex).map((stage, position) => Object.assign({}, stage, { position })),
                   );
                   setEditorIndex(null);
                   setSelectedTaskTemplateId(null);

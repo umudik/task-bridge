@@ -1,8 +1,19 @@
+export type BlockedSubtaskSummary = {
+  id: number;
+  title: string;
+  stageId: string | null;
+};
+
+export type AppErrorDetails =
+  | { code: string }
+  | { subtasks: BlockedSubtaskSummary[] }
+  | null;
+
 export class AppError extends Error {
   readonly statusCode: number;
-  readonly details: unknown;
+  readonly details: AppErrorDetails;
 
-  constructor(message: string, statusCode: number, details: unknown = null) {
+  constructor(message: string, statusCode: number, details: AppErrorDetails = null) {
     super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
@@ -10,14 +21,15 @@ export class AppError extends Error {
   }
 }
 
-export function isAppError(error: unknown): error is AppError {
+export function isAppError(error: object | null): error is AppError {
   return error instanceof AppError;
 }
 
-export function statusCodeFromError(error: unknown): number {
+export function statusCodeFromError(error: object | null): number {
   if (isAppError(error)) return error.statusCode;
   if (error instanceof Object && "statusCode" in error) {
-    const code = Number((error as Record<string, unknown>).statusCode);
+    const row = error as { statusCode: string | number | boolean | null };
+    const code = Number(row.statusCode);
     if (Number.isFinite(code)) {
       return code;
     }

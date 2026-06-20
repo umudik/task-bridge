@@ -29,8 +29,18 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
         setTemplates(items);
         setWorkflowTemplateId((current) => {
           if (items.some((item) => item.id === current)) return current;
-          const empty = items.find((item) => item.id === DEFAULT_WORKFLOW_TEMPLATE_ID);
-          return empty?.id ?? items[0]?.id ?? DEFAULT_WORKFLOW_TEMPLATE_ID;
+          for (const item of items) {
+            if (item.id === DEFAULT_WORKFLOW_TEMPLATE_ID) {
+              return item.id;
+            }
+          }
+          if (items.length > 0) {
+            const first = items[0];
+            if (first) {
+              return first.id;
+            }
+          }
+          return DEFAULT_WORKFLOW_TEMPLATE_ID;
         });
       })
       .catch(() => setTemplates([]));

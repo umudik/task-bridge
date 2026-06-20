@@ -167,16 +167,28 @@ const workStatusBodySchema = z.object({
 });
 
 const inboxQuerySchema = z.object({
-  projectId: z.string().min(1).optional(),
+  projectId: z.string().min(1).nullable().default(null),
   commentsOnly: z
     .enum(["true", "false"])
-    .optional()
-    .transform((value) => value === "true"),
+    .nullable()
+    .default(null)
+    .transform((value): boolean | null => {
+      if (value === null) {
+        return null;
+      }
+      return value === "true";
+    }),
   epicsOnly: z
     .enum(["true", "false"])
-    .optional()
-    .transform((value) => value === "true"),
-  cursor: z.string().min(1).optional(),
+    .nullable()
+    .default(null)
+    .transform((value): boolean | null => {
+      if (value === null) {
+        return null;
+      }
+      return value === "true";
+    }),
+  cursor: z.string().min(1).nullable().default(null),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
 });
 
@@ -184,16 +196,16 @@ export function taskRoutes(app: FastifyInstance) {
   app.post("/epics", async (request, reply) => {
     const user = assertAuth(request);
     const body = createEpicBodySchema.parse(request.body);
-    await refreshProjectRegistry();
+    refreshProjectRegistry();
 
     const project = getProjectById(body.projectId.trim());
     if (!project) {
       return reply.status(400).send({ error: "Unknown project" });
     }
 
-    const id = await allocateTaskId();
+    const id = allocateTaskId();
     const { title, description } = resolveEpicFields(body);
-    const placement = await resolveNewTaskPlacement(project.id);
+    const placement = resolveNewTaskPlacement(project.id);
 
     let hasText = false;
     if (body.text) {
@@ -218,7 +230,7 @@ export function taskRoutes(app: FastifyInstance) {
       createdBy,
     });
 
-    const epic = await upsertBridgeTask({
+    const epic = upsertBridgeTask({
       id,
       projectId: project.id,
       projectName: project.name,
@@ -236,8 +248,8 @@ export function taskRoutes(app: FastifyInstance) {
       workStatus: null,
     });
 
-    await spawnEpicWorkflow(epic);
-    await syncEpicStage(epic.id);
+    spawnEpicWorkflow(epic);
+    syncEpicStage(epic.id);
 
     return reply.status(201).send(createdItemResponse(epic));
   });
@@ -245,20 +257,20 @@ export function taskRoutes(app: FastifyInstance) {
   app.post("/tasks", async (request, reply) => {
     assertAuth(request);
     const body = createTaskBodySchema.parse(request.body);
-    await refreshProjectRegistry();
+    refreshProjectRegistry();
 
-    const parent = await getBridgeTask(body.parentId);
+    const parent = getBridgeTask(body.parentId);
     if (!parent) {
       return reply.status(400).send({ error: "Unknown parent task" });
     }
 
-    const allTasks = await listBridgeTasks();
+    const allTasks = listBridgeTasks();
     const epicId = resolveEpicId(allTasks, parent);
     if (!epicId) {
       return reply.status(400).send({ error: "Task must belong to an epic" });
     }
 
-    const epic = await getBridgeTask(epicId);
+    const epic = getBridgeTask(epicId);
     if (!epic || epic.parentId !== null) {
       return reply.status(400).send({ error: "Unknown epic" });
     }
@@ -268,7 +280,7 @@ export function taskRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Unknown project" });
     }
 
-    const placement = await resolveNewTaskPlacement(project.id);
+    const placement = resolveNewTaskPlacement(project.id);
     let bodyStageId: string | null = null;
     if (body.stageId) {
       bodyStageId = body.stageId.trim();
@@ -289,8 +301,8 @@ export function taskRoutes(app: FastifyInstance) {
       descriptionValue = body.description.trim();
     }
 
-    const task = await upsertBridgeTask({
-      id: await allocateTaskId(),
+    const task = upsertBridgeTask({
+      id: allocateTaskId(),
       projectId: project.id,
       projectName: project.name,
       title: body.title.trim().slice(0, 200),
@@ -307,15 +319,15 @@ export function taskRoutes(app: FastifyInstance) {
       workStatus: "todo",
     });
 
-    await applyTodoCascadeFromTask(task, "web", { descendants: false });
-    await syncEpicStage(epic.id);
+    applyTodoCascadeFromTask(task, "web", { descendants: false });
+    syncEpicStage(epic.id);
 
     return reply.status(201).send(createdItemResponse(task));
   });
 
-  app.get("/tasks", async (request) => {
+  app.get("/tasks", (request) => {
     assertAuth(request);
-    const bridgeTasks = await listBridgeTasks();
+    const bridgeTasks = listBridgeTasks();
     return {
       items: bridgeTasks.map((task) => ({
         id: task.id,
@@ -339,7 +351,7 @@ export function taskRoutes(app: FastifyInstance) {
     const { id } = taskIdParamsSchema.parse(request.params);
     const claimBody = request.body || {};
     const body = claimTaskBodySchema.parse(claimBody);
-    const existing = await getBridgeTask(id);
+    const existing = getBridgeTask(id);
     if (!existing) {
       return reply.status(404).send({ error: "Task not found" });
     }
@@ -348,15 +360,15 @@ export function taskRoutes(app: FastifyInstance) {
     if (!actor) {
       return reply.status(404).send({ error: "Project member not found" });
     }
-    const blockReason = await validateTaskClaim(id, actor);
+    const blockReason = validateTaskClaim(id, actor);
     if (blockReason) {
-      const existingAgain = await getBridgeTask(id);
+      const existingAgain = getBridgeTask(id);
       if (!existingAgain) {
         return reply.status(404).send({ error: "Task not found" });
       }
       return reply.status(409).send({ error: blockReason });
     }
-    const task = await claimBridgeTask(id, body.claimedBy);
+    const task = claimBridgeTask(id, body.claimedBy);
     if (!task) {
       return reply.status(409).send({ error: "Task is not available to claim" });
     }
@@ -366,7 +378,7 @@ export function taskRoutes(app: FastifyInstance) {
   app.post("/tasks/:id/unclaim", async (request, reply) => {
     assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
-    const task = await releaseBridgeTask(id);
+    const task = releaseBridgeTask(id);
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }
@@ -384,18 +396,17 @@ export function taskRoutes(app: FastifyInstance) {
     if (!actor) {
       return reply.status(404).send({ error: "Project member not found" });
     }
-    const claimed = await claimNextTask(actor, { projectId: body.projectId });
+    const claimed = claimNextTask(actor, { projectId: body.projectId });
     if (!claimed) {
       return reply.status(404).send({ error: "No tasks available" });
     }
     const { task, item } = claimed;
-    return {
-      ...item,
+    return Object.assign({}, item, {
       stageId: task.stageId,
       claimedBy: task.claimedBy,
       claimedAt: task.claimedAt,
       comments: mapComments(task),
-    };
+    });
   });
 
   app.patch("/tasks/:id/work-status", async (request, reply) => {
@@ -406,7 +417,7 @@ export function taskRoutes(app: FastifyInstance) {
     if (!isWorkStatus(body.workStatus)) {
       return reply.status(400).send({ error: "Invalid work status" });
     }
-    const existing = await getBridgeTask(id);
+    const existing = getBridgeTask(id);
     if (!existing) {
       return reply.status(404).send({ error: "Task not found" });
     }
@@ -415,14 +426,14 @@ export function taskRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Project member not found" });
     }
     try {
-      const updated = await updateTaskWorkStatus(id, body.workStatus, actor.claimedBy, actor);
+      const updated = updateTaskWorkStatus(id, body.workStatus, actor.claimedBy, actor);
       if (!updated) {
         if (existing.parentId === null) {
           return reply.status(400).send({ error: "Only subtasks support work status" });
         }
         return reply.status(404).send({ error: "Task not found" });
       }
-      return await mapTaskDetail(updated);
+      return mapTaskDetail(updated);
     } catch (error) {
       if (error instanceof AppError) {
         return reply.status(error.statusCode).send({ error: error.message });
@@ -439,14 +450,17 @@ export function taskRoutes(app: FastifyInstance) {
         epicId: z.coerce.number().int().positive(),
       })
       .parse(request.params);
-    const epic = await getBridgeTask(params.epicId);
+    const epic = getBridgeTask(params.epicId);
     if (!epic || epic.projectId !== params.projectId || epic.parentId !== null) {
       return reply.status(404).send({ error: "Epic not found" });
     }
-    await syncEpicStage(epic.id);
-    const refreshedRaw = await getBridgeTask(params.epicId);
-    const refreshed = refreshedRaw || epic;
-    const subtasks = await listEpicSubtasks(epic.id);
+    syncEpicStage(epic.id);
+    const refreshedRaw = getBridgeTask(params.epicId);
+    let refreshed = epic;
+    if (refreshedRaw) {
+      refreshed = refreshedRaw;
+    }
+    const subtasks = listEpicSubtasks(epic.id);
     const stageTitles = getStageTitleLookup(params.projectId);
 
     let epicStageTitle: string | null = null;
@@ -491,11 +505,11 @@ export function taskRoutes(app: FastifyInstance) {
   app.get("/tasks/:id", async (request, reply) => {
     assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
-    const task = await getBridgeTask(id);
+    const task = getBridgeTask(id);
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    return await mapTaskDetail(task);
+    return mapTaskDetail(task);
   });
 
   app.patch("/tasks/:id", async (request, reply) => {
@@ -503,7 +517,7 @@ export function taskRoutes(app: FastifyInstance) {
     const { id } = taskIdParamsSchema.parse(request.params);
     const patchBody = request.body || {};
     const body = patchTaskBodySchema.parse(patchBody);
-    const existing = await getBridgeTask(id);
+    const existing = getBridgeTask(id);
     if (!existing) {
       return reply.status(404).send({ error: "Task not found" });
     }
@@ -517,7 +531,7 @@ export function taskRoutes(app: FastifyInstance) {
         if (body.comment) {
           commentBy = body.comment.by;
         }
-        const updated = await updateBridgeTaskSpec(id, {
+        const updated = updateBridgeTaskSpec(id, {
           description: body.description,
           by: commentBy,
         });
@@ -527,22 +541,22 @@ export function taskRoutes(app: FastifyInstance) {
         task = updated;
       }
       if (body.comment) {
-        const updated = await addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
+        const updated = addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
         if (!updated) {
           return reply.status(404).send({ error: "Task not found" });
         }
         task = updated;
       }
-      return await mapTaskDetail(task);
+      return mapTaskDetail(task);
     }
     if (!body.comment) {
       return reply.status(400).send({ error: "comment is required" });
     }
-    const task = await addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
+    const task = addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    return await mapTaskDetail(task);
+    return mapTaskDetail(task);
   });
 
   app.get("/worker/pending", async (request, reply) => {
@@ -563,18 +577,18 @@ export function taskRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: "Project member not found" });
       }
     }
-    const items = await listPendingTasks(query.projectId, actor);
+    const items = listPendingTasks(query.projectId, actor);
     return { items };
   });
 
-  app.get("/inbox", async (request) => {
+  app.get("/inbox", (request) => {
     assertAuth(request);
     const query = inboxQuerySchema.parse(request.query);
     return buildInboxItems({
-      projectId: query.projectId ?? null,
-      commentsOnly: query.commentsOnly ?? null,
-      epicsOnly: query.epicsOnly ?? null,
-      cursor: query.cursor ?? null,
+      projectId: query.projectId,
+      commentsOnly: query.commentsOnly,
+      epicsOnly: query.epicsOnly,
+      cursor: query.cursor,
       limit: query.limit,
     });
   });

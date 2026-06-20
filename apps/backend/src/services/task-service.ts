@@ -45,7 +45,7 @@ export function getBridgeTask(id: number): BridgeTask | null {
   return row;
 }
 
-export async function upsertBridgeTask(input: {
+export function upsertBridgeTask(input: {
   id: number;
   projectId: string;
   projectName: string;
@@ -61,7 +61,7 @@ export async function upsertBridgeTask(input: {
   epicId: number | null;
   templateId: string | null;
   workStatus: WorkStatus | null;
-}): Promise<BridgeTask> {
+}): BridgeTask {
   const existingRows = listTaskRows({ id: input.id });
   if (existingRows.length > 0) {
     const existing = existingRows[0];
@@ -109,7 +109,7 @@ export async function upsertBridgeTask(input: {
     workStatus = "todo";
   }
 
-  const resolvedAssignee = await resolveTaskAssignee({
+  const resolvedAssignee = resolveTaskAssignee({
     projectId: input.projectId,
     assignee: input.assignee,
     assigneeRole: input.assigneeRole,
@@ -148,17 +148,17 @@ export async function upsertBridgeTask(input: {
   return task;
 }
 
-export async function transitionBridgeTask(
+export function transitionBridgeTask(
   id: number,
   input: {
     stageId: string;
     assignee: string | null;
     by: string;
   },
-): Promise<BridgeTask | null> {
+): BridgeTask | null {
   const existing = getBridgeTask(id);
   if (!existing) return null;
-  const resolved = await resolveTaskAssignee({
+  const resolved = resolveTaskAssignee({
     projectId: existing.projectId,
     assignee: input.assignee,
     assigneeRole: existing.assigneeRole,

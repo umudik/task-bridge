@@ -36,17 +36,17 @@ import {
 
 type WorkflowCanvasProps = {
   stages: WorkflowStage[];
-  selectedStageId?: string | null;
-  selectedTaskTemplateId?: string | null;
+  selectedStageId: string | null;
+  selectedTaskTemplateId: string | null;
   onAddStage: () => void;
   onInsertStageAfter: (afterIndex: number) => void;
   onMoveStage: (index: number, delta: -1 | 1) => void;
-  onSelectStage?: (flowIndex: number) => void;
-  onSelectTaskTemplate?: (flowIndex: number, templateId: string) => void;
-  onAddStageTask?: (flowIndex: number) => void;
-  onAddSubtask?: (flowIndex: number, parentTemplateId: string) => void;
-  onMoveTaskTemplate?: (flowIndex: number, templateId: string, delta: -1 | 1) => void;
-  className?: string;
+  onSelectStage: (flowIndex: number) => void | null;
+  onSelectTaskTemplate: (flowIndex: number, templateId: string) => void | null;
+  onAddStageTask: (flowIndex: number) => void | null;
+  onAddSubtask: (flowIndex: number, parentTemplateId: string) => void | null;
+  onMoveTaskTemplate: (flowIndex: number, templateId: string, delta: -1 | 1) => void | null;
+  className: string | null;
 };
 
 type Point = { x: number; y: number };
@@ -106,7 +106,7 @@ function StageCard({
   onMoveLeft: () => void;
   onMoveRight: () => void;
 }) {
-  const templateCount = sanitizeStageTemplates(stage.taskTemplates ?? []).length;
+  const templateCount = sanitizeStageTemplates(stage.taskTemplates).length;
   return (
     <div
       data-stage-card="true"
@@ -170,7 +170,15 @@ function StageCard({
   );
 }
 
-function NodeLink({ className }: { className?: string }) {
+function NodeLink(rawProps: Partial<{ className: string | null }> = {}) {
+  let className: string | null = null;
+  if ("className" in rawProps) {
+    if (rawProps.className === null) {
+      className = null;
+    } else if (typeof rawProps.className === "string") {
+      className = rawProps.className;
+    }
+  }
   return <div className={cn("shrink-0 bg-white/[0.14]", className)} />;
 }
 
@@ -220,7 +228,7 @@ function TaskNode({
 }) {
   const selected = selectedTaskTemplateId === template.id;
   const isSubtask = depth > 0;
-  const children = sanitizeStageTemplates(template.children ?? []);
+  const children = sanitizeStageTemplates(template.children);
   const indent = depth * TASK_DEPTH_INDENT;
   const canMoveUp = canMoveTemplateAmongSiblings(stageTemplates, template.id, -1);
   const canMoveDown = canMoveTemplateAmongSiblings(stageTemplates, template.id, 1);
@@ -272,7 +280,7 @@ function TaskNode({
             </div>
           </button>
           <NodeLink className="mx-1 h-px w-3" />
-          <NodeAddButton title="Add subtask" data-node-insert="true" onClick={() => onAddSubtask(template.id)} />
+          <NodeAddButton title="Add subtask" dataNodeInsert="true" onClick={() => onAddSubtask(template.id)} className={null} disabled={null} style={null} dataEpicAdd={null} dataStageInsert={null} />
         </div>
       </div>
       {children.length > 0 ? (
@@ -327,7 +335,7 @@ function StageColumn({
   onMoveRight: () => void;
 }) {
   const roots = sanitizeStageTemplates(templates);
-  const columnWidth = stage.columnWidth ?? STAGE_CARD_WIDTH;
+  const columnWidth = (stage.columnWidth !== null ? stage.columnWidth : STAGE_CARD_WIDTH);
   return (
     <div
       className="pointer-events-none absolute flex flex-col items-start"
@@ -346,7 +354,7 @@ function StageColumn({
         />
         <div className="flex flex-col items-center">
           <NodeLink className="h-4 w-px" />
-          <NodeAddButton title="Add task to step" data-node-insert="true" onClick={onAddStageTask} />
+          <NodeAddButton title="Add task to step" dataNodeInsert="true" onClick={onAddStageTask} className={null} disabled={null} style={null} dataEpicAdd={null} dataStageInsert={null} />
         </div>
       </div>
       <div
@@ -475,8 +483,9 @@ export function WorkflowCanvas({
     if (!viewport || displayStages.length === 0) return;
 
     function applyViewportFit() {
-      const width = viewport!.clientWidth;
-      const height = viewport!.clientHeight;
+      if (viewport === null) return;
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
       if (width === 0 || height === 0) return;
 
       const wasHidden = lastViewportSizeRef.current.width === 0 || lastViewportSizeRef.current.height === 0;
@@ -600,18 +609,36 @@ export function WorkflowCanvas({
               key={stage.id}
               stage={stage}
               flowIndex={flowIndex}
-              templates={stage.taskTemplates ?? []}
+              templates={stage.taskTemplates}
               selectedStageId={selectedStageId}
               selectedTaskTemplateId={selectedTaskTemplateId}
               canMoveLeft={flowIndex > 0}
               canMoveRight={flowIndex < displayStages.length - 1}
-              onSelectStage={() => onSelectStage?.(flowIndex)}
-              onSelectTaskTemplate={(templateId) => onSelectTaskTemplate?.(flowIndex, templateId)}
-              onAddStageTask={() => onAddStageTask?.(flowIndex)}
-              onAddSubtask={(parentId) => onAddSubtask?.(flowIndex, parentId)}
-              onMoveTaskTemplate={(templateId, delta) =>
-                onMoveTaskTemplate?.(flowIndex, templateId, delta)
-              }
+              onSelectStage={() => {
+                if (onSelectStage !== null) {
+                  onSelectStage(flowIndex);
+                }
+              }}
+              onSelectTaskTemplate={(templateId) => {
+                if (onSelectTaskTemplate !== null) {
+                  onSelectTaskTemplate(flowIndex, templateId);
+                }
+              }}
+              onAddStageTask={() => {
+                if (onAddStageTask !== null) {
+                  onAddStageTask(flowIndex);
+                }
+              }}
+              onAddSubtask={(parentId) => {
+                if (onAddSubtask !== null) {
+                  onAddSubtask(flowIndex, parentId);
+                }
+              }}
+              onMoveTaskTemplate={(templateId, delta) => {
+                if (onMoveTaskTemplate !== null) {
+                  onMoveTaskTemplate(flowIndex, templateId, delta);
+                }
+              }}
               onMoveLeft={() => onMoveStage(flowIndex, -1)}
               onMoveRight={() => onMoveStage(flowIndex, 1)}
             />
@@ -642,10 +669,13 @@ export function WorkflowCanvas({
               <NodeAddButton
                 key={`insert-${stage.id}`}
                 title="Insert stage"
-                data-stage-insert="true"
+                dataStageInsert="true"
                 onClick={() => onInsertStageAfter(flowIndex)}
                 className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
                 style={{ left: midpoint.x, top: midpoint.y }}
+                disabled={null}
+                dataEpicAdd={null}
+                dataNodeInsert={null}
               />
             );
           })}
