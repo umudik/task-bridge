@@ -28,7 +28,10 @@ import {
   TASK_NODE_WIDTH,
   TASK_TEMPLATE_HEIGHT,
   type DisplayStage,
+  beginPanPointer,
   bindCanvasWheelZoom,
+  bindPanDrag,
+  type PanDragState,
   stageLayoutKey,
   stageStackHeight,
   stagesForDisplay,
@@ -50,13 +53,6 @@ type WorkflowCanvasProps = {
 };
 
 type Point = { x: number; y: number };
-
-type PanDrag = {
-  startX: number;
-  startY: number;
-  panX: number;
-  panY: number;
-};
 
 const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 1.6;
@@ -399,7 +395,7 @@ export function WorkflowCanvas({
   const zoomRef = useRef(0.85);
   const [pan, setPan] = useState<Point>({ x: 48, y: 48 });
   const [zoom, setZoom] = useState(0.85);
-  const [panDrag, setPanDrag] = useState<PanDrag | null>(null);
+  const [panDrag, setPanDrag] = useState<PanDragState | null>(null);
 
   panRef.current = pan;
   zoomRef.current = zoom;
@@ -508,24 +504,17 @@ export function WorkflowCanvas({
   useEffect(() => {
     if (!panDrag) return;
     const active = panDrag;
-
-    function onMove(event: PointerEvent) {
-      setPan({
-        x: active.panX + (event.clientX - active.startX),
-        y: active.panY + (event.clientY - active.startY),
-      });
-    }
-
-    function onUp() {
-      setPanDrag(null);
-    }
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
+    return bindPanDrag(
+      (event) => {
+        setPan({
+          x: active.panX + (event.clientX - active.startX),
+          y: active.panY + (event.clientY - active.startY),
+        });
+      },
+      () => {
+        setPanDrag(null);
+      },
+    );
   }, [panDrag]);
 
   useEffect(() => {
@@ -560,6 +549,7 @@ export function WorkflowCanvas({
 
   function startPan(event: React.PointerEvent<HTMLDivElement>) {
     if (!canStartPan(event)) return;
+    beginPanPointer(event);
     setPanDrag({
       startX: event.clientX,
       startY: event.clientY,
@@ -593,7 +583,7 @@ export function WorkflowCanvas({
 
       <div
         ref={viewportRef}
-        className="relative min-h-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
+        className="relative min-h-0 flex-1 cursor-grab select-none overflow-hidden active:cursor-grabbing"
         onPointerDown={startPan}
       >
         <div

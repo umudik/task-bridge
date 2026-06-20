@@ -14,7 +14,10 @@ import {
   TASK_DEPTH_INDENT,
   TASK_NODE_WIDTH,
   type DisplayStage,
+  beginPanPointer,
   bindCanvasWheelZoom,
+  bindPanDrag,
+  type PanDragState,
   stageLayoutKey,
   stageStackHeight,
   stagesForDisplay,
@@ -791,12 +794,7 @@ export function EpicProgressCanvas(props: EpicProgressCanvasProps) {
   const zoomRef = useRef(0.85);
   const [pan, setPan] = useState<Point>({ x: 48, y: 48 });
   const [zoom, setZoom] = useState(0.85);
-  const [panDrag, setPanDrag] = useState<{
-    startX: number;
-    startY: number;
-    panX: number;
-    panY: number;
-  } | null>(null);
+  const [panDrag, setPanDrag] = useState<PanDragState | null>(null);
 
   panRef.current = pan;
   zoomRef.current = zoom;
@@ -862,21 +860,17 @@ export function EpicProgressCanvas(props: EpicProgressCanvasProps) {
   useEffect(() => {
     if (!panDrag) return;
     const active = panDrag;
-    function onMove(event: PointerEvent) {
-      setPan({
-        x: active.panX + (event.clientX - active.startX),
-        y: active.panY + (event.clientY - active.startY),
-      });
-    }
-    function onUp() {
-      setPanDrag(null);
-    }
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
+    return bindPanDrag(
+      (event) => {
+        setPan({
+          x: active.panX + (event.clientX - active.startX),
+          y: active.panY + (event.clientY - active.startY),
+        });
+      },
+      () => {
+        setPanDrag(null);
+      },
+    );
   }, [panDrag]);
 
   useEffect(() => {
@@ -944,10 +938,11 @@ export function EpicProgressCanvas(props: EpicProgressCanvasProps) {
 
       <div
         ref={viewportRef}
-        className="relative min-h-[420px] flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
+        className="relative min-h-[420px] flex-1 cursor-grab select-none overflow-hidden active:cursor-grabbing"
         onPointerDown={(event) => {
           if (event.button !== 0 && event.button !== 1) return;
           if ((event.target as HTMLElement).closest("[data-epic-task]")) return;
+          beginPanPointer(event);
           setPanDrag({
             startX: event.clientX,
             startY: event.clientY,

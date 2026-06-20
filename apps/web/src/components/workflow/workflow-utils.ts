@@ -233,3 +233,48 @@ export function bindCanvasWheelZoom(
   element.addEventListener("wheel", onWheel, { passive: false });
   return () => element.removeEventListener("wheel", onWheel);
 }
+
+export type PanDragState = {
+  startX: number;
+  startY: number;
+  panX: number;
+  panY: number;
+};
+
+export function beginPanPointer(event: {
+  preventDefault: () => void;
+  pointerId: number;
+  currentTarget: EventTarget | null;
+}) {
+  event.preventDefault();
+  if (event.currentTarget instanceof HTMLElement) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+}
+
+export function bindPanDrag(
+  onMove: (event: PointerEvent) => void,
+  onEnd: () => void,
+): () => void {
+  const previousUserSelect = document.body.style.userSelect;
+  document.body.style.userSelect = "none";
+
+  function handleMove(event: PointerEvent) {
+    event.preventDefault();
+    onMove(event);
+  }
+
+  function handleUp() {
+    onEnd();
+  }
+
+  window.addEventListener("pointermove", handleMove);
+  window.addEventListener("pointerup", handleUp);
+  window.addEventListener("pointercancel", handleUp);
+  return () => {
+    document.body.style.userSelect = previousUserSelect;
+    window.removeEventListener("pointermove", handleMove);
+    window.removeEventListener("pointerup", handleUp);
+    window.removeEventListener("pointercancel", handleUp);
+  };
+}
