@@ -24,7 +24,6 @@ export type ProjectMemberRow = {
   available: number;
   stage_roles_json: string;
   role: string;
-  actor_kind: string;
 };
 
 export type ProjectWorkflowSettingsRow = {
@@ -201,14 +200,14 @@ export function listProjectMemberRows(filter: {
   if (id !== "") {
     return getProjectsDb()
       .prepare(
-        `SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE id = ?`,
+        `SELECT id, project_id, name, available, stage_roles_json, role FROM project_members WHERE id = ?`,
       )
       .all(id) as ProjectMemberRow[];
   }
   if (projectId !== "") {
     return getProjectsDb()
       .prepare(
-        `SELECT id, project_id, name, available, stage_roles_json, role, actor_kind FROM project_members WHERE project_id = ? ORDER BY name COLLATE NOCASE ASC`,
+        `SELECT id, project_id, name, available, stage_roles_json, role FROM project_members WHERE project_id = ? ORDER BY name COLLATE NOCASE ASC`,
       )
       .all(projectId) as ProjectMemberRow[];
   }
@@ -224,8 +223,8 @@ export function insertProjectMemberRow(row: {
   migrateWorkflowTables();
   getProjectsDb()
     .prepare(
-      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, actor_kind, updated_at)
-       VALUES (?, ?, ?, 1, '{}', ?, '', datetime('now'))`,
+      `INSERT INTO project_members (id, project_id, name, available, stage_roles_json, role, updated_at)
+       VALUES (?, ?, ?, 1, '{}', ?, datetime('now'))`,
     )
     .run(
       row.id.trim(),

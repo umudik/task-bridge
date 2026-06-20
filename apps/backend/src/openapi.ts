@@ -481,11 +481,9 @@ export const openapiSpec = {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         requestBody: json({
           type: "object",
-          required: ["role"],
+          required: ["claimedBy"],
           properties: {
-            claimedBy: { type: "string", default: "worker" },
-            role: { type: "string", minLength: 1 },
-            actorKind: { $ref: "#/components/schemas/ActorKind" },
+            claimedBy: { type: "string", minLength: 1 },
           },
         }),
         responses: mergeResponses(ok({ type: "object" }), err([401, 404, 409])),
@@ -511,12 +509,10 @@ export const openapiSpec = {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         requestBody: json({
           type: "object",
-          required: ["workStatus"],
+          required: ["workStatus", "claimedBy"],
           properties: {
             workStatus: { $ref: "#/components/schemas/WorkStatus" },
-            by: { type: "string", default: "web" },
-            role: { type: "string", default: "" },
-            actorKind: { $ref: "#/components/schemas/ActorKind" },
+            claimedBy: { type: "string", minLength: 1 },
           },
         }),
         responses: mergeResponses(ok({ type: "object" }), err([400, 401, 404])),
@@ -559,11 +555,9 @@ export const openapiSpec = {
         security: bearer,
         requestBody: json({
           type: "object",
-          required: ["role"],
+          required: ["claimedBy"],
           properties: {
-            claimedBy: { type: "string", default: "worker" },
-            role: { type: "string", minLength: 1 },
-            actorKind: { $ref: "#/components/schemas/ActorKind" },
+            claimedBy: { type: "string", minLength: 1 },
             projectId: { type: "string" },
           },
         }),
