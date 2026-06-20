@@ -10,6 +10,9 @@
     "docker:down": "docker compose down --remove-orphans",
     "docker:publish": "node scripts/docker-publish.mjs",
     "docker:publish:mobile": "node scripts/docker-publish.mjs --mobile",
-    "mobile:build": "node scripts/docker-mobile-build.mjs"
+    "mobile:build": "node scripts/docker-mobile-build.mjs",
+    "mcp:build": "npm --prefix apps/mcp run build",
+    "mcp:dev": "npm --prefix apps/mcp run dev",
+    "mcp:client": "npm --prefix apps/mcp run client"
   }
 }
