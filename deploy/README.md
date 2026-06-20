@@ -34,9 +34,9 @@ Aç: **http://localhost:3000/app/login**
 ### GitHub Actions
 
 1. Docker Hub → **Account Settings → Security → New Access Token** (Read & Write)
-2. GitHub repo:
-   - **Variable:** `DOCKERHUB_USERNAME` = Docker Hub kullanıcı adın
-   - **Secret:** `DOCKERHUB_ACCESS_TOKEN` = access token
+2. GitHub repo → **Settings → Secrets and variables → Actions**
+   - **DOCKERHUB_USERNAME** — Variables veya Secrets (ikisi de olur)
+   - **DOCKERHUB_ACCESS_TOKEN** — Secrets (Docker Hub access token)
 3. `main` push veya tag `v1.2.3` push → otomatik publish
 4. İsteğe bağlı: Actions → **Docker Hub Publish** → Run workflow
 

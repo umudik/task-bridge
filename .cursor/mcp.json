@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "task-bridge": {
+      "command": "npx",
+      "args": ["tsx", "apps/mcp/src/index.ts"],
+      "env": {
+        "TASK_BRIDGE_URL": "http://localhost:3000",
+        "TASK_BRIDGE_TOKEN": "paste-bearer-token-here"
+      }
+    }
+  }
+}

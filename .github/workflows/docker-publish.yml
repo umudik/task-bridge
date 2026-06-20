@@ -55,15 +55,21 @@ jobs:
       - name: Resolve Docker Hub username
         id: hub
         env:
-          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          FROM_VAR: ${{ vars.DOCKERHUB_USERNAME }}
+          FROM_SECRET: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          if [ -z "$DOCKERHUB_USERNAME" ]; then
-            echo "::error::Repository variable DOCKERHUB_USERNAME is not set."
-            echo "Go to Settings → Secrets and variables → Actions → Variables"
+          USERNAME="$FROM_VAR"
+          if [ -z "$USERNAME" ]; then
+            USERNAME="$FROM_SECRET"
+          fi
+          if [ -z "$USERNAME" ]; then
+            echo "::error::DOCKERHUB_USERNAME is not set."
+            echo "Settings → Secrets and variables → Actions"
+            echo "Add DOCKERHUB_USERNAME under Variables OR Secrets (either works)."
             exit 1
           fi
-          echo "username=${DOCKERHUB_USERNAME}" >> "$GITHUB_OUTPUT"
-          echo "image=${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+          echo "username=${USERNAME}" >> "$GITHUB_OUTPUT"
+          echo "image=${USERNAME}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
 
       - name: Compute version tag
         id: version
@@ -94,7 +100,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ steps.hub.outputs.username }}
-          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN || secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker metadata
         id: meta

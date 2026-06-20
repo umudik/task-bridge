@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [backend, web, mcp]
+        app: [backend, web]
     steps:
       - uses: actions/checkout@v4
 
@@ -76,5 +76,13 @@ jobs:
         run: npm ci
         working-directory: apps/web
 
+      - name: Install MCP deps
+        run: npm ci
+        working-directory: apps/mcp
+
       - name: Build
         run: npm run build
+
+      - name: Build MCP
+        run: npm run build
+        working-directory: apps/mcp

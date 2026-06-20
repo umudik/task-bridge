@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "task-bridge": "file:../..",
     "zod": "^3.24.2"
   },
   "devDependencies": {
