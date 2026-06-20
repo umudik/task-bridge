@@ -39,8 +39,7 @@ export function isAppError(error: HandledError): error is AppError {
 export function statusCodeFromError(error: HandledError): number {
   if (isAppError(error)) return error.statusCode;
   if (error instanceof Object && "statusCode" in error) {
-    const row = error as { statusCode: string | number | boolean | null };
-    const code = Number(row.statusCode);
+    const code = Number(error.statusCode);
     if (Number.isFinite(code)) {
       return code;
     }
