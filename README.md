@@ -72,5 +72,4 @@ Web UI detayları → [apps/web/README.md](apps/web/README.md)
 Android → [apps/mobile/README.md](apps/mobile/README.md)
 
 ## License
-
 MIT
