@@ -27,7 +27,7 @@ function isStringRecord(value: object | null): value is Record<string, TemplateS
 export function parseStageRolesJson(
   raw: string | null,
 ): Record<string, string> {
-  if (!raw || !raw.trim()) return {};
+  if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as Record<string, TemplateScalar>;
     if (!isStringRecord(parsed)) return {};
@@ -37,9 +37,9 @@ export function parseStageRolesJson(
       if (
         value !== null &&
         String(valueStr) === valueStr &&
-        valueStr.trim()
+        valueStr
       ) {
-        result[key.trim()] = valueStr.trim();
+        result[key] = valueStr;
       }
     }
     return result;
@@ -61,9 +61,9 @@ export function parseRulesJson(raw: string): string[] {
       if (
         item !== null &&
         String(item) === item &&
-        (item).trim().length > 0
+        item.length > 0
       ) {
-        result.push((item).trim());
+        result.push(item);
       }
     }
     return result;
@@ -78,8 +78,8 @@ export function resolveEpicDescription(input: {
   rulesJson: string;
 }): string {
   const parts: string[] = [];
-  const description = input.description.trim();
-  const purpose = input.purpose.trim();
+  const description = input.description;
+  const purpose = input.purpose;
   if (description) parts.push(description);
   if (purpose && purpose !== description) parts.push(purpose);
   const rules = parseRulesJson(input.rulesJson);
@@ -90,7 +90,7 @@ export function resolveEpicDescription(input: {
 function resolveTaskDescription(row: TemplateJsonRow): string {
   const descCandidate = row.description as string;
   if (row.description !== null && String(descCandidate) === descCandidate) {
-    return descCandidate.trim();
+    return descCandidate;
   }
   return "";
 }
@@ -102,15 +102,15 @@ function parseTemplateNode(
 ): StageTaskTemplate | null {
   let id: string;
   const idCandidate = item.id as string;
-  if (item.id !== null && String(idCandidate) === idCandidate && idCandidate.trim()) {
-    id = idCandidate.trim();
+  if (item.id !== null && String(idCandidate) === idCandidate && idCandidate) {
+    id = idCandidate;
   } else {
     id = `tpl-${index}`;
   }
   let title: string;
   const titleCandidate = item.title as string;
   if (item.title !== null && String(titleCandidate) === titleCandidate) {
-    title = titleCandidate.trim();
+    title = titleCandidate;
   } else {
     title = "";
   }
@@ -127,9 +127,9 @@ function parseTemplateNode(
   if (
     item.assigneeRole !== null &&
     String(assigneeRoleCandidate) === assigneeRoleCandidate &&
-    assigneeRoleCandidate.trim()
+    assigneeRoleCandidate
   ) {
-    template.assigneeRole = assigneeRoleCandidate.trim();
+    template.assigneeRole = assigneeRoleCandidate;
   }
   if (Array.isArray(item.dependsOn)) {
     const deps: string[] = [];
@@ -137,9 +137,9 @@ function parseTemplateNode(
       if (
         entry !== null &&
         String(entry) === entry &&
-        (entry).trim().length > 0
+        entry.length > 0
       ) {
-        deps.push((entry).trim());
+        deps.push(entry);
       }
     }
     template.dependsOn = deps;
@@ -167,7 +167,7 @@ function parseTaskTemplateNodes(
 export function parseTaskTemplatesJson(
   raw: string | null,
 ): StageTaskTemplate[] {
-  if (!raw || !raw.trim()) return [];
+  if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as TemplateJsonRow[];
     if (!Array.isArray(parsed)) return [];
@@ -223,7 +223,7 @@ export function resolveStageTaskTemplateRoots(input: {
 }
 
 function templateTreeHasTasks(nodes: StageTaskTemplate[]): boolean {
-  return nodes.some((node) => node.title.trim().length > 0);
+  return nodes.some((node) => node.title.length > 0);
 }
 
 export function stageHasActionableTemplates(input: {

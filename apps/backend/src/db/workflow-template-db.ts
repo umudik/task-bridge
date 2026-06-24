@@ -67,12 +67,11 @@ function task(
   children: StageTaskTemplate[] = [],
   dependsOn: string[] = [],
 ): StageTaskTemplate {
-  const trimmedRole = assigneeRole.trim();
   return {
     id,
     title,
     description,
-    assigneeRole: trimmedRole || null,
+    assigneeRole: assigneeRole || null,
     dependsOn,
     children,
   };
@@ -1194,7 +1193,7 @@ export function countWorkflowTemplates(): number {
 
 export function listWorkflowTemplateRows(filter: { id: string }): WorkflowTemplateRow[] {
   migrateWorkflowTemplateTables();
-  const id = filter.id.trim();
+  const id = filter.id;
   if (id !== "") {
     return getProjectsDb()
       .prepare(
@@ -1216,19 +1215,19 @@ export function listWorkflowTemplateStageRows(templateId: string): WorkflowTempl
       `SELECT template_id, id, title, description, purpose, rules_json, position, auto_assign, layout_x, layout_y, spawn_task_count, task_templates_json
        FROM workflow_template_stages WHERE template_id = ? ORDER BY position ASC, title COLLATE NOCASE ASC`,
     )
-    .all(templateId.trim()) as WorkflowTemplateStageRow[];
+    .all(templateId) as WorkflowTemplateStageRow[];
 }
 
 export function deleteWorkflowTemplateStages(templateId: string) {
   migrateWorkflowTemplateTables();
   getProjectsDb()
     .prepare("DELETE FROM workflow_template_stages WHERE template_id = ?")
-    .run(templateId.trim());
+    .run(templateId);
 }
 
 export function deleteWorkflowTemplateRow(templateId: string): boolean {
   migrateWorkflowTemplateTables();
-  const id = templateId.trim();
+  const id = templateId;
   deleteWorkflowTemplateStages(id);
   const result = getProjectsDb().prepare("DELETE FROM workflow_templates WHERE id = ?").run(id);
   return result.changes > 0;
@@ -1245,7 +1244,7 @@ export function insertWorkflowTemplateRow(row: {
       `INSERT INTO workflow_templates (id, title, description, updated_at)
        VALUES (?, ?, ?, datetime('now'))`,
     )
-    .run(row.id.trim(), row.title.trim(), row.description.trim());
+    .run(row.id, row.title, row.description);
 }
 
 export function insertWorkflowTemplateStageRow(row: {
@@ -1274,11 +1273,11 @@ export function insertWorkflowTemplateStageRow(row: {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
     )
     .run(
-      row.templateId.trim(),
-      row.id.trim(),
-      row.title.trim(),
-      row.description.trim(),
-      row.purpose.trim(),
+      row.templateId,
+      row.id,
+      row.title,
+      row.description,
+      row.purpose,
       row.rulesJson,
       row.position,
       autoAssignFlag,

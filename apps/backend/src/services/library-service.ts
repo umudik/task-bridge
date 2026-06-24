@@ -53,13 +53,12 @@ export type LibraryDocumentLink = {
 
 function slugify(value: string) {
   return value
-    .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 
 function resolveLibraryId(inputId: string, title: string) {
-  const custom = inputId.trim();
+  const custom = inputId;
   if (custom !== "") return custom;
   const base = slugify(title) || `library-${randomUUID()}`;
   let candidate = base;
@@ -72,7 +71,7 @@ function resolveLibraryId(inputId: string, title: string) {
 }
 
 function resolveDocumentId(inputId: string, title: string, libraryId: string) {
-  const custom = inputId.trim();
+  const custom = inputId;
   if (custom !== "") return custom;
   const base = slugify(title) || `doc-${randomUUID()}`;
   let candidate = base;
@@ -147,11 +146,11 @@ export function getLibrary(libraryId: string): LibraryDetail | null {
 }
 
 export function createLibrary(input: { id: string; title: string; description: string }) {
-  const title = input.title.trim();
+  const title = input.title;
   if (title === "") throw new AppError("Title is required", 400);
   const id = resolveLibraryId(input.id, title);
   if (listLibraryRows({ id }).length > 0) throw new AppError("Library already exists", 409);
-  insertLibraryRow({ id, title, description: input.description.trim() });
+  insertLibraryRow({ id, title, description: input.description });
   const created = getLibrary(id);
   if (created === null) throw new AppError("Library creation failed", 500);
   return created;
@@ -163,9 +162,9 @@ export function updateLibrary(
 ) {
   const rows = listLibraryRows({ id: libraryId });
   if (rows.length === 0) throw new AppError("Library not found", 404);
-  const title = input.title.trim();
+  const title = input.title;
   if (title === "") throw new AppError("Title is required", 400);
-  updateLibraryRow(libraryId, { title, description: input.description.trim() });
+  updateLibraryRow(libraryId, { title, description: input.description });
   const updated = getLibrary(libraryId);
   if (updated === null) throw new AppError("Library not found after update", 500);
   return updated;
@@ -193,7 +192,7 @@ export function createLibraryDocument(
   if (listLibraryRows({ id: libraryId }).length === 0) {
     throw new AppError("Library not found", 404);
   }
-  const title = input.title.trim();
+  const title = input.title;
   if (title === "") throw new AppError("Title is required", 400);
   const id = resolveDocumentId(input.id, title, libraryId);
   if (listLibraryDocumentRows({ libraryId: "", documentId: id }).length > 0) {
@@ -203,7 +202,7 @@ export function createLibraryDocument(
     id,
     libraryId,
     title,
-    description: input.description.trim(),
+    description: input.description,
   });
   const created = getLibraryDocument(id);
   if (created === null) throw new AppError("Document creation failed", 500);
@@ -217,9 +216,9 @@ export function updateLibraryDocument(
   if (listLibraryDocumentRows({ libraryId: "", documentId }).length === 0) {
     throw new AppError("Document not found", 404);
   }
-  const title = input.title.trim();
+  const title = input.title;
   if (title === "") throw new AppError("Title is required", 400);
-  updateLibraryDocumentRow(documentId, { title, description: input.description.trim() });
+  updateLibraryDocumentRow(documentId, { title, description: input.description });
   const updated = getLibraryDocument(documentId);
   if (updated === null) throw new AppError("Document not found after update", 500);
   return updated;

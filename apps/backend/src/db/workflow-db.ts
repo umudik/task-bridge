@@ -110,7 +110,7 @@ export function countWorkflowStages(projectId: string): number {
   migrateWorkflowTables();
   const row = getProjectsDb()
     .prepare("SELECT COUNT(*) AS count FROM workflow_stages WHERE project_id = ?")
-    .get(projectId.trim()) as { count: number };
+    .get(projectId) as { count: number };
   return row.count;
 }
 
@@ -119,8 +119,8 @@ export function listWorkflowStageRows(filter: {
   stageId: string;
 }): WorkflowStageRow[] {
   migrateWorkflowTables();
-  const projectId = filter.projectId.trim();
-  const stageId = filter.stageId.trim();
+  const projectId = filter.projectId;
+  const stageId = filter.stageId;
   if (projectId !== "" && stageId !== "") {
     return getProjectsDb()
       .prepare(
@@ -144,7 +144,7 @@ export function deleteWorkflowStagesForProject(projectId: string) {
   migrateWorkflowTables();
   getProjectsDb()
     .prepare("DELETE FROM workflow_stages WHERE project_id = ?")
-    .run(projectId.trim());
+    .run(projectId);
 }
 
 export function insertWorkflowStageRow(row: {
@@ -162,7 +162,7 @@ export function insertWorkflowStageRow(row: {
   taskTemplatesJson: string;
 }) {
   migrateWorkflowTables();
-  const autoAssignRole = row.autoAssignRole.trim();
+  const autoAssignRole = row.autoAssignRole;
   let autoAssignFlag = 0;
   if (autoAssignRole) {
     autoAssignFlag = 1;
@@ -174,11 +174,11 @@ export function insertWorkflowStageRow(row: {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', datetime('now'))`,
     )
     .run(
-      row.id.trim(),
-      row.projectId.trim(),
-      row.title.trim(),
-      row.description.trim(),
-      row.purpose.trim(),
+      row.id,
+      row.projectId,
+      row.title,
+      row.description,
+      row.purpose,
       row.rulesJson,
       row.position,
       autoAssignFlag,
@@ -195,8 +195,8 @@ export function listProjectMemberRows(filter: {
   id: string;
 }): ProjectMemberRow[] {
   migrateWorkflowTables();
-  const projectId = filter.projectId.trim();
-  const id = filter.id.trim();
+  const projectId = filter.projectId;
+  const id = filter.id;
   if (id !== "") {
     return getProjectsDb()
       .prepare(
@@ -227,10 +227,10 @@ export function insertProjectMemberRow(row: {
        VALUES (?, ?, ?, 1, '{}', ?, datetime('now'))`,
     )
     .run(
-      row.id.trim(),
-      row.projectId.trim(),
-      row.name.trim(),
-      row.role.trim(),
+      row.id,
+      row.projectId,
+      row.name,
+      row.role,
     );
 }
 
@@ -245,17 +245,17 @@ export function updateProjectMemberRow(
   if (!existing) return false;
   let name = existing.name;
   if (patch.name !== null) {
-    name = patch.name.trim();
+    name = patch.name;
   }
   let role = existing.role;
   if (patch.role !== null) {
-    role = patch.role.trim();
+    role = patch.role;
   }
   const result = getProjectsDb()
     .prepare(
       `UPDATE project_members SET name = ?, role = ?, updated_at = datetime('now') WHERE id = ?`,
     )
-    .run(name, role, id.trim());
+    .run(name, role, id);
   return result.changes > 0;
 }
 
@@ -263,7 +263,7 @@ export function listProjectWorkflowSettingsRows(filter: {
   projectId: string;
 }): ProjectWorkflowSettingsRow[] {
   migrateWorkflowTables();
-  const projectId = filter.projectId.trim();
+  const projectId = filter.projectId;
   if (projectId === "") return [];
   return getProjectsDb()
     .prepare(
@@ -282,13 +282,13 @@ export function upsertProjectWorkflowSettingsRow(projectId: string, rolesJson: s
          roles_json = excluded.roles_json,
          updated_at = datetime('now')`,
     )
-    .run(projectId.trim(), rolesJson);
+    .run(projectId, rolesJson);
 }
 
 export function deleteProjectMemberRow(id: string): boolean {
   migrateWorkflowTables();
   const result = getProjectsDb()
     .prepare("DELETE FROM project_members WHERE id = ?")
-    .run(id.trim());
+    .run(id);
   return result.changes > 0;
 }

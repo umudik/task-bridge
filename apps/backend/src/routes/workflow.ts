@@ -15,31 +15,31 @@ import {
 } from "../services/workflow-service.js";
 
 const projectIdParamsSchema = z.object({
-  projectId: z.string().min(1),
+  projectId: z.string().trim().min(1),
 });
 
 const memberIdParamsSchema = z.object({
-  projectId: z.string().min(1),
-  memberId: z.string().min(1),
+  projectId: z.string().trim().min(1),
+  memberId: z.string().trim().min(1),
 });
 
 const taskTemplateSchema: z.ZodTypeAny = z.lazy(() =>
   z.object({
-    id: z.string().min(1),
-    title: z.string().min(1),
-    description: z.string().optional().default(""),
-    assigneeRole: z.string().optional().default(""),
-    dependsOn: z.array(z.string()).optional().default([]),
+    id: z.string().trim().min(1),
+    title: z.string().trim().min(1),
+    description: z.string().trim().optional().default(""),
+    assigneeRole: z.string().trim().optional().default(""),
+    dependsOn: z.array(z.string().trim()).optional().default([]),
     children: z.array(taskTemplateSchema).optional().default([]),
   }),
 );
 
 const stageSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
-  description: z.string().optional().default(""),
+  id: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  description: z.string().trim().optional().default(""),
   position: z.number().int().nonnegative(),
-  autoAssignRole: z.string().optional().default(""),
+  autoAssignRole: z.string().trim().optional().default(""),
   layoutX: z.number().nullable().optional(),
   layoutY: z.number().nullable().optional(),
   spawnTaskCount: z.number().int().nonnegative().optional().default(0),
@@ -48,21 +48,21 @@ const stageSchema = z.object({
 
 const replaceWorkflowSchema = z.object({
   stages: z.array(stageSchema).min(1),
-  roles: z.array(z.string()).optional().default([]),
+  roles: z.array(z.string().trim()).optional().default([]),
 });
 
 const applyTemplateSchema = z.object({
-  templateId: z.string().min(1),
+  templateId: z.string().trim().min(1),
 });
 
 const createMemberSchema = z.object({
-  name: z.string().min(1),
-  role: z.string().optional().default(""),
+  name: z.string().trim().min(1),
+  role: z.string().trim().optional().default(""),
 });
 
 const updateMemberSchema = z.object({
-  name: z.string().min(1).optional(),
-  role: z.string().optional(),
+  name: z.string().trim().min(1).optional(),
+  role: z.string().trim().optional(),
 });
 
 function assertProject(projectId: string) {
@@ -119,9 +119,8 @@ export function workflowRoutes(app: FastifyInstance) {
           layoutY = stage.layoutY;
         }
         let autoAssignRole: string | null = null;
-        const trimmedRole = stage.autoAssignRole.trim();
-        if (trimmedRole) {
-          autoAssignRole = trimmedRole;
+        if (stage.autoAssignRole) {
+          autoAssignRole = stage.autoAssignRole;
         }
         return Object.assign({}, stage, { layoutX, layoutY, autoAssignRole, activeTaskCount: null });
       }),

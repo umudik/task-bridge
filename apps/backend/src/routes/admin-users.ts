@@ -13,14 +13,14 @@ import {
 } from "../db/users-db.js";
 
 const createUserSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
+  name: z.string().trim().min(1),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(6),
   role: z.enum(["admin", "read-write", "read"]).default("read-write"),
 });
 
 const updateUserSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   role: z.enum(["admin", "read-write", "read"]),
 });
 

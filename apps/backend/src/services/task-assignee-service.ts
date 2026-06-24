@@ -29,7 +29,7 @@ export function resolveTaskAssignee(input: {
 }): { assignee: string; assigneeRole: string | null } {
   let explicit = "";
   if (input.assignee !== null) {
-    explicit = input.assignee.trim();
+    explicit = input.assignee;
   }
   if (explicit) {
     return { assignee: explicit, assigneeRole: input.assigneeRole };
@@ -37,7 +37,7 @@ export function resolveTaskAssignee(input: {
 
   let role = "";
   if (input.assigneeRole !== null) {
-    role = input.assigneeRole.trim();
+    role = input.assigneeRole;
   }
   if (!role && input.stageId) {
     const stageRows = listWorkflowStageRows({
@@ -46,7 +46,7 @@ export function resolveTaskAssignee(input: {
     });
     const stage = stageRows[0];
     if (stage) {
-      role = stage.auto_assign_role.trim();
+      role = stage.auto_assign_role;
     }
   }
 

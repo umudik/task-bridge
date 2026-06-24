@@ -93,13 +93,12 @@ export function listProjectRows(): ProjectRow[] {
 }
 
 export function listProjectRowsById(id: string): ProjectRow[] {
-  const trimmed = id.trim();
-  if (trimmed === "") return [];
+  if (id === "") return [];
   return getProjectsDb()
     .prepare(
       "SELECT id, name, repo_path, description, workflow_template_id FROM projects WHERE id = ?",
     )
-    .all(trimmed) as ProjectRow[];
+    .all(id) as ProjectRow[];
 }
 
 export function upsertProjectRow(id: string, name: string, repoPath: string) {
@@ -112,7 +111,7 @@ export function upsertProjectRow(id: string, name: string, repoPath: string) {
          repo_path = excluded.repo_path,
          updated_at = datetime('now')`,
     )
-    .run(id.trim(), name.trim() || id.trim(), repoPath.trim());
+    .run(id, name || id, repoPath);
 }
 
 export function insertProjectRow(
@@ -128,7 +127,7 @@ export function insertProjectRow(
         `INSERT INTO projects (id, name, repo_path, description, workflow_template_id, updated_at)
          VALUES (?, ?, ?, ?, ?, datetime('now'))`,
       )
-      .run(id.trim(), name.trim() || id.trim(), repoPath.trim(), description.trim(), workflowTemplateId.trim());
+      .run(id, name || id, repoPath, description, workflowTemplateId);
     return true;
   } catch {
     return false;
@@ -150,11 +149,11 @@ export function updateProjectRow(
       `UPDATE projects SET name = ?, repo_path = ?, description = ?, workflow_template_id = ?, updated_at = datetime('now') WHERE id = ?`,
     )
     .run(
-      input.name.trim(),
-      input.repoPath.trim(),
-      input.description.trim(),
-      input.workflowTemplateId.trim(),
-      id.trim(),
+      input.name,
+      input.repoPath,
+      input.description,
+      input.workflowTemplateId,
+      id,
     );
   return result.changes > 0;
 }

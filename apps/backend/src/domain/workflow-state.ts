@@ -86,15 +86,14 @@ export function buildInitialWorkflowState(input: {
 }
 
 export function parseWorkflowStateData(raw: string | null): EpicWorkflowStateData | null {
-  if (!raw || !raw.trim()) return null;
+  if (!raw) return null;
   try {
     const row = JSON.parse(raw) as EpicWorkflowStateData;
     if (!row.nodes || !(row.nodes instanceof Object) || Array.isArray(row.nodes)) return null;
     const nodes = row.nodes;
     let stageId: string | null = null;
     if (row.stageId !== null && String(row.stageId) === row.stageId) {
-      const trimmed = row.stageId.trim();
-      stageId = trimmed || null;
+      stageId = row.stageId || null;
     }
     return { stageId, nodes };
   } catch {

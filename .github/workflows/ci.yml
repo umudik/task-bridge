@@ -7,25 +7,10 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Docker image tag (e.g. 1.2.3). Empty = auto from ref."
-        required: false
-      include_mobile:
-        description: "Bundle Android APK in the Docker image"
-        type: boolean
-        default: false
-      skip_publish:
-        description: "Run checks only, do not push to Docker Hub"
-        type: boolean
-        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  IMAGE_NAME: task-bridge
 
 jobs:
   typecheck:
@@ -39,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
 
@@ -62,7 +47,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
 
@@ -82,7 +67,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: apps/backend/package-lock.json
 
@@ -103,7 +88,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Install backend deps
         run: npm ci
@@ -123,198 +108,3 @@ jobs:
       - name: Build MCP
         run: npm run build
         working-directory: apps/mcp
-
-  publish-config:
-    name: Docker Publish Config
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: |
-      !cancelled() &&
-      needs.build.result == 'success' &&
-      github.event_name != 'pull_request' &&
-      (github.event_name != 'workflow_dispatch' || inputs.skip_publish != true) &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        github.ref == 'refs/heads/main' ||
-        startsWith(github.ref, 'refs/tags/v')
-      )
-    outputs:
-      image: ${{ steps.hub.outputs.image }}
-      username: ${{ steps.hub.outputs.username }}
-      version: ${{ steps.version.outputs.value }}
-    steps:
-      - name: Resolve Docker Hub username
-        id: hub
-        env:
-          FROM_VAR: ${{ vars.DOCKERHUB_USERNAME }}
-          FROM_SECRET: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: |
-          USERNAME="$FROM_VAR"
-          if [ -z "$USERNAME" ]; then
-            USERNAME="$FROM_SECRET"
-          fi
-          if [ -z "$USERNAME" ]; then
-            echo "::error::DOCKERHUB_USERNAME is not set."
-            echo "Settings → Secrets and variables → Actions"
-            echo "Add DOCKERHUB_USERNAME under Variables OR Secrets (either works)."
-            exit 1
-          fi
-          echo "username=${USERNAME}" >> "$GITHUB_OUTPUT"
-          echo "image=${USERNAME}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
-
-      - name: Compute version tag
-        id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          elif [ "${{ github.ref_type }}" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            DATE=$(date -u +%Y%m%d)
-            VERSION="${DATE}-${SHORT_SHA}"
-          fi
-          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Version tag: ${VERSION}"
-
-  publish-mobile:
-    name: Docker Mobile APK
-    runs-on: ubuntu-latest
-    needs: [publish-config]
-    if: |
-      needs.publish-config.result == 'success' &&
-      github.event.inputs.include_mobile == true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Android APK
-        run: node scripts/docker-mobile-build.mjs
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mobile-apk
-          path: artifacts/task-bridge.apk
-          if-no-files-found: error
-
-  publish:
-    name: Docker Hub Publish (${{ matrix.platform_tag }})
-    runs-on: ${{ matrix.runner }}
-    needs: [publish-config, publish-mobile]
-    if: |
-      needs.publish-config.result == 'success' &&
-      (needs.publish-mobile.result == 'success' || needs.publish-mobile.result == 'skipped')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            platform_tag: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            platform_tag: arm64
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download mobile APK
-        if: needs.publish-mobile.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: mobile-apk
-          path: artifacts
-
-      - name: Ensure artifacts directory
-        run: mkdir -p artifacts
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ needs.publish-config.outputs.username }}
-          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN || secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push platform image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          platforms: ${{ matrix.platform }}
-          tags: ${{ needs.publish-config.outputs.image }}:${{ needs.publish-config.outputs.version }}-${{ matrix.platform_tag }}
-          build-args: |
-            VERSION=${{ needs.publish-config.outputs.version }}
-          cache-from: type=gha,scope=${{ matrix.platform_tag }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.platform_tag }}
-
-  publish-manifest:
-    name: Docker Hub Manifest
-    runs-on: ubuntu-latest
-    needs: [publish-config, publish]
-    if: |
-      needs.publish-config.result == 'success' &&
-      needs.publish.result == 'success'
-    permissions:
-      contents: read
-
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ needs.publish-config.outputs.username }}
-          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN || secrets.DOCKERHUB_TOKEN }}
-
-      - name: Create multi-arch tags
-        env:
-          IMAGE: ${{ needs.publish-config.outputs.image }}
-          VERSION: ${{ needs.publish-config.outputs.version }}
-        run: |
-          AMD64="${IMAGE}:${VERSION}-amd64"
-          ARM64="${IMAGE}:${VERSION}-arm64"
-          TAGS=("${IMAGE}:${VERSION}")
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            TAGS+=("${IMAGE}:latest")
-          fi
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            MINOR="${VERSION%.*}"
-            TAGS+=("${IMAGE}:${MINOR}")
-          fi
-          for TAG in "${TAGS[@]}"; do
-            docker buildx imagetools create -t "$TAG" "$AMD64" "$ARM64"
-          done
-
-      - name: Job summary
-        env:
-          IMAGE: ${{ needs.publish-config.outputs.image }}
-          VERSION: ${{ needs.publish-config.outputs.version }}
-        run: |
-          {
-            echo "### Published to Docker Hub"
-            echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| **Image** | \`${IMAGE}\` |"
-            echo "| **Version tag** | \`${VERSION}\` |"
-            echo "| **Platforms** | \`linux/amd64\`, \`linux/arm64\` (native builders) |"
-            echo ""
-            echo "**Pull:**"
-            echo "\`\`\`"
-            echo "docker pull ${IMAGE}:${VERSION}"
-            echo "\`\`\`"
-            echo ""
-            echo "**Run:**"
-            echo "\`\`\`"
-            echo "TASK_BRIDGE_IMAGE=${IMAGE}:${VERSION} docker compose -f deploy/docker-compose.yml up -d"
-            echo "\`\`\`"
-          } >> "$GITHUB_STEP_SUMMARY"

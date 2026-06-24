@@ -9,7 +9,7 @@ export function findProjectMember(
   projectId: string,
   memberName: string,
 ): ProjectMemberProfile | null {
-  const name = memberName.trim();
+  const name = memberName;
   if (name === "") {
     return null;
   }
@@ -19,6 +19,6 @@ export function findProjectMember(
   }
   return {
     name: row.name,
-    role: row.role.trim(),
+    role: row.role,
   };
 }

@@ -26,8 +26,8 @@ export function resolveClaimActor(projectId: string, memberName: string): ClaimA
 
 export function normalizeClaimActor(actor: ClaimActor): ClaimActor {
   return {
-    claimedBy: actor.claimedBy.trim(),
-    role: actor.role.trim(),
+    claimedBy: actor.claimedBy,
+    role: actor.role,
   };
 }
 

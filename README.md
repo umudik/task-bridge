@@ -28,6 +28,25 @@ npm run dev
 
 İlk kurulumda web’den `/setup` ile admin oluştur, sonra `/app/login`.
 
+## npx ile çalıştır
+
+Build edilmiş API + web tek paket olarak npm'de (`@umudik/task-bridge`):
+
+```bash
+npx @umudik/task-bridge
+```
+
+| Opsiyon | Açıklama |
+|---------|----------|
+| `-p, --port <port>` | Dinlenecek port (varsayılan 3000 / `$PORT`) |
+| `-d, --data <dir>` | SQLite veritabanı dizini (varsayılan `./task-bridge-data`) |
+
+```bash
+npx @umudik/task-bridge --port 8080 --data ./tb-data
+```
+
+Aç: **http://localhost:3000/app/login** — ilk açılışta `/app/setup` ile admin oluştur. Veritabanı çalıştırdığın klasörde `task-bridge-data/bridge.db` olarak kalır.
+
 ## API (agent / otomasyon)
 
 OpenAPI 3.1 spec backend’de yaşar ve çalışan sunucudan JSON olarak okunur:
@@ -46,7 +65,7 @@ Stdio MCP server; Task Bridge API’yi tool olarak sunar. `.cursor/mcp.json` ör
 
 ## Deploy & mobil
 
-Production Docker, Hub publish ve sunucu kurulumu → [deploy/README.md](deploy/README.md)
+Sunucu (API + web) → `npx @umudik/task-bridge` (yukarıdaki npx bölümü)
 
 Web UI detayları → [apps/web/README.md](apps/web/README.md)
 

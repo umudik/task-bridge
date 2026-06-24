@@ -39,19 +39,19 @@ import { AppError } from "../errors/app-error.js";
 
 const createEpicBodySchema = z
   .object({
-    text: z.string().optional(),
-    projectId: z.string().min(1),
-    title: z.string().optional(),
-    description: z.string().optional(),
+    text: z.string().trim().optional(),
+    projectId: z.string().trim().min(1),
+    title: z.string().trim().optional(),
+    description: z.string().trim().optional(),
   })
   .superRefine((data, ctx) => {
     let titleTrimmed = "";
     if (data.title) {
-      titleTrimmed = data.title.trim();
+      titleTrimmed = data.title;
     }
     let textTrimmed = "";
     if (data.text) {
-      textTrimmed = data.text.trim();
+      textTrimmed = data.text;
     }
     if (!titleTrimmed && !textTrimmed) {
       ctx.addIssue({
@@ -65,23 +65,23 @@ const createEpicBodySchema = z
 const createTaskBodySchema = z
   .object({
     parentId: z.coerce.number().int().positive(),
-    title: z.string().min(1),
-    description: z.string().optional(),
-    stageId: z.string().min(1).optional(),
+    title: z.string().trim().min(1),
+    description: z.string().trim().optional(),
+    stageId: z.string().trim().min(1).optional(),
   });
 
 function resolveEpicFields(body: z.infer<typeof createEpicBodySchema>) {
   let titleInput = "";
   if (body.title) {
-    titleInput = body.title.trim();
+    titleInput = body.title;
   }
   let descriptionInput = "";
   if (body.description) {
-    descriptionInput = body.description.trim();
+    descriptionInput = body.description;
   }
   let text = "";
   if (body.text) {
-    text = body.text.trim();
+    text = body.text;
   }
 
   if (titleInput) {
@@ -99,8 +99,8 @@ function resolveEpicFields(body: z.infer<typeof createEpicBodySchema>) {
     };
   }
 
-  const firstLine = text.slice(0, newline).trim();
-  const rest = text.slice(newline + 1).trim();
+  const firstLine = text.slice(0, newline);
+  const rest = text.slice(newline + 1);
   return {
     title: (firstLine || text).slice(0, 200),
     description: rest,
@@ -134,23 +134,23 @@ const taskIdParamsSchema = z.object({
 });
 
 const claimTaskBodySchema = z.object({
-  claimedBy: z.string().min(1),
+  claimedBy: z.string().trim().min(1),
 });
 
 const claimNextBodySchema = z.object({
-  claimedBy: z.string().min(1),
-  projectId: z.string().min(1).optional(),
+  claimedBy: z.string().trim().min(1),
+  projectId: z.string().trim().min(1).optional(),
 });
 
 const patchTaskBodySchema = z
   .object({
     comment: z
       .object({
-        text: z.string().min(1),
-        by: z.string().min(1).default("web"),
+        text: z.string().trim().min(1),
+        by: z.string().trim().min(1).default("web"),
       })
       .optional(),
-    description: z.string().optional(),
+    description: z.string().trim().optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.comment && !data.description) {
@@ -163,11 +163,11 @@ const patchTaskBodySchema = z
 
 const workStatusBodySchema = z.object({
   workStatus: z.enum(["todo", "in_progress", "done"]),
-  claimedBy: z.string().min(1),
+  claimedBy: z.string().trim().min(1),
 });
 
 const inboxQuerySchema = z.object({
-  projectId: z.string().min(1).nullable().default(null),
+  projectId: z.string().trim().min(1).nullable().default(null),
   commentsOnly: z
     .enum(["true", "false"])
     .nullable()
@@ -188,7 +188,7 @@ const inboxQuerySchema = z.object({
       }
       return value === "true";
     }),
-  cursor: z.string().min(1).nullable().default(null),
+  cursor: z.string().trim().min(1).nullable().default(null),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
 });
 
@@ -198,7 +198,7 @@ export function taskRoutes(app: FastifyInstance) {
     const body = createEpicBodySchema.parse(request.body);
     refreshProjectRegistry();
 
-    const project = getProjectById(body.projectId.trim());
+    const project = getProjectById(body.projectId);
     if (!project) {
       return reply.status(400).send({ error: "Unknown project" });
     }
@@ -209,11 +209,11 @@ export function taskRoutes(app: FastifyInstance) {
 
     let hasText = false;
     if (body.text) {
-      hasText = body.text.trim().length > 0;
+      hasText = body.text.length > 0;
     }
     let hasTitle = false;
     if (body.title) {
-      hasTitle = body.title.trim().length > 0;
+      hasTitle = body.title.length > 0;
     }
 
     let createdBy = user.id;
@@ -283,7 +283,7 @@ export function taskRoutes(app: FastifyInstance) {
     const placement = resolveNewTaskPlacement(project.id);
     let bodyStageId: string | null = null;
     if (body.stageId) {
-      bodyStageId = body.stageId.trim();
+      bodyStageId = body.stageId;
     }
     let stageId = bodyStageId;
     if (stageId === null) {
@@ -298,14 +298,14 @@ export function taskRoutes(app: FastifyInstance) {
 
     let descriptionValue = "";
     if (body.description) {
-      descriptionValue = body.description.trim();
+      descriptionValue = body.description;
     }
 
     const task = upsertBridgeTask({
       id: allocateTaskId(),
       projectId: project.id,
       projectName: project.name,
-      title: body.title.trim().slice(0, 200),
+      title: body.title.slice(0, 200),
       description: descriptionValue,
       createdBy: "web",
       createdAt: null,
@@ -446,7 +446,7 @@ export function taskRoutes(app: FastifyInstance) {
     assertAuth(request);
     const params = z
       .object({
-        projectId: z.string().min(1),
+        projectId: z.string().trim().min(1),
         epicId: z.coerce.number().int().positive(),
       })
       .parse(request.params);
@@ -564,8 +564,8 @@ export function taskRoutes(app: FastifyInstance) {
     assertAuth(request);
     const query = z
       .object({
-        projectId: z.string().min(1).optional(),
-        claimedBy: z.string().min(1).optional(),
+        projectId: z.string().trim().min(1).optional(),
+        claimedBy: z.string().trim().min(1).optional(),
       })
       .parse(request.query);
     let actor: ClaimActor | null = null;

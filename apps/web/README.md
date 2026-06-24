@@ -21,12 +21,12 @@ npm run dev
 
 Open http://localhost:5173/app/login — backend on http://localhost:3001
 
-## Docker
+## Production
 
-Rebuild backend image (includes web build):
+Web build, backend tarafından sunulur. Tek komutla çalıştırmak için repo kökünden:
 
 ```bash
-npm run docker:up
+npx @umudik/task-bridge
 ```
 
-Open http://localhost:3001/app/login
+Open http://localhost:3000/app/login

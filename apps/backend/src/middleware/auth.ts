@@ -6,7 +6,7 @@ export function resolveAuthUser(request: FastifyRequest): UserRow {
   const authHeader = request.headers["authorization"];
   let token = "";
   if (String(authHeader) === authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.slice(7).trim();
+    token = authHeader.slice(7);
   }
 
   if (token === "") {

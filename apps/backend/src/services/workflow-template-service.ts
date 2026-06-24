@@ -20,7 +20,7 @@ import {
 } from "../domain/workflow-stage.js";
 import { DEFAULT_WORKFLOW_TEMPLATE_ID } from "../domain/workflow-template-id.js";
 import { AppError } from "../errors/app-error.js";
-import { trimOrEmpty } from "../lib/strings.js";
+import { valueOrEmpty } from "../lib/strings.js";
 import type { WorkflowStage } from "./workflow-service.js";
 
 export type WorkflowTemplateSummary = {
@@ -63,8 +63,6 @@ function templateStageRowToStage(row: WorkflowTemplateStageRow): WorkflowStage {
 
 function slugify(value: string) {
   return value
-    .trim()
-    .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
@@ -88,7 +86,7 @@ function resolveTemplateIdHint(id: string | null): string {
   if (id === null) {
     return "";
   }
-  return id.trim();
+  return id;
 }
 
 function stagePosition(stage: WorkflowStage, index: number): number {
@@ -108,7 +106,7 @@ export function createWorkflowTemplate(input: {
   description: string | null;
 }): WorkflowTemplate {
   ensureDefaultWorkflowTemplates();
-  const title = input.title.trim();
+  const title = input.title;
   if (!title) {
     throw new AppError("Title is required", 400);
   }
@@ -123,7 +121,7 @@ export function createWorkflowTemplate(input: {
   insertWorkflowTemplateRow({
     id,
     title,
-    description: trimOrEmpty(input.description),
+    description: valueOrEmpty(input.description),
   });
   return replaceWorkflowTemplate(id, [defaultTemplateStage()]);
 }
@@ -139,7 +137,7 @@ export function listWorkflowTemplates(): WorkflowTemplateSummary[] {
 
 export function getWorkflowTemplate(templateId: string): WorkflowTemplate | null {
   ensureDefaultWorkflowTemplates();
-  const id = templateId.trim();
+  const id = templateId;
   const rows = listWorkflowTemplateRows({ id });
   if (rows.length === 0) {
     return null;
@@ -160,7 +158,7 @@ export function replaceWorkflowTemplate(
   stages: WorkflowStage[],
 ): WorkflowTemplate {
   ensureDefaultWorkflowTemplates();
-  const id = templateId.trim();
+  const id = templateId;
   const templateRows = listWorkflowTemplateRows({ id });
   if (templateRows.length === 0) {
     throw new AppError("Workflow template not found", 404);
@@ -171,7 +169,7 @@ export function replaceWorkflowTemplate(
   stages.forEach((stage, index) => {
     insertWorkflowTemplateStageRow({
       templateId: id,
-      id: stage.id.trim(),
+      id: stage.id,
       title: stage.title,
       description: stage.description,
       purpose: "",
@@ -198,7 +196,7 @@ export function importWorkflowTemplate(input: {
   stages: WorkflowStage[];
 }): WorkflowTemplate {
   ensureDefaultWorkflowTemplates();
-  const title = input.title.trim();
+  const title = input.title;
   if (!title) throw new AppError("Title is required", 400);
 
   const idHint = resolveTemplateIdHint(input.id);
@@ -213,7 +211,7 @@ export function importWorkflowTemplate(input: {
   insertWorkflowTemplateRow({
     id,
     title,
-    description: trimOrEmpty(input.description),
+    description: valueOrEmpty(input.description),
   });
 
   return replaceWorkflowTemplate(id, input.stages);
@@ -223,7 +221,7 @@ const PROTECTED_WORKFLOW_TEMPLATE_IDS = new Set(["ai-sdlc", DEFAULT_WORKFLOW_TEM
 
 export function deleteWorkflowTemplate(templateId: string): void {
   ensureDefaultWorkflowTemplates();
-  const id = templateId.trim();
+  const id = templateId;
   if (PROTECTED_WORKFLOW_TEMPLATE_IDS.has(id)) {
     throw new AppError("Built-in template cannot be deleted", 403);
   }
@@ -238,7 +236,7 @@ export function copyTemplateStagesToProject(projectId: string, templateId: strin
   if (!template) {
     throw new AppError("Workflow template not found", 404);
   }
-  const id = projectId.trim();
+  const id = projectId;
   deleteWorkflowStagesForProject(id);
   for (const stage of template.stages) {
     insertWorkflowStageRow({

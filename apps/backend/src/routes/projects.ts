@@ -21,23 +21,23 @@ const createProjectSchema = z.object({
     .default("")
     .refine((value) => value === "" || projectIdPattern.test(value)),
   repoPath: z.string().trim().min(1),
-  description: z.string().default(""),
+  description: z.string().trim().default(""),
   workflowTemplateId: z.string().trim().default(DEFAULT_WORKFLOW_TEMPLATE_ID),
 });
 
 const updateProjectSchema = z.object({
   name: z.string().trim().min(1),
   repoPath: z.string().trim().min(1),
-  description: z.string(),
+  description: z.string().trim(),
   workflowTemplateId: z.string().trim(),
 });
 
 const updateRepoPathSchema = z.object({
-  repoPath: z.string().min(1),
+  repoPath: z.string().trim().min(1),
 });
 
 const projectIdParamsSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().trim().min(1),
 });
 
 export function projectRoutes(app: FastifyInstance) {

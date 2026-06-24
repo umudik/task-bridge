@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,24 +17,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Mail
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.taskbridge.mobile.ui.components.AppBackground
+import com.taskbridge.mobile.ui.components.GlassField
 import com.taskbridge.mobile.ui.theme.AccentSoft
+import com.taskbridge.mobile.ui.theme.Error
 import com.taskbridge.mobile.ui.theme.Primary
 import com.taskbridge.mobile.ui.theme.PrimarySoft
 import com.taskbridge.mobile.ui.theme.SurfaceBorder
@@ -44,12 +49,12 @@ import com.taskbridge.mobile.ui.theme.TextPrimary
 import com.taskbridge.mobile.ui.theme.TextSecondary
 
 @Composable
-fun ConnectScreen(
+fun LoginScreen(
     state: AppUiState,
-    onScanQr: () -> Unit,
+    onEmailChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
     onLogin: () -> Unit,
-    onSelectProject: () -> Unit,
-    onNavigateSettings: () -> Unit,
+    onRescanQr: () -> Unit,
 ) {
     val endpoint = formatBackendEndpoint(state.backendHost, state.backendPort, state.useHttps)
 
@@ -61,14 +66,7 @@ fun ConnectScreen(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                IconButton(onClick = onNavigateSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = TextSecondary)
-                }
-            }
+            Spacer(modifier = Modifier.height(24.dp))
 
             Box(
                 modifier = Modifier
@@ -84,86 +82,84 @@ fun ConnectScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Task Bridge",
+                text = "Sign in",
                 style = MaterialTheme.typography.displayLarge,
                 color = TextPrimary,
             )
             Text(
-                text = when {
-                    state.isConfigured && state.isLoggedIn -> "Connected — pick a project to continue"
-                    state.isConfigured -> "Server set — log in to continue"
-                    else -> "Scan the QR code from the web Mobile page"
-                },
-                style = MaterialTheme.typography.bodyLarge,
+                text = endpoint,
+                style = MaterialTheme.typography.labelMedium,
                 color = TextMuted,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 12.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 8.dp),
             )
 
-            if (state.isConfigured) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = endpoint,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextMuted,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GlassField(
+                    value = state.loginEmail,
+                    onValueChange = onEmailChange,
+                    label = "Email",
+                    leadingIcon = Icons.Outlined.Mail,
+                    keyboardType = KeyboardType.Email,
+                )
+                GlassField(
+                    value = state.loginPassword,
+                    onValueChange = onPasswordChange,
+                    label = "Password",
+                    leadingIcon = Icons.Outlined.Lock,
+                    keyboardType = KeyboardType.Password,
+                    visualTransformation = PasswordVisualTransformation(),
                 )
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
-
-            if (state.isConfigured && state.isLoggedIn) {
-                Button(
-                    onClick = onSelectProject,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                ) {
-                    Text("Select project", style = MaterialTheme.typography.titleMedium)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            } else if (state.isConfigured) {
-                Button(
-                    onClick = onLogin,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                ) {
-                    Text("Log in", style = MaterialTheme.typography.titleMedium)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
+            if (state.loginError != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = state.loginError,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Error,
+                    textAlign = TextAlign.Center,
+                )
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
-                onClick = onScanQr,
+                onClick = onLogin,
+                enabled = !state.isLoggingIn,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .border(1.dp, SurfaceBorder, RoundedCornerShape(16.dp)),
+                    .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimarySoft),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary),
             ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = if (state.isConfigured) "Rescan QR" else "Scan QR code",
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                if (state.isLoggingIn) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text("Log in", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextButton(onClick = onRescanQr) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = TextSecondary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Scan QR instead", color = TextSecondary)
             }
 
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
-}
-
-fun formatBackendEndpoint(host: String, port: Int, useHttps: Boolean): String {
-    val scheme = if (useHttps) "https" else "http"
-    val defaultPort = if (useHttps) 443 else 80
-    return if (port == defaultPort) "$scheme://$host" else "$scheme://$host:$port"
 }

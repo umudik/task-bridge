@@ -71,7 +71,7 @@ function normalizeStageForSave(
     let assigneeRole: string | null = null;
     let rawRole = "";
     if (template.assigneeRole) {
-      rawRole = template.assigneeRole.trim();
+      rawRole = template.assigneeRole;
     }
     if (rawRole && (!projectRoles || projectRoles.has(rawRole))) {
       assigneeRole = rawRole;
@@ -81,7 +81,7 @@ function normalizeStageForSave(
   let autoAssignRole: string | null = null;
   let rawRole = "";
   if (stage.autoAssignRole) {
-    rawRole = stage.autoAssignRole.trim();
+    rawRole = stage.autoAssignRole;
   }
   if (rawRole && (!projectRoles || projectRoles.has(rawRole))) {
     autoAssignRole = rawRole;
@@ -97,10 +97,9 @@ function normalizeProjectRoles(roles: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const role of roles) {
-    const trimmed = role.trim();
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    result.push(trimmed);
+    if (!role || seen.has(role)) continue;
+    seen.add(role);
+    result.push(role);
   }
   return result;
 }
@@ -118,7 +117,7 @@ function rowToStage(row: WorkflowStageRow): WorkflowStage {
     stageId: row.id,
     stageTitle: row.title,
   });
-  const autoAssignRole = row.auto_assign_role.trim() || null;
+  const autoAssignRole = row.auto_assign_role || null;
   return {
     id: row.id,
     title: row.title,
@@ -165,7 +164,7 @@ function memberRowToProjectMember(
 }
 
 export function ensureProjectWorkflow(projectId: string): void {
-  const id = projectId.trim();
+  const id = projectId;
   if (!id) return;
   if (countWorkflowStages(id) > 0) return;
   copyTemplateStagesToProject(id, DEFAULT_WORKFLOW_TEMPLATE_ID);
@@ -185,7 +184,7 @@ export function applyWorkflowTemplateToProject(
 }
 
 function resetProjectEpicWorkflows(projectId: string): void {
-  const id = projectId.trim();
+  const id = projectId;
   const firstStageId = getFirstStageId(id);
   const epicIds = new Set<number>();
   for (const row of listEpicRows({ id: 0, projectId: id })) {
@@ -258,7 +257,7 @@ export function resolveNewTaskPlacement(projectId: string): {
     const assignee = pickMemberByProjectRole(projectId, "");
     return { stageId, assignee, assigneeRole: null };
   }
-  const autoAssignRole = row.auto_assign_role.trim();
+  const autoAssignRole = row.auto_assign_role;
   const resolved = resolveTaskAssignee({
     projectId,
     assignee: null,
@@ -302,7 +301,7 @@ export function replaceProjectWorkflow(
   stages: WorkflowStage[],
   roles: string[] = [],
 ): ProjectWorkflow {
-  const id = projectId.trim();
+  const id = projectId;
   if (stages.length < 1) {
     throw new AppError("At least one workflow stage is required", 400);
   }
@@ -317,7 +316,7 @@ export function replaceProjectWorkflow(
     }
     const autoAssignRole = normalized.autoAssignRole || "";
     insertWorkflowStageRow({
-      id: normalized.id.trim(),
+      id: normalized.id,
       projectId: id,
       title: normalized.title,
       description: normalized.description,
@@ -349,7 +348,7 @@ export function applyStageToTask(
   }
   const stage = stageRows[0];
   if (!stage) throw new AppError("Unknown stage", 400);
-  const autoAssignRole = stage.auto_assign_role.trim();
+  const autoAssignRole = stage.auto_assign_role;
   return resolveTaskAssignee({
     projectId: task.projectId,
     assignee: null,
@@ -387,12 +386,12 @@ export function spawnStageSubtasks(
     let assignee: string | null = null;
     let templateRole = "";
     if (template.assigneeRole) {
-      templateRole = template.assigneeRole.trim();
+      templateRole = template.assigneeRole;
     }
     if (templateRole) {
       assignee = pickMemberByProjectRole(parent.projectId, templateRole);
     } else {
-      const autoAssignRole = row.auto_assign_role.trim();
+      const autoAssignRole = row.auto_assign_role;
       if (autoAssignRole) {
         assignee = pickMemberByProjectRole(parent.projectId, autoAssignRole);
       }
@@ -447,7 +446,7 @@ export function createProjectMember(input: {
     id,
     projectId: input.projectId,
     name: input.name,
-    role: input.role.trim(),
+    role: input.role,
   });
   const memberRows = listProjectMemberRows({ projectId: "", id });
   if (memberRows.length === 0) throw new Error("Failed to create member");

@@ -1,9 +1,0 @@
-FROM ghcr.io/cirruslabs/android-sdk:35
-
-WORKDIR /project
-
-COPY apps/mobile/ ./
-
-RUN chmod +x gradlew && \
-    ./gradlew :app:assembleDebug -x detekt --no-daemon && \
-    cp app/build/outputs/apk/debug/app-debug.apk /task-bridge.apk

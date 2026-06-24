@@ -28,9 +28,14 @@ import kotlinx.coroutines.launch
 data class AppUiState(
     val backendHost: String = SessionStore.DEFAULT_HOST,
     val backendPort: Int = SessionStore.DEFAULT_PORT,
-    val apiKey: String = SessionStore.DEFAULT_API_KEY,
     val useHttps: Boolean = false,
     val isConfigured: Boolean = false,
+    val isLoggedIn: Boolean = false,
+    val userName: String = "",
+    val loginEmail: String = "",
+    val loginPassword: String = "",
+    val loginError: String? = null,
+    val isLoggingIn: Boolean = false,
     val projects: List<Project> = emptyList(),
     val selectedProjectId: String? = null,
     val projectConfirmed: Boolean = false,
@@ -91,9 +96,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             AppUiState(
                 backendHost = sessionStore.backendHost,
                 backendPort = sessionStore.backendPort,
-                apiKey = sessionStore.apiKey,
                 useHttps = sessionStore.useHttps,
                 isConfigured = sessionStore.isConfigured,
+                isLoggedIn = sessionStore.isLoggedIn(),
+                userName = sessionStore.userName,
                 selectedProjectId = savedProjectId,
                 projectConfirmed = confirmed,
                 readTaskIds = sessionStore.readTaskIds(),
@@ -135,7 +141,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        if (sessionStore.isConfigured) {
+        if (sessionStore.isConfigured && sessionStore.isLoggedIn()) {
             refreshProjects(silent = true, autoConfirm = false)
             if (sessionStore.projectConfirmed) {
                 InboxPollWorker.start(getApplication())
@@ -611,27 +617,70 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(backendPort = port) }
     }
 
-    fun updateApiKey(key: String) {
-        sessionStore.apiKey = key
-        _uiState.update { it.copy(apiKey = key) }
+    fun updateLoginEmail(email: String) {
+        _uiState.update { it.copy(loginEmail = email, loginError = null) }
     }
 
-    fun applyConnectPayload(raw: String): Boolean {
-        val config = ConnectConfigParser.parse(raw) ?: run {
-            _uiState.update { it.copy(statusMessage = "Invalid QR") }
-            return false
+    fun updateLoginPassword(password: String) {
+        _uiState.update { it.copy(loginPassword = password, loginError = null) }
+    }
+
+    fun login(onLoggedIn: () -> Unit = {}) {
+        val email = _uiState.value.loginEmail.trim()
+        val password = _uiState.value.loginPassword
+        if (email.isBlank() || password.isBlank()) {
+            _uiState.update { it.copy(loginError = "Enter email and password") }
+            return
         }
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoggingIn = true, loginError = null) }
+                val result = taskRepository.login(email, password)
+                sessionStore.authToken = result.token
+                sessionStore.userName = result.userName
+                sessionStore.isConfigured = true
+                _uiState.update {
+                    it.copy(
+                        isLoggingIn = false,
+                        isLoggedIn = true,
+                        userName = result.userName,
+                        loginPassword = "",
+                        loginError = null,
+                        statusMessage = "Signed in",
+                    )
+                }
+                refreshProjects(silent = true, autoConfirm = false)
+                onLoggedIn()
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoggingIn = false,
+                        loginError = e.message ?: "Login failed",
+                    )
+                }
+            }
+        }
+    }
+
+    fun logout(onLoggedOut: () -> Unit = {}) {
+        sessionStore.logout()
         _uiState.update {
             it.copy(
-                backendHost = config.host,
-                backendPort = config.port,
-                apiKey = config.apiKey,
-                useHttps = config.secure,
-                showManualSetup = true,
-                statusMessage = "Scan QR then tap Connect",
+                isLoggedIn = false,
+                userName = "",
+                loginEmail = "",
+                loginPassword = "",
+                loginError = null,
+                projectConfirmed = false,
+                selectedProjectId = null,
+                projects = emptyList(),
+                inboxItems = emptyList(),
+                epics = emptyList(),
+                answerEntries = emptyList(),
+                statusMessage = "Signed out",
             )
         }
-        return true
+        onLoggedOut()
     }
 
     fun setStatusMessage(message: String) {
@@ -641,20 +690,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun connectFromQr(
         raw: String,
         resetProject: Boolean = true,
-        onDone: (Boolean) -> Unit = {},
+        onConnected: (loggedIn: Boolean) -> Unit = {},
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(statusMessage = "Reading QR…") }
             val config = ConnectConfigParser.resolve(raw) ?: run {
                 _uiState.update { it.copy(statusMessage = "Invalid QR") }
-                onDone(false)
                 return@launch
             }
             sessionStore.backendHost = config.host
             sessionStore.backendPort = config.port
-            sessionStore.apiKey = config.apiKey
             sessionStore.useHttps = config.secure
             sessionStore.isConfigured = true
+            val token = config.token
+            val loggedIn: Boolean
+            if (!token.isNullOrBlank()) {
+                sessionStore.authToken = token
+                loggedIn = true
+            } else {
+                loggedIn = sessionStore.isLoggedIn()
+            }
             if (resetProject) {
                 sessionStore.projectConfirmed = false
                 sessionStore.selectedProjectId = null
@@ -668,43 +723,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 projectUpdate.copy(
                     backendHost = config.host,
                     backendPort = config.port,
-                    apiKey = config.apiKey,
                     useHttps = config.secure,
                     isConfigured = true,
+                    isLoggedIn = loggedIn,
                     showManualSetup = false,
-                    statusMessage = if (resetProject) "Connected" else "Connection updated",
+                    statusMessage = if (loggedIn) "Connected" else "Server set — please log in",
                 )
             }
-            refreshProjects(silent = true, autoConfirm = false)
-            onDone(true)
+            if (loggedIn) {
+                refreshProjects(silent = true, autoConfirm = false)
+            }
+            onConnected(loggedIn)
         }
     }
 
-    fun saveSettings(resetProject: Boolean = true) {
+    fun saveServerSettings(onSaved: () -> Unit = {}) {
         sessionStore.backendHost = _uiState.value.backendHost
         sessionStore.backendPort = _uiState.value.backendPort
-        sessionStore.apiKey = _uiState.value.apiKey
         sessionStore.useHttps = _uiState.value.useHttps
         sessionStore.isConfigured = true
+        sessionStore.logout()
         _uiState.update {
             it.copy(
                 isConfigured = true,
+                isLoggedIn = false,
+                userName = "",
+                projectConfirmed = false,
+                selectedProjectId = null,
+                projects = emptyList(),
                 showManualSetup = false,
-                statusMessage = "Connected",
+                statusMessage = "Server saved — please log in",
             )
         }
-        if (resetProject) {
-            sessionStore.projectConfirmed = false
-            sessionStore.selectedProjectId = null
-            _uiState.update {
-                it.copy(
-                    projectConfirmed = false,
-                    selectedProjectId = null,
-                    statusMessage = "Connected",
-                )
-            }
-        }
-        refreshProjects(silent = true, autoConfirm = false)
+        onSaved()
     }
 
     fun startPushToTalk() {

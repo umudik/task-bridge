@@ -21,13 +21,28 @@ class SessionStore(context: Context) {
         get() = prefs.getBoolean(KEY_USE_HTTPS, false)
         set(value) = prefs.edit().putBoolean(KEY_USE_HTTPS, value).apply()
 
-    var apiKey: String
-        get() = prefs.getString(KEY_API_KEY, DEFAULT_API_KEY) ?: DEFAULT_API_KEY
-        set(value) = prefs.edit().putString(KEY_API_KEY, value).apply()
+    var authToken: String
+        get() = prefs.getString(KEY_AUTH_TOKEN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_AUTH_TOKEN, value).apply()
+
+    var userName: String
+        get() = prefs.getString(KEY_USER_NAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_USER_NAME, value).apply()
 
     var isConfigured: Boolean
         get() = prefs.getBoolean(KEY_CONFIGURED, false)
         set(value) = prefs.edit().putBoolean(KEY_CONFIGURED, value).apply()
+
+    fun isLoggedIn(): Boolean = authToken.isNotBlank()
+
+    fun logout() {
+        prefs.edit()
+            .remove(KEY_AUTH_TOKEN)
+            .remove(KEY_USER_NAME)
+            .putBoolean(KEY_PROJECT_CONFIRMED, false)
+            .remove(KEY_SELECTED_PROJECT_ID)
+            .apply()
+    }
 
     var selectedProjectId: String?
         get() = prefs.getString(KEY_SELECTED_PROJECT_ID, null)
@@ -122,7 +137,8 @@ class SessionStore(context: Context) {
         private const val KEY_BACKEND_HOST = "backend_host"
         private const val KEY_BACKEND_PORT = "backend_port"
         private const val KEY_USE_HTTPS = "use_https"
-        private const val KEY_API_KEY = "api_key"
+        private const val KEY_AUTH_TOKEN = "auth_token"
+        private const val KEY_USER_NAME = "user_name"
         private const val KEY_CONFIGURED = "configured"
         private const val KEY_SELECTED_PROJECT_ID = "selected_project_id"
         private const val KEY_PROJECT_CONFIRMED = "project_confirmed"
@@ -131,6 +147,5 @@ class SessionStore(context: Context) {
         private const val KEY_RECENT_TASKS = "recent_tasks"
         const val DEFAULT_HOST = "10.0.2.2"
         const val DEFAULT_PORT = 3000
-        const val DEFAULT_API_KEY = "dev-key"
     }
 }

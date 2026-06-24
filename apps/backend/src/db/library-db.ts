@@ -56,7 +56,7 @@ function ensureMigrated() {
 
 export function listLibraryRows(filter: { id: string }): LibraryRow[] {
   ensureMigrated();
-  const id = filter.id.trim();
+  const id = filter.id;
   if (id !== "") {
     return getProjectsDb()
       .prepare(
@@ -111,8 +111,8 @@ export function listLibraryDocumentRows(filter: {
   documentId: string;
 }): LibraryDocumentRow[] {
   ensureMigrated();
-  const documentId = filter.documentId.trim();
-  const libraryId = filter.libraryId.trim();
+  const documentId = filter.documentId;
+  const libraryId = filter.libraryId;
   if (documentId !== "") {
     return getProjectsDb()
       .prepare(

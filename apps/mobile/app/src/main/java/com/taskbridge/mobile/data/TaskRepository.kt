@@ -316,16 +316,40 @@ class TaskRepository(
         }
     }
 
-    private fun authRequest(path: String): Request.Builder {
+    private fun baseRequest(path: String): Request.Builder {
         val builder = Request.Builder()
-            .url("${sessionStore.baseUrl()}$path")
-            .addHeader("X-Api-Key", sessionStore.apiKey)
+            .url("${sessionStore.baseUrl()}/api$path")
             .addHeader("Accept", "application/json")
         if (sessionStore.useHttps) {
             builder.addHeader("ngrok-skip-browser-warning", "true")
         }
         builder.addHeader("User-Agent", "TaskBridge/1.0")
         return builder
+    }
+
+    private fun authRequest(path: String): Request.Builder {
+        return baseRequest(path).addHeader("Authorization", "Bearer ${sessionStore.authToken}")
+    }
+
+    suspend fun login(email: String, password: String): LoginResult = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("email", email)
+            .put("password", password)
+        val request = baseRequest("/auth/login")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+        val response = http.newCall(request).execute()
+        val raw = response.body?.string() ?: "{}"
+        if (!response.isSuccessful) {
+            throw IllegalStateException(parseError(raw, response.code))
+        }
+        val json = JSONObject(raw)
+        val token = json.optString("token")
+        if (token.isBlank()) {
+            throw IllegalStateException("Login failed — no token returned")
+        }
+        val userName = json.optJSONObject("user")?.optString("name").orEmpty()
+        LoginResult(token = token, userName = userName)
     }
 
     private fun getJson(path: String): JSONObject {
@@ -359,11 +383,16 @@ class TaskRepository(
     private fun parseError(raw: String, code: Int): String {
         val error = runCatching { JSONObject(raw).optString("error", raw) }.getOrDefault(raw)
         return when (code) {
-            401 -> "Unauthorized — check API key"
+            401 -> error.ifBlank { "Unauthorized — please log in again" }
             404 -> "Not found ($code). Rebuild backend and rescan QR"
             else -> error.ifBlank { "HTTP $code" }
         }
     }
+
+    data class LoginResult(
+        val token: String,
+        val userName: String,
+    )
 
     data class CreateTaskResult(
         val id: String,

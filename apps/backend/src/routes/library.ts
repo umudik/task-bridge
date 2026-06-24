@@ -17,16 +17,16 @@ import {
 } from "../services/library-service.js";
 
 const libraryIdParamsSchema = z.object({
-  libraryId: z.string().min(1),
+  libraryId: z.string().trim().min(1),
 });
 
 const documentIdParamsSchema = z.object({
-  documentId: z.string().min(1),
+  documentId: z.string().trim().min(1),
 });
 
 const libraryDocumentParamsSchema = z.object({
-  libraryId: z.string().min(1),
-  documentId: z.string().min(1),
+  libraryId: z.string().trim().min(1),
+  documentId: z.string().trim().min(1),
 });
 
 const taskIdParamsSchema = z.object({
@@ -34,20 +34,20 @@ const taskIdParamsSchema = z.object({
 });
 
 const createLibrarySchema = z.object({
-  id: z.string().default(""),
-  title: z.string().min(1),
-  description: z.string().default(""),
+  id: z.string().trim().default(""),
+  title: z.string().trim().min(1),
+  description: z.string().trim().default(""),
 });
 
 const updateLibrarySchema = z.object({
-  title: z.string().min(1),
-  description: z.string().default(""),
+  title: z.string().trim().min(1),
+  description: z.string().trim().default(""),
 });
 
 const createDocumentSchema = z.object({
-  id: z.string().default(""),
-  title: z.string().min(1),
-  description: z.string().default(""),
+  id: z.string().trim().default(""),
+  title: z.string().trim().min(1),
+  description: z.string().trim().default(""),
 });
 
 const linkDocumentSchema = z.object({

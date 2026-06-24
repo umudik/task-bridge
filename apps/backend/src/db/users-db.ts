@@ -47,9 +47,9 @@ export function listUserRows(filter: {
   token: string;
 }): UserRow[] {
   const db = getProjectsDb();
-  const id = filter.id.trim();
-  const email = filter.email.trim().toLowerCase();
-  const token = filter.token.trim();
+  const id = filter.id;
+  const email = filter.email;
+  const token = filter.token;
   if (id !== "") {
     return db.prepare("SELECT * FROM users WHERE id = ?").all(id) as UserRow[];
   }
@@ -93,8 +93,8 @@ export function createUser(params: {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
-    params.name.trim(),
-    params.email.trim().toLowerCase(),
+    params.name,
+    params.email,
     passwordHash,
     params.role,
     isAdminFlag,
@@ -131,7 +131,7 @@ export function updateUser(id: string, input: UpdateUserInput): PublicUser | nul
   if (rows.length === 0) return null;
   getProjectsDb()
     .prepare(`UPDATE users SET name = ?, role = ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(input.name.trim(), input.role, id);
+    .run(input.name, input.role, id);
   const updated = listUserRows({ id, email: "", token: "" });
   if (updated.length === 0) {
     return null;

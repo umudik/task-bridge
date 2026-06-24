@@ -12,13 +12,13 @@ import {
 import { resolveAuthUser } from "../middleware/auth.js";
 
 const setupSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
+  name: z.string().trim().min(1),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(6),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
 });
 

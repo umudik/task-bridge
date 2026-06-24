@@ -1,0 +1,38 @@
+name: Publish npm
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          registry-url: https://registry.npmjs.org
+
+      - name: Install web dependencies
+        run: npm --prefix apps/web install
+
+      - name: Install backend dependencies
+        run: npm --prefix apps/backend install
+
+      - name: Build web + backend
+        run: npm run build
+
+      - name: Resolve publish version
+        run: node scripts/npm-publish-version.mjs
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

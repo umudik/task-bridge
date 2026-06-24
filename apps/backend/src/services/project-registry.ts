@@ -47,9 +47,8 @@ export type UpdateProjectInput = {
 
 function normalizeRepoPath(value: string | number | boolean | null): string | null {
   if (String(value) !== value) return null;
-  const trimmed = (value).trim();
-  if (!trimmed) return null;
-  return trimmed;
+  if (!value) return null;
+  return value;
 }
 
 function rowToProject(row: {
@@ -63,14 +62,13 @@ function rowToProject(row: {
     id: row.id,
     name: row.name,
     repoPath: normalizeRepoPath(row.repo_path),
-    description: row.description.trim(),
+    description: row.description,
     workflowTemplateId: normalizeWorkflowTemplateId(row.workflow_template_id),
   };
 }
 
 function slugifyProjectId(name: string): string {
-  const lowered = name.trim().toLowerCase();
-  const mapped = lowered
+  const mapped = name
     .replace(/ş/g, "s")
     .replace(/ğ/g, "g")
     .replace(/ü/g, "u")
@@ -106,15 +104,15 @@ export function listPublicProjects(): BridgeProjectPublic[] {
 export function createProject(
   input: CreateProjectInput,
 ): BridgeProject | "duplicate" | null {
-  const name = input.name.trim();
-  const repoPath = input.repoPath.trim();
+  const name = input.name;
+  const repoPath = input.repoPath;
   if (!name || !repoPath) return null;
-  const inputId = input.id.trim();
-  const id = (inputId || slugifyProjectId(name)).trim();
+  const inputId = input.id;
+  const id = inputId || slugifyProjectId(name);
   if (!id || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) return null;
   if (listProjectRowsById(id).length > 0) return "duplicate";
   const templateId = normalizeWorkflowTemplateId(input.workflowTemplateId);
-  const description = input.description.trim();
+  const description = input.description;
   if (!insertProjectRow(id, name, repoPath, description, templateId)) {
     return "duplicate";
   }
@@ -134,11 +132,11 @@ export function updateProject(
   const existing = getProjectById(projectId);
   if (!existing) return null;
 
-  const name = input.name.trim();
-  const repoPath = input.repoPath.trim();
+  const name = input.name;
+  const repoPath = input.repoPath;
   if (!name || !repoPath) return null;
 
-  const description = input.description.trim();
+  const description = input.description;
   const workflowTemplateId = normalizeWorkflowTemplateId(input.workflowTemplateId);
   const templateChanged = workflowTemplateId !== existing.workflowTemplateId;
 
@@ -168,14 +166,14 @@ export function updateProjectRepoPath(
   if (!existing) return null;
   return updateProject(projectId, {
     name: existing.name,
-    repoPath: repoPath.trim(),
+    repoPath: repoPath,
     description: existing.description,
     workflowTemplateId: existing.workflowTemplateId,
   });
 }
 
 export function getProjectById(projectId: string): BridgeProject | null {
-  const id = projectId.trim();
+  const id = projectId;
   if (!id) return null;
   const rows = listProjectRowsById(id);
   const row = rows[0];

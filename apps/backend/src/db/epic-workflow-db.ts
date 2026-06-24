@@ -53,7 +53,7 @@ export function listEpicRows(filter: { id: number; projectId: string }): EpicRow
   migrateEpicWorkflowTables();
   const db = getProjectsDb();
   const id = filter.id;
-  const projectId = filter.projectId.trim();
+  const projectId = filter.projectId;
   if (id > 0) {
     return db.prepare("SELECT * FROM epics WHERE id = ?").all(id) as EpicRow[];
   }
@@ -81,11 +81,11 @@ export function insertEpicRow(input: {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.id,
-    input.projectId.trim(),
-    input.title.trim(),
-    input.description.trim(),
+    input.projectId,
+    input.title,
+    input.description,
     input.stageId,
-    input.createdBy.trim() || "system",
+    input.createdBy || "system",
     now,
     now,
   );
@@ -114,9 +114,9 @@ export function updateEpicSpecRow(
   const row = rows[0];
   if (!row) return;
   let title = row.title;
-  if (input.title !== null) title = input.title.trim();
+  if (input.title !== null) title = input.title;
   let description = row.description;
-  if (input.description !== null) description = input.description.trim();
+  if (input.description !== null) description = input.description;
   getProjectsDb()
     .prepare(
       `UPDATE epics SET title = ?, description = ?, updated_at = datetime('now') WHERE id = ?`,

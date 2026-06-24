@@ -71,22 +71,22 @@ function rowToTask(row: TaskSqliteRow): BridgeTask {
   let templateId: string | null = null;
   if (row.template_id !== null) {
     const rawTemplateId: string | number = row.template_id as string | number;
-    templateId = String(rawTemplateId).trim() || null;
+    templateId = String(rawTemplateId) || null;
   }
 
   let priority: string | null = null;
   if (row.priority !== null) {
     const rawPriority: string | number = row.priority as string | number;
-    priority = String(rawPriority).trim() || null;
+    priority = String(rawPriority) || null;
   }
 
   let assignee = "";
   if (row.assignee !== null) {
     const rawAssignee: string | number = row.assignee as string | number;
-    assignee = String(rawAssignee).trim();
+    assignee = String(rawAssignee);
   }
   if (!assignee && row.created_by !== null) {
-    assignee = String(row.created_by).trim();
+    assignee = String(row.created_by);
   }
   if (!assignee) {
     assignee = "unassigned";
@@ -95,13 +95,13 @@ function rowToTask(row: TaskSqliteRow): BridgeTask {
   let assigneeRole: string | null = null;
   if (row.assignee_role !== null) {
     const rawAssigneeRole: string | number = row.assignee_role as string | number;
-    assigneeRole = String(rawAssigneeRole).trim() || null;
+    assigneeRole = String(rawAssigneeRole) || null;
   }
 
   let claimedBy: string | null = null;
   if (row.claimed_by !== null) {
     const rawClaimedBy: string | number = row.claimed_by as string | number;
-    claimedBy = String(rawClaimedBy).trim() || null;
+    claimedBy = String(rawClaimedBy) || null;
   }
 
   let claimedAt: string | null = null;
@@ -113,7 +113,7 @@ function rowToTask(row: TaskSqliteRow): BridgeTask {
   let answeredBy: string | null = null;
   if (row.answered_by !== null) {
     const rawAnsweredBy: string | number = row.answered_by as string | number;
-    answeredBy = String(rawAnsweredBy).trim() || null;
+    answeredBy = String(rawAnsweredBy) || null;
   }
 
   let answeredAt: string | null = null;
@@ -125,13 +125,13 @@ function rowToTask(row: TaskSqliteRow): BridgeTask {
   let answer: string | null = null;
   if (row.answer !== null) {
     const rawAnswer: string | number = row.answer as string | number;
-    answer = String(rawAnswer).trim() || null;
+    answer = String(rawAnswer) || null;
   }
 
   let stageId: string | null = null;
   if (row.stage_id !== null) {
     const rawStageId: string | number = row.stage_id as string | number;
-    stageId = String(rawStageId).trim() || null;
+    stageId = String(rawStageId) || null;
   }
 
   let workStatus: WorkStatus | null = null;
@@ -234,7 +234,7 @@ export function countActiveTasksOnStage(
       `SELECT COUNT(*) AS count FROM tasks
        WHERE project_id = ? AND stage_id = ? AND stage_id != ?`,
     )
-    .get(projectId.trim(), stageId.trim(), DONE_STAGE_ID) as { count: number };
+    .get(projectId, stageId, DONE_STAGE_ID) as { count: number };
   return row.count;
 }
 

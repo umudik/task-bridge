@@ -2,19 +2,18 @@
 
 Android client (Kotlin + Compose).
 
-## Docker APK build
+## APK build
 
-```powershell
-npm run mobile:build
+Android Studio veya komut satırından Gradle ile:
+
+```bash
+cd apps/mobile
+./gradlew :app:assembleDebug
 ```
 
-Output: `artifacts/task-bridge.apk`
+Output: `apps/mobile/app/build/outputs/apk/debug/app-debug.apk`
 
-Compose profile:
-
-```powershell
-docker compose --profile mobile run --rm mobile-build
-```
+JDK 17+ ve Android SDK gerekir.
 
 ## Android Studio
 
@@ -22,7 +21,11 @@ Open `apps/mobile`, run on device or emulator.
 
 Emulator default backend: `10.0.2.2:3000`
 
-Physical device: scan QR from web **Mobile** page or enter host manually.
+## Auth
+
+- Scan the QR from the web **Mobile** page to pair. The QR carries the server URL and a session token, so scanning signs you in directly.
+- Or set the server manually in **Settings → Manual setup**, then sign in with your email and password (`POST /api/auth/login`).
+- All API calls use `Authorization: Bearer <token>`. Use **Log out** in Settings to clear the session.
 
 ## Epics & tasks
 

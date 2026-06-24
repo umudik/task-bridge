@@ -67,7 +67,7 @@ export function isDoneStage(stageId: string | null): boolean {
 }
 
 export function isTaskClaimed(task: BridgeTask): boolean {
-  return task.claimedBy !== null && task.claimedBy.trim() !== "";
+  return task.claimedBy !== null && task.claimedBy !== "";
 }
 
 export function touchTask(task: BridgeTask): void {
@@ -182,5 +182,5 @@ export function assertCanCompleteTask(
 }
 
 export function canonicalDescription(task: BridgeTask): string {
-  return task.description.trim();
+  return task.description;
 }

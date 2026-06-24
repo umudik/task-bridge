@@ -18,11 +18,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Numbers
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.taskbridge.mobile.ui.components.AppBackground
 import com.taskbridge.mobile.ui.components.GlassField
-import com.taskbridge.mobile.ui.theme.Primary
+import com.taskbridge.mobile.ui.theme.Error
 import com.taskbridge.mobile.ui.theme.PrimarySoft
 import com.taskbridge.mobile.ui.theme.SurfaceBorder
 import com.taskbridge.mobile.ui.theme.TextMuted
@@ -53,10 +54,10 @@ fun SettingsScreen(
     state: AppUiState,
     onHostChange: (String) -> Unit,
     onPortChange: (String) -> Unit,
-    onApiKeyChange: (String) -> Unit,
     onScanQr: () -> Unit,
     onSave: () -> Unit,
     onNavigateProjects: () -> Unit,
+    onLogout: () -> Unit,
     onBack: () -> Unit,
 ) {
     var showManual by rememberSaveable { mutableStateOf(false) }
@@ -87,6 +88,15 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            if (state.userName.isNotBlank()) {
+                Text(
+                    text = "Signed in as ${state.userName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             OutlinedButton(
                 onClick = onNavigateProjects,
@@ -142,12 +152,6 @@ fun SettingsScreen(
                         label = "Port",
                         leadingIcon = Icons.Outlined.Numbers,
                     )
-                    GlassField(
-                        value = state.apiKey,
-                        onValueChange = onApiKeyChange,
-                        label = "API Key",
-                        leadingIcon = Icons.Outlined.Key,
-                    )
                     Button(
                         onClick = onSave,
                         modifier = Modifier
@@ -155,9 +159,28 @@ fun SettingsScreen(
                             .height(52.dp),
                         shape = RoundedCornerShape(14.dp),
                     ) {
-                        Text("Save")
+                        Text("Save server")
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = onLogout,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Error.copy(alpha = 0.2f)),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = null,
+                    tint = Error,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Log out", color = Error)
             }
         }
     }

@@ -29,6 +29,7 @@ import com.taskbridge.mobile.ui.AppViewModel
 import com.taskbridge.mobile.ui.ConnectScreen
 import com.taskbridge.mobile.ui.EpicsListScreen
 import com.taskbridge.mobile.ui.HomeScreen
+import com.taskbridge.mobile.ui.LoginScreen
 import com.taskbridge.mobile.ui.ProjectSelectScreen
 import com.taskbridge.mobile.ui.SettingsScreen
 import com.taskbridge.mobile.ui.theme.TaskBridgeTheme
@@ -37,7 +38,7 @@ import com.taskbridge.mobile.notifications.NotificationHelper
 class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by viewModels()
     private var pendingMicAction: (() -> Unit)? = null
-    private var pendingNavAfterConnect: (() -> Unit)? = null
+    private var pendingNavAfterConnect: ((loggedIn: Boolean) -> Unit)? = null
     private val notificationTaskId = mutableIntStateOf(-1)
 
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -63,11 +64,9 @@ class MainActivity : ComponentActivity() {
             viewModel.setStatusMessage("QR scan cancelled")
             return@registerForActivityResult
         }
-        viewModel.connectFromQr(raw, resetProject = true) { success ->
-            if (success) {
-                pendingNavAfterConnect?.invoke()
-                pendingNavAfterConnect = null
-            }
+        viewModel.connectFromQr(raw, resetProject = true) { loggedIn ->
+            pendingNavAfterConnect?.invoke(loggedIn)
+            pendingNavAfterConnect = null
         }
     }
 
@@ -83,8 +82,8 @@ class MainActivity : ComponentActivity() {
                 val state by viewModel.uiState.collectAsStateWithLifecycle()
                 val pendingTaskId = notificationTaskId.intValue
 
-                LaunchedEffect(pendingTaskId, state.isConfigured, state.projectConfirmed) {
-                    if (pendingTaskId > 0 && state.isConfigured && state.projectConfirmed) {
+                LaunchedEffect(pendingTaskId, state.isConfigured, state.isLoggedIn, state.projectConfirmed) {
+                    if (pendingTaskId > 0 && state.isConfigured && state.isLoggedIn && state.projectConfirmed) {
                         navController.navigate("answer/$pendingTaskId")
                         notificationTaskId.intValue = -1
                     }
@@ -94,7 +93,8 @@ class MainActivity : ComponentActivity() {
                     navController = navController,
                     startDestination = when {
                         !state.isConfigured -> "connect"
-                        !state.projectConfirmed -> "connect"
+                        !state.isLoggedIn -> "login"
+                        !state.projectConfirmed -> "projects"
                         else -> "home"
                     },
                 ) {
@@ -102,18 +102,41 @@ class MainActivity : ComponentActivity() {
                         ConnectScreen(
                             state = state,
                             onScanQr = {
-                                pendingNavAfterConnect = {
-                                    navController.navigate("projects") {
+                                pendingNavAfterConnect = { loggedIn ->
+                                    navController.navigate(if (loggedIn) "projects" else "login") {
                                         popUpTo("connect") { inclusive = true }
                                     }
                                 }
                                 requestCameraAndScan()
                             },
+                            onLogin = { navController.navigate("login") },
                             onSelectProject = {
                                 viewModel.refreshProjects()
                                 navController.navigate("projects")
                             },
                             onNavigateSettings = { navController.navigate("settings") },
+                        )
+                    }
+                    composable("login") {
+                        LoginScreen(
+                            state = state,
+                            onEmailChange = viewModel::updateLoginEmail,
+                            onPasswordChange = viewModel::updateLoginPassword,
+                            onLogin = {
+                                viewModel.login {
+                                    navController.navigate("projects") {
+                                        popUpTo("login") { inclusive = true }
+                                    }
+                                }
+                            },
+                            onRescanQr = {
+                                pendingNavAfterConnect = { loggedIn ->
+                                    navController.navigate(if (loggedIn) "projects" else "login") {
+                                        popUpTo("login") { inclusive = true }
+                                    }
+                                }
+                                requestCameraAndScan()
+                            },
                         )
                     }
                     composable("settings") {
@@ -123,22 +146,31 @@ class MainActivity : ComponentActivity() {
                             onPortChange = { port ->
                                 port.toIntOrNull()?.let { viewModel.updateBackendPort(it) }
                             },
-                            onApiKeyChange = viewModel::updateApiKey,
                             onScanQr = {
-                                pendingNavAfterConnect = {
-                                    navController.navigate("projects") {
+                                pendingNavAfterConnect = { loggedIn ->
+                                    navController.navigate(if (loggedIn) "projects" else "login") {
                                         popUpTo("settings") { inclusive = true }
                                     }
                                 }
                                 requestCameraAndScan()
                             },
                             onSave = {
-                                viewModel.saveSettings(resetProject = false)
-                                navController.popBackStack()
+                                viewModel.saveServerSettings {
+                                    navController.navigate("login") {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
                             },
                             onNavigateProjects = {
                                 viewModel.refreshProjects()
                                 navController.navigate("projects")
+                            },
+                            onLogout = {
+                                viewModel.logout {
+                                    navController.navigate("login") {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
                             },
                             onBack = { navController.popBackStack() },
                         )
@@ -167,10 +199,20 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("home") {
-                        LaunchedEffect(state.isConfigured, state.projectConfirmed) {
+                        LaunchedEffect(state.isConfigured, state.isLoggedIn, state.projectConfirmed) {
                             when {
-                                !state.isConfigured || !state.projectConfirmed -> {
+                                !state.isConfigured -> {
                                     navController.navigate("connect") {
+                                        popUpTo("home") { inclusive = true }
+                                    }
+                                }
+                                !state.isLoggedIn -> {
+                                    navController.navigate("login") {
+                                        popUpTo("home") { inclusive = true }
+                                    }
+                                }
+                                !state.projectConfirmed -> {
+                                    navController.navigate("projects") {
                                         popUpTo("home") { inclusive = true }
                                     }
                                 }
@@ -271,7 +313,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleConnectIntent(intent: Intent?) {
         val uri: Uri = intent?.data ?: return
-        if (uri.scheme == "taskbridge" && uri.host == "connect") {
+        if (uri.scheme == "taskbridge" && (uri.host == "connect" || uri.host == "auth")) {
             viewModel.connectFromQr(uri.toString(), resetProject = true)
         }
     }

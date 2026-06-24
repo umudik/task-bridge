@@ -20,7 +20,9 @@ class InboxPollWorker(
 
     override suspend fun doWork(): Result {
         val session = SessionStore(applicationContext)
-        if (!session.isConfigured || !session.projectConfirmed) return Result.success()
+        if (!session.isConfigured || !session.isLoggedIn() || !session.projectConfirmed) {
+            return Result.success()
+        }
 
         val projectId = session.selectedProjectId
         var shouldContinue = session.recentTasks().any {
