@@ -1,6 +1,6 @@
 {
   "name": "@umudik/task-bridge",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Task Bridge — self-hosted API + web UI server, runnable via npx.",
   "type": "module",
   "license": "MIT",
