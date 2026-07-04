@@ -893,3 +893,147 @@ export async function updateTaskWorkStatus(
     body: JSON.stringify({ workStatus, claimedBy }),
   });
 }
+
+export type MarketplaceListingSummary = {
+  id: string;
+  sellerUserId: string;
+  sellerName: string;
+  sourceTemplateId: string;
+  title: string;
+  description: string;
+  category: string;
+  priceCents: number;
+  stageCount: number;
+  owned: boolean;
+  isOwnListing: boolean;
+  purchasedTemplateId: string | null;
+  publishedAt: string | null;
+};
+
+export type MarketplaceListingDetail = MarketplaceListingSummary & {
+  stages: WorkflowStage[];
+};
+
+export async function fetchMarketplaceListings(session: Session) {
+  const data = await request<{ items: MarketplaceListingSummary[] }>(
+    session,
+    "/api/marketplace/listings",
+  );
+  if (data.items !== null) return data.items;
+  return [];
+}
+
+export async function fetchMyMarketplaceListings(session: Session) {
+  const data = await request<{ items: MarketplaceListingSummary[] }>(
+    session,
+    "/api/marketplace/my-listings",
+  );
+  if (data.items !== null) return data.items;
+  return [];
+}
+
+export async function updateMarketplaceListing(
+  session: Session,
+  listingId: string,
+  input: {
+    title: string;
+    description: string;
+    category: string;
+    priceCents: number;
+  },
+) {
+  const data = await request<{ listing: MarketplaceListingSummary }>(
+    session,
+    `/api/marketplace/listings/${listingId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return data.listing;
+}
+
+export async function unlistMarketplaceListing(session: Session, listingId: string) {
+  await request<void>(session, `/api/marketplace/listings/${listingId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchMarketplacePurchases(session: Session) {
+  const data = await request<{
+    items: Array<{
+      id: string;
+      listingId: string;
+      amountCents: number;
+      purchasedTemplateId: string;
+      createdAt: string;
+      listingTitle: string;
+      sellerName: string;
+    }>;
+  }>(session, "/api/marketplace/purchases");
+  if (data.items !== null) return data.items;
+  return [];
+}
+
+export async function fetchMarketplaceSales(session: Session) {
+  const data = await request<{
+    items: Array<{
+      id: string;
+      listingId: string;
+      listingTitle: string;
+      buyerName: string;
+      amountCents: number;
+      createdAt: string;
+    }>;
+  }>(session, "/api/marketplace/sales");
+  if (data.items !== null) return data.items;
+  return [];
+}
+
+export async function fetchMarketplaceListing(session: Session, listingId: string) {
+  const data = await request<{ listing: MarketplaceListingDetail | null }>(
+    session,
+    `/api/marketplace/listings/${listingId}`,
+  );
+  return data.listing;
+}
+
+export async function publishMarketplaceListing(
+  session: Session,
+  input: {
+    sourceTemplateId: string;
+    title: string;
+    description: string;
+    category: string;
+    priceCents: number;
+  },
+) {
+  const data = await request<{ listing: MarketplaceListingSummary }>(
+    session,
+    "/api/marketplace/listings",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return data.listing;
+}
+
+export async function purchaseMarketplaceListing(session: Session, listingId: string) {
+  return request<{ purchasedTemplateId: string; listing: MarketplaceListingSummary }>(
+    session,
+    `/api/marketplace/listings/${listingId}/purchase`,
+    { method: "POST" },
+  );
+}
+
+export async function fetchPublishableTemplates(session: Session) {
+  const data = await request<{ items: WorkflowTemplateSummary[] }>(
+    session,
+    "/api/marketplace/publishable-templates",
+  );
+  if (data.items !== null) return data.items;
+  return [];
+}

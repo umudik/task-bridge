@@ -15,7 +15,9 @@ import { webRoutes } from "./routes/web.js";
 import { authRoutes } from "./routes/auth.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { docsRoutes } from "./routes/docs.js";
+import { marketplaceRoutes } from "./routes/marketplace.js";
 import { refreshProjectRegistry, initProjectRegistry } from "./services/project-registry.js";
+import { ensureMarketplaceReady } from "./services/marketplace-service.js";
 
 const logger = createLogger("backend");
 
@@ -25,6 +27,7 @@ async function main() {
 
   initProjectRegistry();
   refreshProjectRegistry();
+  ensureMarketplaceReady();
 
   healthRoutes(app);
 
@@ -38,6 +41,7 @@ async function main() {
       workflowRoutes(apiApp);
       workflowTemplateRoutes(apiApp);
       libraryRoutes(apiApp);
+      marketplaceRoutes(apiApp);
     },
     { prefix: "/api" },
   );

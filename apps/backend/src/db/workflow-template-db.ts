@@ -8,6 +8,7 @@ export type WorkflowTemplateRow = {
   id: string;
   title: string;
   description: string;
+  owner_user_id: string | null;
   updated_at: string;
 };
 
@@ -473,6 +474,11 @@ export function migrateWorkflowTemplateTables() {
   if (!names.has("task_templates_json")) {
     db.exec("ALTER TABLE workflow_template_stages ADD COLUMN task_templates_json TEXT NOT NULL DEFAULT '[]'");
   }
+  const templateColumns = db.prepare("PRAGMA table_info(workflow_templates)").all() as { name: string }[];
+  const templateNames = new Set(templateColumns.map((column) => column.name));
+  if (!templateNames.has("owner_user_id")) {
+    db.exec("ALTER TABLE workflow_templates ADD COLUMN owner_user_id TEXT");
+  }
 }
 
 export function countWorkflowTemplates(): number {
@@ -489,15 +495,42 @@ export function listWorkflowTemplateRows(filter: { id: string }): WorkflowTempla
   if (id !== "") {
     return getProjectsDb()
       .prepare(
-        "SELECT id, title, description, updated_at FROM workflow_templates WHERE id = ?",
+        "SELECT id, title, description, owner_user_id, updated_at FROM workflow_templates WHERE id = ?",
       )
       .all(id) as WorkflowTemplateRow[];
   }
   return getProjectsDb()
     .prepare(
-      "SELECT id, title, description, updated_at FROM workflow_templates ORDER BY title COLLATE NOCASE ASC",
+      "SELECT id, title, description, owner_user_id, updated_at FROM workflow_templates ORDER BY title COLLATE NOCASE ASC",
     )
     .all() as WorkflowTemplateRow[];
+}
+
+export function listWorkflowTemplateRowsForOwner(ownerUserId: string): WorkflowTemplateRow[] {
+  migrateWorkflowTemplateTables();
+  return getProjectsDb()
+    .prepare(
+      `SELECT id, title, description, owner_user_id, updated_at
+       FROM workflow_templates
+       WHERE owner_user_id = ?
+       ORDER BY title COLLATE NOCASE ASC`,
+    )
+    .all(ownerUserId) as WorkflowTemplateRow[];
+}
+
+export function getWorkflowTemplateOwner(templateId: string): string | null {
+  migrateWorkflowTemplateTables();
+  const row = getProjectsDb()
+    .prepare("SELECT owner_user_id FROM workflow_templates WHERE id = ?")
+    .get(templateId) as { owner_user_id: string | null } | undefined;
+  return row?.owner_user_id ?? null;
+}
+
+export function setWorkflowTemplateOwner(templateId: string, ownerUserId: string) {
+  migrateWorkflowTemplateTables();
+  getProjectsDb()
+    .prepare("UPDATE workflow_templates SET owner_user_id = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(ownerUserId, templateId);
 }
 
 export function listWorkflowTemplateStageRows(templateId: string): WorkflowTemplateStageRow[] {
@@ -529,14 +562,16 @@ export function insertWorkflowTemplateRow(row: {
   id: string;
   title: string;
   description: string;
+  ownerUserId?: string | null;
 }) {
   migrateWorkflowTemplateTables();
+  const ownerUserId = row.ownerUserId ?? null;
   getProjectsDb()
     .prepare(
-      `INSERT INTO workflow_templates (id, title, description, updated_at)
-       VALUES (?, ?, ?, datetime('now'))`,
+      `INSERT INTO workflow_templates (id, title, description, owner_user_id, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'))`,
     )
-    .run(row.id, row.title, row.description);
+    .run(row.id, row.title, row.description, ownerUserId);
 }
 
 export function insertWorkflowTemplateStageRow(row: {

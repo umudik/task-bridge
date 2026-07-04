@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChevronRight, Loader2, Plus, RefreshCw, SendHorizontal } from "lucide-react";
+import { ChevronRight, Loader2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { CreateEpicModal } from "@/components/CreateEpicModal";
 import { LoadMore } from "@/components/LoadMore";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/hooks/useSession";
 import { createEpic, fetchInbox, type InboxItem } from "@/lib/api";
 import { formatWhen } from "@/lib/utils";
@@ -27,15 +26,13 @@ export function TasksPage() {
     projectId = params["projectId"];
   }
   const session = useSession();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [sending, setSending] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [items, setItems] = useState<InboxItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [showComposer, setShowComposer] = useState(false);
 
   const load = useCallback(
     async (cursor: string | null, append: boolean) => {
@@ -71,24 +68,20 @@ export function TasksPage() {
     void load(null, false);
   }, [load]);
 
-  async function submit() {
+  async function handleCreate(title: string, description: string) {
     if (!session || !projectId) return;
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) return;
     setSending(true);
     try {
       await createEpic(session, {
         projectId,
-        title: trimmedTitle,
-        description: description.trim(),
+        title,
+        description,
       });
-      setTitle("");
-      setDescription("");
-      setShowComposer(false);
+      setCreateOpen(false);
       toast.success("Epic created");
       refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create task");
+      toast.error(error instanceof Error ? error.message : "Failed to create epic");
     } finally {
       setSending(false);
     }
@@ -121,7 +114,7 @@ export function TasksPage() {
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Refresh
             </Button>
-            <Button size="sm" onClick={() => setShowComposer((value) => !value)}>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
               New epic
             </Button>
@@ -130,35 +123,6 @@ export function TasksPage() {
       />
 
       <div className="flex-1 overflow-y-auto p-5">
-        {showComposer ? (
-          <section className="panel-card mb-5 space-y-4 p-5">
-            <Input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Epic title"
-              disabled={sending}
-              autoFocus
-            />
-            <Textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Description (optional)"
-              rows={3}
-              disabled={sending}
-              className="resize-y rounded-xl border-white/[0.1] bg-[#111111]"
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowComposer(false)}>
-                Cancel
-              </Button>
-              <Button disabled={sending || !title.trim()} onClick={() => void submit()}>
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-                Create
-              </Button>
-            </div>
-          </section>
-        ) : null}
-
         {loading && items.length === 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <Skeleton className="h-28 rounded-2xl" />
@@ -168,7 +132,7 @@ export function TasksPage() {
         ) : items.length === 0 ? (
           <div className="panel-card flex flex-col items-center justify-center px-6 py-16 text-center">
             <p className="text-sm text-muted-foreground">Create your first epic to start the pipeline.</p>
-            <Button className="mt-4" size="sm" onClick={() => setShowComposer(true)}>
+            <Button className="mt-4" size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
               New epic
             </Button>
@@ -194,15 +158,20 @@ export function TasksPage() {
                   <p className="line-clamp-2 text-sm font-semibold text-white group-hover:text-primary">
                     {item.title || `Task #${item.taskId}`}
                   </p>
+                  {item.preview ? (
+                    <p className="line-clamp-2 text-xs text-muted-foreground">{item.preview}</p>
+                  ) : null}
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{formatWhen(
-                    item.activityAt !== null
-                      ? item.activityAt
-                      : item.updatedAt !== null
-                        ? item.updatedAt
-                        : item.createdAt,
-                  )}</span>
+                  <span>
+                    {formatWhen(
+                      item.activityAt !== null
+                        ? item.activityAt
+                        : item.updatedAt !== null
+                          ? item.updatedAt
+                          : item.createdAt,
+                    )}
+                  </span>
                   <ChevronRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
                 </div>
               </Link>
@@ -219,6 +188,13 @@ export function TasksPage() {
           }}
         />
       </div>
+
+      <CreateEpicModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        saving={sending}
+        onCreate={(title, description) => void handleCreate(title, description)}
+      />
     </div>
   );
 }

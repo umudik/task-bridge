@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronRight, FolderKanban, Loader2, MoreVertical, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { CreateProjectPanel } from "@/components/CreateProjectPanel";
@@ -12,9 +12,11 @@ import { fetchProjects, type Project } from "@/lib/api";
 import { clearSelectedProject, setSelectedProject } from "@/lib/session";
 
 export function ProjectsPage() {
-  const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const session = useSession();
+  const templateIdFromUrl = searchParams.get("templateId") ?? "";
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +37,12 @@ export function ProjectsPage() {
       setLoading(false);
     }
   }, [session]);
+
+  useEffect(() => {
+    if (templateIdFromUrl) {
+      setCreateOpen(true);
+    }
+  }, [templateIdFromUrl]);
 
   useEffect(() => {
     clearSelectedProject();
@@ -76,8 +84,14 @@ export function ProjectsPage() {
         <div className="flex-1 overflow-y-auto p-8">
           <CreateProjectPanel
             session={activeSession}
+            initialTemplateId={templateIdFromUrl}
             onCreated={handleCreated}
-            onCancel={() => setCreateOpen(false)}
+            onCancel={() => {
+              setCreateOpen(false);
+              if (templateIdFromUrl) {
+                setSearchParams({});
+              }
+            }}
           />
         </div>
       ) : (

@@ -9,8 +9,10 @@ import {
   insertWorkflowTemplateRow,
   insertWorkflowTemplateStageRow,
   listWorkflowTemplateRows,
+  listWorkflowTemplateRowsForOwner,
   listWorkflowTemplateStageRows,
   seedDefaultWorkflowTemplates,
+  setWorkflowTemplateOwner,
   type WorkflowTemplateStageRow,
 } from "../db/workflow-template-db.js";
 import {
@@ -104,6 +106,7 @@ export function createWorkflowTemplate(input: {
   id: string | null;
   title: string;
   description: string | null;
+  ownerUserId?: string | null;
 }): WorkflowTemplate {
   ensureDefaultWorkflowTemplates();
   const title = input.title;
@@ -122,6 +125,7 @@ export function createWorkflowTemplate(input: {
     id,
     title,
     description: valueOrEmpty(input.description),
+    ownerUserId: input.ownerUserId ?? null,
   });
   return replaceWorkflowTemplate(id, [defaultTemplateStage()]);
 }
@@ -134,6 +138,17 @@ export function listWorkflowTemplates(): WorkflowTemplateSummary[] {
     description: row.description,
   }));
 }
+
+export function listOwnedWorkflowTemplates(ownerUserId: string): WorkflowTemplateSummary[] {
+  ensureDefaultWorkflowTemplates();
+  return listWorkflowTemplateRowsForOwner(ownerUserId).map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+  }));
+}
+
+export { setWorkflowTemplateOwner };
 
 export function getWorkflowTemplate(templateId: string): WorkflowTemplate | null {
   ensureDefaultWorkflowTemplates();
@@ -194,6 +209,7 @@ export function importWorkflowTemplate(input: {
   title: string;
   description: string | null;
   stages: WorkflowStage[];
+  ownerUserId?: string | null;
 }): WorkflowTemplate {
   ensureDefaultWorkflowTemplates();
   const title = input.title;
@@ -212,6 +228,7 @@ export function importWorkflowTemplate(input: {
     id,
     title,
     description: valueOrEmpty(input.description),
+    ownerUserId: input.ownerUserId ?? null,
   });
 
   return replaceWorkflowTemplate(id, input.stages);

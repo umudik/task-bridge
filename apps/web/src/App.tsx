@@ -13,6 +13,7 @@ import { TaskPage } from "@/pages/TaskPage";
 import { WorkflowPage } from "@/pages/WorkflowPage";
 import { WorkflowTemplatesPage } from "@/pages/WorkflowTemplatesPage";
 import { LibraryPage } from "@/pages/LibraryPage";
+import { MarketplacePage } from "@/pages/MarketplacePage";
 import { loadSession } from "@/lib/session";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -59,6 +60,7 @@ export function App() {
         >
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/workflow-templates" element={<WorkflowTemplatesPage />} />
+          <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route
             path="/admin/users"

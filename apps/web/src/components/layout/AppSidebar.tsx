@@ -6,6 +6,7 @@ import {
   Inbox,
   Layers,
   LogOut,
+  ShoppingBag,
   Smartphone,
   Users,
   type LucideIcon,
@@ -83,6 +84,7 @@ export function AppSidebar() {
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
         <div className="space-y-0.5">
           <NavItem to="/projects" label="Projects" icon={FolderKanban} end />
+          <NavItem to="/marketplace" label="Marketplace" icon={ShoppingBag} />
           <NavItem to="/library" label="Library" icon={BookOpen} />
           <NavItem to="/workflow-templates" label="Workflow templates" icon={GitBranch} />
         </div>

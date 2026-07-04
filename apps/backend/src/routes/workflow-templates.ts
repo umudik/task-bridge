@@ -63,7 +63,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
 
   // POST /api/workflow-templates/import — must be before /:templateId routes
   app.post("/workflow-templates/import", async (request, reply) => {
-    assertAuth(request);
+    const user = assertAuth(request);
     let importBody = request.body;
     if (importBody === null) { importBody = {}; }
     const body = importSchema.parse(importBody);
@@ -71,6 +71,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
       id: body.id,
       title: body.title,
       description: body.description,
+      ownerUserId: user.id,
       stages: body.stages.map((stage) => {
         let layoutX: number | null = null;
         if (Number(stage.layoutX) === stage.layoutX) {
@@ -91,7 +92,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.post("/workflow-templates", async (request, reply) => {
-    assertAuth(request);
+    const user = assertAuth(request);
     let createTemplateBody = request.body;
     if (createTemplateBody === null) { createTemplateBody = {}; }
     const body = createTemplateSchema.parse(createTemplateBody);
@@ -99,6 +100,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
       id: body.id,
       title: body.title,
       description: body.description,
+      ownerUserId: user.id,
     });
     return reply.status(201).send(template);
   });

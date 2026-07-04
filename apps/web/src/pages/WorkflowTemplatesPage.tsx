@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Download, Loader2, Plus, Save, ShoppingBag, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StageInspectorPanel } from "@/components/workflow/StageInspectorPanel";
@@ -37,6 +38,7 @@ import { cn } from "@/lib/utils";
 
 export function WorkflowTemplatesPage() {
   const session = useSession();
+  const navigate = useNavigate();
   const { confirmDestructive } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -456,6 +458,15 @@ export function WorkflowTemplatesPage() {
                 <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
                   Unsaved
                 </span>
+              ) : null}
+              {selectedId && !PROTECTED_WORKFLOW_TEMPLATE_IDS.has(selectedId) ? (
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/marketplace?publish=${encodeURIComponent(selectedId)}`)}
+                >
+                  <ShoppingBag className="h-4 w-4" />
+                  Share on marketplace
+                </Button>
               ) : null}
               {selectedId ? (
                 <Button variant="outline" onClick={() => void handleExport()}>

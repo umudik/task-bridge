@@ -1,21 +1,28 @@
 import { Loader2, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Session } from "@/lib/session";
-import { createProject, DEFAULT_WORKFLOW_TEMPLATE_ID, fetchWorkflowTemplates, type Project, type WorkflowTemplateSummary } from "@/lib/api";
+import { createProject, DEFAULT_WORKFLOW_TEMPLATE_ID, fetchWorkflowTemplates, PROTECTED_WORKFLOW_TEMPLATE_IDS, type Project, type WorkflowTemplateSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type CreateProjectPanelProps = {
   session: Session;
+  initialTemplateId?: string;
   onCreated: (project: Project) => void;
   onCancel: () => void;
 };
 
-export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProjectPanelProps) {
+export function CreateProjectPanel({
+  session,
+  initialTemplateId = "",
+  onCreated,
+  onCancel,
+}: CreateProjectPanelProps) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [repoPath, setRepoPath] = useState("");
@@ -28,6 +35,9 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
       .then((items) => {
         setTemplates(items);
         setWorkflowTemplateId((current) => {
+          if (initialTemplateId && items.some((item) => item.id === initialTemplateId)) {
+            return initialTemplateId;
+          }
           if (items.some((item) => item.id === current)) return current;
           for (const item of items) {
             if (item.id === DEFAULT_WORKFLOW_TEMPLATE_ID) {
@@ -44,7 +54,7 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
         });
       })
       .catch(() => setTemplates([]));
-  }, [session]);
+  }, [session, initialTemplateId]);
 
   async function handleCreate() {
     const trimmedName = name.trim();
@@ -69,6 +79,28 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
   }
 
   const canSubmit = Boolean(name.trim() && repoPath.trim());
+  const predefinedTemplates = templates.filter((t) => PROTECTED_WORKFLOW_TEMPLATE_IDS.has(t.id));
+  const ownedTemplates = templates.filter((t) => !PROTECTED_WORKFLOW_TEMPLATE_IDS.has(t.id));
+
+  function renderTemplateOption(template: WorkflowTemplateSummary) {
+    return (
+      <button
+        key={template.id}
+        type="button"
+        disabled={creating}
+        onClick={() => setWorkflowTemplateId(template.id)}
+        className={cn(
+          "rounded-xl border px-4 py-3 text-left transition-colors",
+          workflowTemplateId === template.id
+            ? "border-primary bg-primary/10"
+            : "border-white/[0.08] hover:border-white/[0.14]",
+        )}
+      >
+        <p className="text-sm font-medium text-white">{template.title}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{template.description}</p>
+      </button>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-8">
@@ -112,30 +144,32 @@ export function CreateProjectPanel({ session, onCreated, onCancel }: CreateProje
             disabled={creating}
           />
         </div>
-        {templates.length > 0 && (
+        {predefinedTemplates.length > 0 ? (
           <div className="space-y-2">
-            <Label>Workflow template</Label>
-            <div className="grid gap-2">
-              {templates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  disabled={creating}
-                  onClick={() => setWorkflowTemplateId(template.id)}
-                  className={cn(
-                    "rounded-xl border px-4 py-3 text-left transition-colors",
-                    workflowTemplateId === template.id
-                      ? "border-primary bg-primary/10"
-                      : "border-white/[0.08] hover:border-white/[0.14]",
-                  )}
-                >
-                  <p className="text-sm font-medium text-white">{template.title}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{template.description}</p>
-                </button>
-              ))}
-            </div>
+            <Label>Built-in template</Label>
+            <div className="grid gap-2">{predefinedTemplates.map(renderTemplateOption)}</div>
           </div>
-        )}
+        ) : null}
+        {ownedTemplates.length > 0 ? (
+          <div className="space-y-2">
+            <Label>Your templates</Label>
+            <div className="grid gap-2">{ownedTemplates.map(renderTemplateOption)}</div>
+          </div>
+        ) : null}
+        <div className="rounded-xl border border-dashed border-white/10 px-4 py-3">
+          <p className="text-sm text-muted-foreground">
+            Community templates from other users live on the marketplace.
+          </p>
+          <Link
+            to="/marketplace?selectFor=project"
+            className="mt-2 inline-block text-sm font-medium text-primary hover:underline"
+          >
+            Browse marketplace
+          </Link>
+        </div>
+        {templates.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Loading templates…</p>
+        ) : null}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onCancel} disabled={creating}>
             Cancel

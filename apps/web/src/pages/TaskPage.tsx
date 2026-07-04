@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Loader2, Pencil } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CreateTaskModal } from "@/components/CreateTaskModal";
-import { DescriptionEditorModal } from "@/components/DescriptionEditorModal";
+import { EpicDescriptionSection } from "@/components/EpicDescriptionSection";
 import { TaskLibraryLinks } from "@/components/TaskLibraryLinks";
 import { EpicProgressCanvas } from "@/components/workflow/EpicProgressCanvas";
 import { EpicTaskInspector } from "@/components/workflow/EpicTaskInspector";
@@ -66,7 +66,6 @@ export function TaskPage() {
     label: string;
   } | null>(null);
   const [creatingTask, setCreatingTask] = useState(false);
-  const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
   const [selectedSubtaskId, setSelectedSubtaskId] = useState<number | null>(null);
 
@@ -214,10 +213,10 @@ export function TaskPage() {
     try {
       const data = await updateTaskDescription(session, taskId, next);
       setDetail(data);
-      setDescriptionOpen(false);
       toast.success("Description saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save description");
+      throw error;
     } finally {
       setSavingDescription(false);
     }
@@ -298,24 +297,13 @@ export function TaskPage() {
           </header>
 
           {detail.isEpic ? (
-            <section className="panel-card p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-white">Description</h2>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setDescriptionOpen(true)}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                  {description ? "Edit" : "Add"}
-                </Button>
-              </div>
-              <div className="mt-3">
-                {description ? (
-                  <MarkdownView content={description} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No description yet — add goals, scope, or acceptance notes.
-                  </p>
-                )}
-              </div>
-            </section>
+            <EpicDescriptionSection
+              value={detail.description}
+              saving={savingDescription}
+              onSave={async (next) => {
+                await handleSaveDescription(next);
+              }}
+            />
           ) : null}
 
           {session && detail.isEpic ? (
@@ -402,18 +390,6 @@ export function TaskPage() {
                 <MarkdownView content={description} />
               </CardContent>
             </Card>
-          ) : null}
-
-          {detail.isEpic ? (
-            <DescriptionEditorModal
-              open={descriptionOpen}
-              onOpenChange={setDescriptionOpen}
-              title="Epic description"
-              value={detail !== null ? detail.description : ""}
-              onSave={(next) => void handleSaveDescription(next)}
-              placeholder="Goals, scope, links, acceptance notes…"
-              saving={savingDescription}
-            />
           ) : null}
 
           {detail.isEpic ? (
