@@ -1,31 +1,42 @@
 import type { FastifyInstance } from "fastify";
+import multipart from "@fastify/multipart";
 import { z } from "zod";
+import { AppError } from "../errors/app-error.js";
 import { assertAuth } from "../middleware/auth.js";
 import {
   createLibrary,
-  createLibraryDocument,
   getLibrary,
   getLibraryDocument,
   linkDocumentToTask,
   listLibraries,
+  listLibrarySyncManifest,
   listTaskLibraryLinks,
+  readLibraryDocumentContent,
   removeLibrary,
   removeLibraryDocument,
+  renameLibraryDocument,
+  replaceLibraryDocumentFile,
   unlinkDocumentFromTask,
   updateLibrary,
-  updateLibraryDocument,
+  uploadLibraryDocument,
 } from "../services/library-service.js";
 
-const libraryIdParamsSchema = z.object({
+const projectIdParamsSchema = z.object({
+  projectId: z.string().trim().min(1),
+});
+
+const projectLibraryParamsSchema = z.object({
+  projectId: z.string().trim().min(1),
   libraryId: z.string().trim().min(1),
 });
 
-const documentIdParamsSchema = z.object({
+const projectLibraryDocumentParamsSchema = z.object({
+  projectId: z.string().trim().min(1),
+  libraryId: z.string().trim().min(1),
   documentId: z.string().trim().min(1),
 });
 
-const libraryDocumentParamsSchema = z.object({
-  libraryId: z.string().trim().min(1),
+const documentIdParamsSchema = z.object({
   documentId: z.string().trim().min(1),
 });
 
@@ -44,68 +55,120 @@ const updateLibrarySchema = z.object({
   description: z.string().trim().default(""),
 });
 
-const createDocumentSchema = z.object({
-  id: z.string().trim().default(""),
+const renameDocumentSchema = z.object({
   title: z.string().trim().min(1),
-  description: z.string().trim().default(""),
 });
 
 const linkDocumentSchema = z.object({
   taskId: z.coerce.number().int().positive(),
 });
 
-export function libraryRoutes(app: FastifyInstance) {
-  app.get("/libraries", (request) => {
-    assertAuth(request);
-    return { items: listLibraries() };
+const syncQuerySchema = z.object({
+  libraryId: z.string().trim().default(""),
+});
+
+type MultipartFileField = {
+  type: "file";
+  filename: string;
+  mimetype: string;
+  toBuffer: () => Promise<Buffer>;
+};
+
+type MultipartValueField = {
+  type: "field";
+  value: string;
+};
+
+async function readMultipartFile(request: { body: unknown }) {
+  const body = request.body as Record<string, MultipartFileField | MultipartValueField | undefined>;
+  const fileField = body.file;
+  if (!fileField || fileField.type !== "file") {
+    throw new AppError("file is required", 400);
+  }
+  const buffer = await fileField.toBuffer();
+  let title = "";
+  const titleField = body.title;
+  if (titleField && titleField.type === "field") {
+    title = titleField.value;
+  }
+  return {
+    filename: fileField.filename || "upload.bin",
+    mimeType: fileField.mimetype || "application/octet-stream",
+    buffer,
+    title,
+  };
+}
+
+export async function libraryRoutes(app: FastifyInstance) {
+  await app.register(multipart, {
+    attachFieldsToBody: true,
+    limits: {
+      fileSize: 50 * 1024 * 1024,
+      files: 1,
+    },
   });
 
-  app.post("/libraries", async (request, reply) => {
+  app.get("/projects/:projectId/libraries", (request) => {
     assertAuth(request);
+    const { projectId } = projectIdParamsSchema.parse(request.params);
+    return { items: listLibraries(projectId) };
+  });
+
+  app.get("/projects/:projectId/library/sync", (request) => {
+    assertAuth(request);
+    const { projectId } = projectIdParamsSchema.parse(request.params);
+    const query = syncQuerySchema.parse(request.query || {});
+    return { items: listLibrarySyncManifest(projectId, query.libraryId) };
+  });
+
+  app.post("/projects/:projectId/libraries", async (request, reply) => {
+    assertAuth(request);
+    const { projectId } = projectIdParamsSchema.parse(request.params);
     let rawBody = request.body;
     if (rawBody === null) {
       rawBody = {};
     }
     const body = createLibrarySchema.parse(rawBody);
-    const library = createLibrary(body);
+    const library = createLibrary(projectId, body);
     return reply.status(201).send(library);
   });
 
-  app.get("/libraries/:libraryId", async (request, reply) => {
+  app.get("/projects/:projectId/libraries/:libraryId", async (request, reply) => {
     assertAuth(request);
-    const { libraryId } = libraryIdParamsSchema.parse(request.params);
-    const library = getLibrary(libraryId);
+    const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
+    const library = getLibrary(projectId, libraryId);
     if (!library) return reply.status(404).send({ error: "Library not found" });
     return library;
   });
 
-  app.put("/libraries/:libraryId", (request) => {
+  app.put("/projects/:projectId/libraries/:libraryId", (request) => {
     assertAuth(request);
-    const { libraryId } = libraryIdParamsSchema.parse(request.params);
+    const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
     let rawBody = request.body;
     if (rawBody === null) {
       rawBody = {};
     }
     const body = updateLibrarySchema.parse(rawBody);
-    return updateLibrary(libraryId, body);
+    return updateLibrary(projectId, libraryId, body);
   });
 
-  app.delete("/libraries/:libraryId", async (request, reply) => {
+  app.delete("/projects/:projectId/libraries/:libraryId", async (request, reply) => {
     assertAuth(request);
-    const { libraryId } = libraryIdParamsSchema.parse(request.params);
-    removeLibrary(libraryId);
+    const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
+    removeLibrary(projectId, libraryId);
     return reply.status(204).send();
   });
 
-  app.post("/libraries/:libraryId/documents", async (request, reply) => {
+  app.post("/projects/:projectId/libraries/:libraryId/documents/upload", async (request, reply) => {
     assertAuth(request);
-    const { libraryId } = libraryIdParamsSchema.parse(request.params);
-    let rawBody = request.body;
-    if (rawBody === null) {
-      rawBody = {};
-    }
-    const body = createDocumentSchema.parse(rawBody);
-    const document = createLibraryDocument(libraryId, body);
+    const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
+    const upload = await readMultipartFile(request);
+    const document = uploadLibraryDocument(projectId, libraryId, {
+      filename: upload.filename,
+      mimeType: upload.mimeType,
+      buffer: upload.buffer,
+      title: upload.title,
+    });
     return reply.status(201).send(document);
   });
 
@@ -117,31 +180,57 @@ export function libraryRoutes(app: FastifyInstance) {
     return document;
   });
 
-  app.put("/libraries/:libraryId/documents/:documentId", async (request, reply) => {
+  app.get("/library-documents/:documentId/content", async (request, reply) => {
     assertAuth(request);
-    const { libraryId, documentId } = libraryDocumentParamsSchema.parse(request.params);
-    let rawBody = request.body;
-    if (rawBody === null) {
-      rawBody = {};
-    }
-    const body = updateLibrarySchema.parse(rawBody);
-    const existing = getLibraryDocument(documentId);
-    if (!existing || existing.libraryId !== libraryId) {
-      return reply.status(404).send({ error: "Document not found" });
-    }
-    return updateLibraryDocument(documentId, body);
+    const { documentId } = documentIdParamsSchema.parse(request.params);
+    const { document, buffer } = readLibraryDocumentContent(documentId);
+    const downloadName = document.originalName || document.filename || document.title;
+    reply.header("Content-Type", document.mimeType || "application/octet-stream");
+    reply.header("Content-Length", buffer.byteLength);
+    reply.header("X-Content-Hash", document.contentHash);
+    reply.header("Content-Disposition", `attachment; filename="${downloadName.replace(/"/g, "")}"`);
+    return reply.send(buffer);
   });
 
-  app.delete("/libraries/:libraryId/documents/:documentId", async (request, reply) => {
-    assertAuth(request);
-    const { libraryId, documentId } = libraryDocumentParamsSchema.parse(request.params);
-    const existing = getLibraryDocument(documentId);
-    if (!existing || existing.libraryId !== libraryId) {
-      return reply.status(404).send({ error: "Document not found" });
-    }
-    removeLibraryDocument(documentId);
-    return reply.status(204).send();
-  });
+  app.put(
+    "/projects/:projectId/libraries/:libraryId/documents/:documentId",
+    async (request) => {
+      assertAuth(request);
+      const { projectId, libraryId, documentId } = projectLibraryDocumentParamsSchema.parse(
+        request.params,
+      );
+      let rawBody = request.body;
+      if (rawBody === null) {
+        rawBody = {};
+      }
+      const body = renameDocumentSchema.parse(rawBody);
+      return renameLibraryDocument(projectId, libraryId, documentId, body.title);
+    },
+  );
+
+  app.post(
+    "/projects/:projectId/libraries/:libraryId/documents/:documentId/upload",
+    async (request) => {
+      assertAuth(request);
+      const { projectId, libraryId, documentId } = projectLibraryDocumentParamsSchema.parse(
+        request.params,
+      );
+      const upload = await readMultipartFile(request);
+      return replaceLibraryDocumentFile(projectId, libraryId, documentId, upload);
+    },
+  );
+
+  app.delete(
+    "/projects/:projectId/libraries/:libraryId/documents/:documentId",
+    async (request, reply) => {
+      assertAuth(request);
+      const { projectId, libraryId, documentId } = projectLibraryDocumentParamsSchema.parse(
+        request.params,
+      );
+      removeLibraryDocument(projectId, libraryId, documentId);
+      return reply.status(204).send();
+    },
+  );
 
   app.post("/library-documents/:documentId/links", async (request, reply) => {
     assertAuth(request);

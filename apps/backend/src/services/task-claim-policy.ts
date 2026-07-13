@@ -167,18 +167,16 @@ export function canActorClaimTask(
 export function canActorUpdateWorkStatus(
   task: BridgeTask,
   index: EpicClaimIndex,
-  actor: ClaimActor,
+  _actor: ClaimActor | null = null,
 ): boolean {
   if (task.parentId === null || isWorkDone(task)) return false;
   if (!isTaskOnEpicActiveStage(task, index)) return false;
-  if (task.claimedBy && task.claimedBy !== actor.claimedBy) return false;
   return true;
 }
 
 export function workflowUpdateBlockReason(
   task: BridgeTask,
   index: EpicClaimIndex,
-  actor: ClaimActor,
   nextWorkStatus: WorkStatus | null = null,
 ): string | null {
   if (task.parentId === null) return "Epics cannot be updated";
@@ -191,9 +189,6 @@ export function workflowUpdateBlockReason(
   }
   if (!isReopen && !isTaskOnEpicActiveStage(task, index)) {
     return "Task is not on the active pipeline step";
-  }
-  if (!isReopen && task.claimedBy && task.claimedBy !== actor.claimedBy) {
-    return "Task is claimed by another member";
   }
   return null;
 }

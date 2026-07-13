@@ -1,8 +1,6 @@
 import type { BridgeTask, TaskComment } from "../domain/task.js";
 import { canonicalDescription, isTaskClaimed } from "../domain/task.js";
 import { resolveWorkStatus, type WorkStatus } from "../domain/work-status.js";
-import { emptyToNull } from "../lib/strings.js";
-import { getProjectById } from "./project-registry.js";
 import {
   buildEpicClaimIndex,
   canActorClaimTask,
@@ -31,12 +29,6 @@ export function turnIdForTask(task: BridgeTask): string {
   return `create-${task.createdAt}`;
 }
 
-function resolveWorkspacePath(task: BridgeTask): string | null {
-  const project = getProjectById(task.projectId);
-  if (project === null) return null;
-  return emptyToNull(project.repoPath);
-}
-
 export type TaskClaimPayload = {
   taskId: number;
   turnId: string;
@@ -46,7 +38,6 @@ export type TaskClaimPayload = {
   epicId: number | null;
   title: string;
   description: string;
-  workspacePath: string | null;
   stageId: string | null;
   workStatus: WorkStatus | null;
   createdAt: string;
@@ -69,7 +60,6 @@ function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
     epicId: task.epicId,
     title: task.title,
     description: canonicalDescription(task),
-    workspacePath: resolveWorkspacePath(task),
     stageId: task.stageId,
     workStatus,
     createdAt: task.createdAt,

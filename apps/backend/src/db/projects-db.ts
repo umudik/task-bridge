@@ -67,6 +67,11 @@ function migrate(database: Database.Database) {
       `UPDATE projects SET workflow_template_id = ? WHERE trim(workflow_template_id) = ''`,
     )
     .run(DEFAULT_WORKFLOW_TEMPLATE_ID);
+  database
+    .prepare(
+      "UPDATE projects SET workflow_template_id = ? WHERE workflow_template_id = 'empty'",
+    )
+    .run(DEFAULT_WORKFLOW_TEMPLATE_ID);
 }
 
 export function getProjectsDb(): Database.Database {
@@ -101,23 +106,9 @@ export function listProjectRowsById(id: string): ProjectRow[] {
     .all(id) as ProjectRow[];
 }
 
-export function upsertProjectRow(id: string, name: string, repoPath: string) {
-  getProjectsDb()
-    .prepare(
-      `INSERT INTO projects (id, name, repo_path, updated_at)
-       VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name,
-         repo_path = excluded.repo_path,
-         updated_at = datetime('now')`,
-    )
-    .run(id, name || id, repoPath);
-}
-
 export function insertProjectRow(
   id: string,
   name: string,
-  repoPath: string,
   description = "",
   workflowTemplateId = DEFAULT_WORKFLOW_TEMPLATE_ID,
 ): boolean {
@@ -125,9 +116,9 @@ export function insertProjectRow(
     getProjectsDb()
       .prepare(
         `INSERT INTO projects (id, name, repo_path, description, workflow_template_id, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+         VALUES (?, ?, '', ?, ?, datetime('now'))`,
       )
-      .run(id, name || id, repoPath, description, workflowTemplateId);
+      .run(id, name || id, description, workflowTemplateId);
     return true;
   } catch {
     return false;
@@ -138,7 +129,6 @@ export function updateProjectRow(
   id: string,
   input: {
     name: string;
-    repoPath: string;
     description: string;
     workflowTemplateId: string;
   },
@@ -146,11 +136,10 @@ export function updateProjectRow(
   if (listProjectRowsById(id).length === 0) return false;
   const result = getProjectsDb()
     .prepare(
-      `UPDATE projects SET name = ?, repo_path = ?, description = ?, workflow_template_id = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE projects SET name = ?, description = ?, workflow_template_id = ?, updated_at = datetime('now') WHERE id = ?`,
     )
     .run(
       input.name,
-      input.repoPath,
       input.description,
       input.workflowTemplateId,
       id,

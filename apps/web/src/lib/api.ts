@@ -1,19 +1,17 @@
 import type { Session } from "./session";
 import { clearSession, loadSession, saveSession } from "./session";
 
-export const DEFAULT_WORKFLOW_TEMPLATE_ID = "empty";
+export const DEFAULT_WORKFLOW_TEMPLATE_ID = "plan-build-deliver";
 
 export type Project = {
   id: string;
   name: string;
-  repoPath: string;
   description: string;
   workflowTemplateId: string;
 };
 
 export type UpdateProjectInput = {
   name: string;
-  repoPath: string;
   description: string;
   workflowTemplateId: string;
 };
@@ -21,7 +19,6 @@ export type UpdateProjectInput = {
 export type CreateProjectInput = {
   name: string;
   id: string;
-  repoPath: string;
   description: string;
   workflowTemplateId: string;
 };
@@ -40,6 +37,7 @@ export type InboxItem = {
   assignee: string | null;
   stageId: string | null;
   stageTitle: string | null;
+  commentCount: number;
 };
 
 export type AssigneeKind = "ai" | "";
@@ -170,6 +168,7 @@ export type TaskDetail = {
 
 export type LibrarySummary = {
   id: string;
+  projectId: string;
   title: string;
   description: string;
   documentCount: number;
@@ -180,10 +179,19 @@ export type LibraryDocumentSummary = {
   libraryId: string;
   title: string;
   description: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  contentHash: string;
+  extension: string;
+  updatedAt: string;
+  hasFile: boolean;
 };
 
 export type LibraryDetail = {
   id: string;
+  projectId: string;
   title: string;
   description: string;
   documents: LibraryDocumentSummary[];
@@ -191,6 +199,7 @@ export type LibraryDetail = {
 
 export type LibraryDocument = LibraryDocumentSummary & {
   libraryTitle: string;
+  projectId: string;
   linkCount: number;
 };
 
@@ -201,6 +210,21 @@ export type LibraryDocumentLink = {
   libraryTitle: string;
   taskId: number;
   linkedAt: string;
+};
+
+export type LibrarySyncItem = {
+  id: string;
+  projectId: string;
+  libraryId: string;
+  libraryTitle: string;
+  title: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  contentHash: string;
+  extension: string;
+  updatedAt: string;
 };
 
 export type PublicUser = {
@@ -448,7 +472,6 @@ export async function createProject(session: Session, input: CreateProjectInput)
     body: JSON.stringify({
       name: input.name,
       id: input.id.trim(),
-      repoPath: input.repoPath,
       description: input.description.trim(),
       workflowTemplateId: input.workflowTemplateId.trim() || DEFAULT_WORKFLOW_TEMPLATE_ID,
     }),
@@ -480,7 +503,7 @@ export async function fetchWorkflowTemplate(session: Session, templateId: string
 
 export async function createWorkflowTemplate(
   session: Session,
-  input: { title: string; id: string | null; description: string | null },
+  input: { title: string; id: string; description: string },
 ) {
   return request<WorkflowTemplate>(session, "/api/workflow-templates", {
     method: "POST",
@@ -507,7 +530,7 @@ export async function deleteWorkflowTemplate(session: Session, templateId: strin
   });
 }
 
-export const PROTECTED_WORKFLOW_TEMPLATE_IDS = new Set(["empty", "lean-sdlc"]);
+export const PROTECTED_WORKFLOW_TEMPLATE_IDS = new Set(["plan-build-deliver", "lean-sdlc"]);
 
 export async function exportWorkflowTemplate(session: Session, templateId: string): Promise<void> {
   const res = await fetch(`/api/workflow-templates/${templateId}/export`, {
@@ -750,23 +773,27 @@ export async function deleteMember(session: Session, projectId: string, memberId
   });
 }
 
-export async function fetchLibraries(session: Session) {
-  const data = await request<{ items: LibrarySummary[] }>(session, "/api/libraries");
+export async function fetchLibraries(session: Session, projectId: string) {
+  const data = await request<{ items: LibrarySummary[] }>(
+    session,
+    `/api/projects/${projectId}/libraries`,
+  );
   if (data.items !== null) {
     return data.items;
   }
   return [];
 }
 
-export async function fetchLibrary(session: Session, libraryId: string) {
-  return request<LibraryDetail>(session, `/api/libraries/${libraryId}`);
+export async function fetchLibrary(session: Session, projectId: string, libraryId: string) {
+  return request<LibraryDetail>(session, `/api/projects/${projectId}/libraries/${libraryId}`);
 }
 
 export async function createLibrary(
   session: Session,
-  input: { title: string; id: string | null; description: string | null },
+  projectId: string,
+  input: { title: string; id: string; description: string },
 ) {
-  return request<LibraryDetail>(session, "/api/libraries", {
+  return request<LibraryDetail>(session, `/api/projects/${projectId}/libraries`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -775,61 +802,115 @@ export async function createLibrary(
 
 export async function saveLibrary(
   session: Session,
+  projectId: string,
   libraryId: string,
-  input: { title: string; description: string | null },
+  input: { title: string; description: string },
 ) {
-  return request<LibraryDetail>(session, `/api/libraries/${libraryId}`, {
+  return request<LibraryDetail>(session, `/api/projects/${projectId}/libraries/${libraryId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
-export async function deleteLibrary(session: Session, libraryId: string) {
-  await request<void>(session, `/api/libraries/${libraryId}`, { method: "DELETE" });
+export async function deleteLibrary(session: Session, projectId: string, libraryId: string) {
+  await request<void>(session, `/api/projects/${projectId}/libraries/${libraryId}`, {
+    method: "DELETE",
+  });
 }
 
-export async function createLibraryDocument(
+export async function uploadLibraryDocument(
   session: Session,
+  projectId: string,
   libraryId: string,
-  input: { title: string; id: string | null; description: string | null },
+  file: File,
+  title = "",
 ) {
-  return request<LibraryDocument>(session, `/api/libraries/${libraryId}/documents`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  const form = new FormData();
+  form.append("file", file, file.name);
+  if (title.trim() !== "") form.append("title", title.trim());
+  return request<LibraryDocument>(
+    session,
+    `/api/projects/${projectId}/libraries/${libraryId}/documents/upload`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+}
+
+export async function replaceLibraryDocument(
+  session: Session,
+  projectId: string,
+  libraryId: string,
+  documentId: string,
+  file: File,
+) {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return request<LibraryDocument>(
+    session,
+    `/api/projects/${projectId}/libraries/${libraryId}/documents/${documentId}/upload`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
 }
 
 export async function fetchLibraryDocument(session: Session, documentId: string) {
   return request<LibraryDocument>(session, `/api/library-documents/${documentId}`);
 }
 
-export async function saveLibraryDocument(
+export async function renameLibraryDocument(
   session: Session,
+  projectId: string,
   libraryId: string,
   documentId: string,
-  input: { title: string; description: string | null },
+  title: string,
 ) {
   return request<LibraryDocument>(
     session,
-    `/api/libraries/${libraryId}/documents/${documentId}`,
+    `/api/projects/${projectId}/libraries/${libraryId}/documents/${documentId}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ title }),
     },
   );
 }
 
 export async function deleteLibraryDocument(
   session: Session,
+  projectId: string,
   libraryId: string,
   documentId: string,
 ) {
-  await request<void>(session, `/api/libraries/${libraryId}/documents/${documentId}`, {
-    method: "DELETE",
+  await request<void>(
+    session,
+    `/api/projects/${projectId}/libraries/${libraryId}/documents/${documentId}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+export async function fetchLibrarySync(session: Session, projectId: string, libraryId = "") {
+  const query = libraryId !== "" ? `?libraryId=${encodeURIComponent(libraryId)}` : "";
+  const data = await request<{ items: LibrarySyncItem[] }>(
+    session,
+    `/api/projects/${projectId}/library/sync${query}`,
+  );
+  if (data.items !== null) return data.items;
+  return [];
+}
+
+export async function downloadLibraryDocument(session: Session, documentId: string): Promise<Blob> {
+  const res = await fetch(`/api/library-documents/${documentId}/content`, {
+    headers: { Authorization: `Bearer ${session.token}` },
   });
+  if (!res.ok) throw new ApiError("Download failed", res.status);
+  return res.blob();
 }
 
 export async function linkLibraryDocument(
@@ -885,12 +966,16 @@ export async function updateTaskWorkStatus(
   session: Session,
   taskId: number,
   workStatus: WorkStatus,
-  claimedBy: string,
+  claimedBy: string | null = null,
 ) {
+  const body: { workStatus: WorkStatus; claimedBy?: string } = { workStatus };
+  if (claimedBy !== null && claimedBy.trim() !== "") {
+    body.claimedBy = claimedBy.trim();
+  }
   return request<TaskDetail>(session, `/api/tasks/${taskId}/work-status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workStatus, claimedBy }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -1036,4 +1121,32 @@ export async function fetchPublishableTemplates(session: Session) {
   );
   if (data.items !== null) return data.items;
   return [];
+}
+
+export type ApiKeySummary = {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
+export async function fetchApiKeys(session: Session) {
+  const data = await request<{ items: ApiKeySummary[] }>(session, "/api/me/api-keys");
+  if (data.items !== null) return data.items;
+  return [];
+}
+
+export async function createApiKey(session: Session, name: string) {
+  return request<{ key: ApiKeySummary; rawKey: string }>(session, "/api/me/api-keys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function revokeApiKey(session: Session, keyId: string) {
+  await request<void>(session, `/api/me/api-keys/${encodeURIComponent(keyId)}`, {
+    method: "DELETE",
+  });
 }

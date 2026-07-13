@@ -163,7 +163,7 @@ const patchTaskBodySchema = z
 
 const workStatusBodySchema = z.object({
   workStatus: z.enum(["todo", "in_progress", "done"]),
-  claimedBy: z.string().trim().min(1),
+  claimedBy: z.string().trim().optional().default(""),
 });
 
 const inboxQuerySchema = z.object({
@@ -410,7 +410,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.patch("/tasks/:id/work-status", async (request, reply) => {
-    assertAuth(request);
+    const user = assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const workStatusBody = request.body || {};
     const body = workStatusBodySchema.parse(workStatusBody);
@@ -421,12 +421,12 @@ export function taskRoutes(app: FastifyInstance) {
     if (!existing) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    const actor = resolveClaimActor(existing.projectId, body.claimedBy);
-    if (!actor) {
-      return reply.status(404).send({ error: "Project member not found" });
+    let by = user.name;
+    if (body.claimedBy !== "") {
+      by = body.claimedBy;
     }
     try {
-      const updated = updateTaskWorkStatus(id, body.workStatus, actor.claimedBy, actor);
+      const updated = updateTaskWorkStatus(id, body.workStatus, by);
       if (!updated) {
         if (existing.parentId === null) {
           return reply.status(400).send({ error: "Only subtasks support work status" });
@@ -513,7 +513,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.patch("/tasks/:id", async (request, reply) => {
-    assertAuth(request);
+    const user = assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const patchBody = request.body || {};
     const body = patchTaskBodySchema.parse(patchBody);
@@ -527,14 +527,10 @@ export function taskRoutes(app: FastifyInstance) {
       }
       let task = existing;
       if (body.description) {
-        let commentBy = "web";
-        if (body.comment) {
-          commentBy = body.comment.by;
-        }
         const updated = updateBridgeTaskSpec(id, {
           description: body.description,
           title: null,
-          by: commentBy,
+          by: user.name,
         });
         if (!updated) {
           return reply.status(404).send({ error: "Task not found" });
@@ -542,7 +538,7 @@ export function taskRoutes(app: FastifyInstance) {
         task = updated;
       }
       if (body.comment) {
-        const updated = addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
+        const updated = addBridgeTaskUserComment(id, user.name, body.comment.text);
         if (!updated) {
           return reply.status(404).send({ error: "Task not found" });
         }
@@ -553,7 +549,7 @@ export function taskRoutes(app: FastifyInstance) {
     if (!body.comment) {
       return reply.status(400).send({ error: "comment is required" });
     }
-    const task = addBridgeTaskUserComment(id, body.comment.by, body.comment.text);
+    const task = addBridgeTaskUserComment(id, user.name, body.comment.text);
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }

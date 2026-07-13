@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChevronRight, Loader2, MessageSquare, RefreshCw } from "lucide-react";
+import { ChevronRight, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { LoadMore } from "@/components/LoadMore";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useSession } from "@/hooks/useSession";
 import { fetchInbox, type InboxItem } from "@/lib/api";
 import { isTaskRead, markTaskRead } from "@/lib/read-tasks";
@@ -26,25 +26,30 @@ export function InboxPage() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const itemsCountRef = useRef(0);
+  itemsCountRef.current = items.length;
 
   const load = useCallback(
-    async (cursor: string | null, append: boolean) => {
+    async (cursor: string | null, append: boolean, silent = false) => {
       if (!session || !projectId) return;
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else if (!silent) setLoading(true);
       try {
+        const limit = silent ? Math.max(PAGE_SIZE, itemsCountRef.current) : PAGE_SIZE;
         const data = await fetchInbox(session, {
           projectId,
           commentsOnly: true,
           epicsOnly: null,
-          cursor,
-          limit: PAGE_SIZE,
+          cursor: silent ? null : cursor,
+          limit,
         });
         setItems((prev) => (append ? prev.concat(data.items) : data.items));
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load inbox");
+        if (!silent) {
+          toast.error(error instanceof Error ? error.message : "Failed to load inbox");
+        }
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -53,13 +58,16 @@ export function InboxPage() {
     [session, projectId],
   );
 
-  const refresh = useCallback(() => {
-    void load(null, false);
-  }, [load]);
-
-  useEffect(() => {
-    void load(null, false);
-  }, [load]);
+  useAutoRefresh(
+    useCallback(
+      (silent: boolean) => {
+        if (!silent) setItems([]);
+        void load(null, false, silent);
+      },
+      [load],
+    ),
+    { enabled: Boolean(session && projectId) },
+  );
 
   useEffect(() => {
     const onRead = () => {
@@ -92,12 +100,6 @@ export function InboxPage() {
         ]}
         title="Inbox"
         subtitle={unreadOnPage > 0 ? `${unreadOnPage} unread` : "All caught up"}
-        actions={
-          <Button variant="outline" size="sm" onClick={refresh} disabled={loading || loadingMore}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Refresh
-          </Button>
-        }
       />
 
       <div className="flex-1 overflow-y-auto p-5">

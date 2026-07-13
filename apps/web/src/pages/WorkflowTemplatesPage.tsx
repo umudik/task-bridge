@@ -130,8 +130,8 @@ export function WorkflowTemplatesPage() {
     try {
       const template = await createWorkflowTemplate(session, {
         title: newTemplateTitle.trim(),
-        id: null,
-        description: null,
+        id: "",
+        description: "",
       });
       setTemplates((current) =>
         current

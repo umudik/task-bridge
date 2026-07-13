@@ -84,11 +84,8 @@ function defaultTemplateStage(): WorkflowStage {
   };
 }
 
-function resolveTemplateIdHint(id: string | null): string {
-  if (id === null) {
-    return "";
-  }
-  return id;
+function resolveTemplateIdHint(id: string): string {
+  return id.trim();
 }
 
 function stagePosition(stage: WorkflowStage, index: number): number {
@@ -103,9 +100,9 @@ export function ensureDefaultWorkflowTemplates(): void {
 }
 
 export function createWorkflowTemplate(input: {
-  id: string | null;
+  id: string;
   title: string;
-  description: string | null;
+  description: string;
   ownerUserId?: string | null;
 }): WorkflowTemplate {
   ensureDefaultWorkflowTemplates();
@@ -205,9 +202,9 @@ export function replaceWorkflowTemplate(
 }
 
 export function importWorkflowTemplate(input: {
-  id: string | null;
+  id: string;
   title: string;
-  description: string | null;
+  description: string;
   stages: WorkflowStage[];
   ownerUserId?: string | null;
 }): WorkflowTemplate {
@@ -234,7 +231,7 @@ export function importWorkflowTemplate(input: {
   return replaceWorkflowTemplate(id, input.stages);
 }
 
-const PROTECTED_WORKFLOW_TEMPLATE_IDS = new Set(["empty", DEFAULT_WORKFLOW_TEMPLATE_ID]);
+const PROTECTED_WORKFLOW_TEMPLATE_IDS = new Set([DEFAULT_WORKFLOW_TEMPLATE_ID, "lean-sdlc"]);
 
 export function deleteWorkflowTemplate(templateId: string): void {
   ensureDefaultWorkflowTemplates();

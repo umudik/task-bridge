@@ -38,7 +38,6 @@ export function EditProjectModal({
 }: EditProjectModalProps) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
-  const [repoPath, setRepoPath] = useState("");
   const [description, setDescription] = useState("");
   const [workflowTemplateId, setWorkflowTemplateId] = useState("");
   const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([]);
@@ -46,7 +45,6 @@ export function EditProjectModal({
   useEffect(() => {
     if (!open || !project) return;
     setName(project.name);
-    setRepoPath(project.repoPath.trim());
     setDescription(project.description.trim());
     setWorkflowTemplateId("");
     void fetchWorkflowTemplates(session)
@@ -57,9 +55,8 @@ export function EditProjectModal({
   async function handleSave() {
     if (!project) return;
     const trimmedName = name.trim();
-    const trimmedRepo = repoPath.trim();
-    if (!trimmedName || !trimmedRepo) {
-      toast.error("Name and folder path are required");
+    if (!trimmedName) {
+      toast.error("Name is required");
       return;
     }
 
@@ -71,7 +68,6 @@ export function EditProjectModal({
     try {
       const updated = await updateProject(session, project.id, {
         name: trimmedName,
-        repoPath: trimmedRepo,
         description: description.trim(),
         workflowTemplateId: nextTemplateId,
       });
@@ -85,7 +81,7 @@ export function EditProjectModal({
     }
   }
 
-  const canSubmit = Boolean(name.trim() && repoPath.trim());
+  const canSubmit = Boolean(name.trim());
 
   const currentTemplate = project !== null
     ? templates.find((item) => item.id === project.workflowTemplateId)
@@ -114,15 +110,6 @@ export function EditProjectModal({
               id="edit-project-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              disabled={saving}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-project-repo">Folder path</Label>
-            <Input
-              id="edit-project-repo"
-              value={repoPath}
-              onChange={(event) => setRepoPath(event.target.value)}
               disabled={saving}
             />
           </div>

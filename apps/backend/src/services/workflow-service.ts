@@ -248,14 +248,12 @@ export function resolveNewTaskPlacement(projectId: string): {
   ensureProjectWorkflow(projectId);
   const stageId = getFirstStageId(projectId);
   if (!stageId) {
-    const assignee = pickMemberByProjectRole(projectId, "");
-    return { stageId: null, assignee, assigneeRole: null };
+    return { stageId: null, assignee: "", assigneeRole: null };
   }
   const stageRows = listWorkflowStageRows({ projectId, stageId });
   const row = stageRows[0];
   if (!row) {
-    const assignee = pickMemberByProjectRole(projectId, "");
-    return { stageId, assignee, assigneeRole: null };
+    return { stageId, assignee: "", assigneeRole: null };
   }
   const autoAssignRole = row.auto_assign_role;
   const resolved = resolveTaskAssignee({

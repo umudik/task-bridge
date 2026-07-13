@@ -37,22 +37,11 @@ class TaskRepository(
                         Project(
                             id = id,
                             name = name,
-                            repoPath = item.optString("repoPath").takeIf { it.isNotBlank() },
                         ),
                     )
                 }
             }
         }
-    }
-
-    suspend fun updateProjectRepoPath(projectId: String, repoPath: String): Project = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("repoPath", repoPath)
-        val json = putJson("/projects/$projectId/repo-path", body)
-        Project(
-            id = json.optString("id", projectId),
-            name = json.optString("name"),
-            repoPath = json.optString("repoPath").takeIf { it.isNotBlank() } ?: repoPath.takeIf { it.isNotBlank() },
-        )
     }
 
     private fun putJson(path: String, body: JSONObject): JSONObject {

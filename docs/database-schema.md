@@ -12,7 +12,6 @@ Tek SQLite dosyası: `data/bridge.db` (veya `config.databasePath`).
 |-------|-----|----------|
 | `id` | ID PK | Proje kimliği |
 | `name` | TEXT | Proje adı |
-| `repo_path` | TEXT | Repo yolu |
 | `description` | TEXT | Açıklama |
 | `workflow_id` | ID | → `workflow_templates.id` |
 | `created_at` | TEXT | |

@@ -14,8 +14,6 @@ import {
 import { stageHasActionableTemplates } from "../domain/workflow-stage.js";
 import {
   buildEpicClaimIndex,
-  normalizeClaimActor,
-  type ClaimActor,
   workflowUpdateBlockReason,
 } from "./task-claim-policy.js";
 import { AppError } from "../errors/app-error.js";
@@ -218,7 +216,6 @@ export function updateTaskWorkStatus(
   taskId: number,
   workStatus: WorkStatus,
   by: string,
-  actor: ClaimActor,
 ): BridgeTask | null {
   const existing = getBridgeTask(taskId);
   if (!existing || existing.parentId === null) {
@@ -227,9 +224,8 @@ export function updateTaskWorkStatus(
   const tasksForPolicy = listBridgeTasks();
   assertCanAdvanceWorkStatus(tasksForPolicy, existing, workStatus);
 
-  const normalized = normalizeClaimActor(actor);
   const index = buildEpicClaimIndex(tasksForPolicy);
-  const blockReason = workflowUpdateBlockReason(existing, index, normalized, workStatus);
+  const blockReason = workflowUpdateBlockReason(existing, index, workStatus);
   if (blockReason) {
     throw new AppError(blockReason, 409);
   }

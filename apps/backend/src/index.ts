@@ -16,8 +16,10 @@ import { authRoutes } from "./routes/auth.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { docsRoutes } from "./routes/docs.js";
 import { marketplaceRoutes } from "./routes/marketplace.js";
+import { apiKeyRoutes } from "./routes/api-keys.js";
 import { refreshProjectRegistry, initProjectRegistry } from "./services/project-registry.js";
 import { ensureMarketplaceReady } from "./services/marketplace-service.js";
+import { migrateApiKeysTables } from "./db/api-keys-db.js";
 
 const logger = createLogger("backend");
 
@@ -28,19 +30,21 @@ async function main() {
   initProjectRegistry();
   refreshProjectRegistry();
   ensureMarketplaceReady();
+  migrateApiKeysTables();
 
   healthRoutes(app);
 
   await app.register(
-    (apiApp) => {
+    async (apiApp) => {
       docsRoutes(apiApp);
       authRoutes(apiApp);
+      apiKeyRoutes(apiApp);
       adminUserRoutes(apiApp);
       projectRoutes(apiApp);
       taskRoutes(apiApp);
       workflowRoutes(apiApp);
       workflowTemplateRoutes(apiApp);
-      libraryRoutes(apiApp);
+      await libraryRoutes(apiApp);
       marketplaceRoutes(apiApp);
     },
     { prefix: "/api" },

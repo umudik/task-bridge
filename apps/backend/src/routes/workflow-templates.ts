@@ -43,15 +43,15 @@ const replaceTemplateSchema = z.object({
 });
 
 const createTemplateSchema = z.object({
-  id: z.string().trim().min(1).nullable().default(null),
+  id: z.string().trim().default(""),
   title: z.string().trim().min(1),
-  description: z.string().trim().optional().default(""),
+  description: z.string().trim().default(""),
 });
 
 const importSchema = z.object({
-  id: z.string().trim().min(1).nullable().default(null),
+  id: z.string().trim().default(""),
   title: z.string().trim().min(1),
-  description: z.string().trim().optional().default(""),
+  description: z.string().trim().default(""),
   stages: z.array(stageSchema).min(1),
 }).passthrough();
 

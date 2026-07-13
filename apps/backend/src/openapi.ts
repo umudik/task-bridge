@@ -140,11 +140,12 @@ const WorkflowTemplate = {
 
 const Project = {
   type: "object",
-  required: ["id", "name", "repoPath"],
+  required: ["id", "name"],
   properties: {
     id: { type: "string" },
     name: { type: "string" },
-    repoPath: { type: "string" },
+    description: { type: "string" },
+    workflowTemplateId: { type: "string" },
   },
 } as const;
 
@@ -372,30 +373,17 @@ export const openapiSpec = {
         security: bearer,
         requestBody: json({
           type: "object",
-          required: ["name", "repoPath"],
+          required: ["name"],
           properties: {
             name: { type: "string", minLength: 1 },
             id: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", description: "Optional custom slug; auto-generated if omitted" },
-            repoPath: { type: "string", minLength: 1 },
+            description: { type: "string" },
             workflowTemplateId: { type: "string", description: "Apply a workflow template on creation" },
           },
         }),
         responses: mergeResponses(
           created({ $ref: "#/components/schemas/Project" }),
           err([400, 401, 409]),
-        ),
-      },
-    },
-    "/projects/{id}/repo-path": {
-      put: {
-        tags: ["projects"],
-        summary: "Update a project's repository path",
-        security: bearer,
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
-        requestBody: json({ type: "object", required: ["repoPath"], properties: { repoPath: { type: "string", minLength: 1 } } }),
-        responses: mergeResponses(
-          ok({ type: "object", properties: { id: { type: "string" }, name: { type: "string" }, repoPath: { type: "string" } } }),
-          err([401, 404]),
         ),
       },
     },
@@ -509,10 +497,13 @@ export const openapiSpec = {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         requestBody: json({
           type: "object",
-          required: ["workStatus", "claimedBy"],
+          required: ["workStatus"],
           properties: {
             workStatus: { $ref: "#/components/schemas/WorkStatus" },
-            claimedBy: { type: "string", minLength: 1 },
+            claimedBy: {
+              type: "string",
+              description: "Optional audit label; defaults to the authenticated user",
+            },
           },
         }),
         responses: mergeResponses(ok({ type: "object" }), err([400, 401, 404])),
@@ -698,7 +689,7 @@ export const openapiSpec = {
       },
       post: {
         tags: ["workflow-templates"],
-        summary: "Create a new workflow template (empty — add stages via PUT)",
+        summary: "Create a new workflow template (one starter stage — customize via PUT)",
         security: bearer,
         requestBody: json({
           type: "object",

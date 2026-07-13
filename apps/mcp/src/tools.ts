@@ -41,7 +41,6 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
     "Create a project.",
     {
       name: z.string().min(1),
-      repoPath: z.string().min(1),
       id: z.string().nullable(),
       workflowTemplateId: z.string().nullable(),
     },
@@ -49,7 +48,6 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
       runTool(() => {
         const body: Record<string, string> = {
           name: input.name,
-          repoPath: input.repoPath,
         };
         if (input.id !== null) {
           body.id = input.id;
@@ -202,7 +200,7 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
 
   server.tool(
     "update_work_status",
-    "Update a subtask work status: todo, in_progress, or done.",
+    "Update a subtask work status: todo, in_progress, or done. Assignment/claim is not required.",
     {
       taskId: z.number().int().positive(),
       workStatus: workStatusSchema,
@@ -210,14 +208,13 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
     },
     async (input) =>
       runTool(() => {
-        let claimedBy = "mcp";
-        if (input.claimedBy !== null) {
-          claimedBy = input.claimedBy;
-        }
-        return api.patch(`/api/tasks/${input.taskId}/work-status`, {
+        const body: { workStatus: string; claimedBy?: string } = {
           workStatus: input.workStatus,
-          claimedBy,
-        });
+        };
+        if (input.claimedBy !== null && input.claimedBy.trim() !== "") {
+          body.claimedBy = input.claimedBy.trim();
+        }
+        return api.patch(`/api/tasks/${input.taskId}/work-status`, body);
       }),
   );
 
@@ -325,5 +322,52 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
       templateId: z.string().min(1),
     },
     async (input) => runTool(() => api.get(`/api/workflow-templates/${input.templateId}`)),
+  );
+
+  server.tool(
+    "list_library_sync",
+    "List project library files for sync. Each item has id, contentHash, sizeBytes, updatedAt. Compare hashes to find missing or outdated local files.",
+    {
+      projectId: z.string().min(1),
+      libraryId: z.string().nullable(),
+    },
+    async (input) =>
+      runTool(() => {
+        const query: Record<string, string | null> = { libraryId: null };
+        if (input.libraryId !== null && input.libraryId.trim() !== "") {
+          query.libraryId = input.libraryId.trim();
+        }
+        return api.get(`/api/projects/${input.projectId}/library/sync`, query);
+      }),
+  );
+
+  server.tool(
+    "list_libraries",
+    "List library folders for a project.",
+    {
+      projectId: z.string().min(1),
+    },
+    async (input) => runTool(() => api.get(`/api/projects/${input.projectId}/libraries`)),
+  );
+
+  server.tool(
+    "get_library",
+    "Get a library folder and its files.",
+    {
+      projectId: z.string().min(1),
+      libraryId: z.string().min(1),
+    },
+    async (input) =>
+      runTool(() => api.get(`/api/projects/${input.projectId}/libraries/${input.libraryId}`)),
+  );
+
+  server.tool(
+    "download_library_document",
+    "Download a library file. Returns base64 content plus filename, mime, hash, size.",
+    {
+      documentId: z.string().min(1),
+    },
+    async (input) =>
+      runTool(() => api.getBinary(`/api/library-documents/${input.documentId}/content`)),
   );
 }

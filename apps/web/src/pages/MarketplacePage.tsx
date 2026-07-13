@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useSession } from "@/hooks/useSession";
 import {
   fetchMarketplaceListings,
@@ -370,30 +371,41 @@ export function MarketplacePage() {
     description: "",
   });
 
-  const reload = useCallback(async () => {
-    if (!session) return;
-    setLoading(true);
-    try {
-      const [browse, mine, bought, sold] = await Promise.all([
-        fetchMarketplaceListings(session),
-        fetchMyMarketplaceListings(session),
-        fetchMarketplacePurchases(session),
-        fetchMarketplaceSales(session),
-      ]);
-      setListings(browse);
-      setMyListings(mine);
-      setPurchases(bought);
-      setSales(sold);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load marketplace");
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
+  const reload = useCallback(
+    async (silent = false) => {
+      if (!session) return;
+      if (!silent) setLoading(true);
+      try {
+        const [browse, mine, bought, sold] = await Promise.all([
+          fetchMarketplaceListings(session),
+          fetchMyMarketplaceListings(session),
+          fetchMarketplacePurchases(session),
+          fetchMarketplaceSales(session),
+        ]);
+        setListings(browse);
+        setMyListings(mine);
+        setPurchases(bought);
+        setSales(sold);
+      } catch (error) {
+        if (!silent) {
+          toast.error(error instanceof Error ? error.message : "Failed to load marketplace");
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [session],
+  );
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  useAutoRefresh(
+    useCallback(
+      (silent: boolean) => {
+        void reload(silent);
+      },
+      [reload],
+    ),
+    { enabled: Boolean(session) && !showPublish },
+  );
 
   useEffect(() => {
     if (!publishTemplateFromUrl || !session) return;
@@ -650,7 +662,7 @@ export function MarketplacePage() {
             setShowPublish(false);
             setEditingListing(null);
           }}
-          onSaved={reload}
+          onSaved={() => reload(true)}
         />
       ) : null}
     </div>

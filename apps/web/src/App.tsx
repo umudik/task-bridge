@@ -14,6 +14,7 @@ import { WorkflowPage } from "@/pages/WorkflowPage";
 import { WorkflowTemplatesPage } from "@/pages/WorkflowTemplatesPage";
 import { LibraryPage } from "@/pages/LibraryPage";
 import { MarketplacePage } from "@/pages/MarketplacePage";
+import { ProfilePage } from "@/pages/ProfilePage";
 import { loadSession } from "@/lib/session";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -59,9 +60,9 @@ export function App() {
           }
         >
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/workflow-templates" element={<WorkflowTemplatesPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
-          <Route path="/library" element={<LibraryPage />} />
           <Route
             path="/admin/users"
             element={
@@ -76,6 +77,7 @@ export function App() {
             <Route path="tasks" element={<TasksPage />} />
             <Route path="tasks/:taskId" element={<TaskPage />} />
             <Route path="inbox" element={<InboxPage />} />
+            <Route path="library" element={<LibraryPage />} />
             <Route path="mobile" element={<MobilePage />} />
             <Route path="workflow" element={<WorkflowPage />} />
           </Route>

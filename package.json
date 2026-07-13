@@ -9,6 +9,7 @@
   },
   "files": [
     "bin",
+    "scripts/postinstall.mjs",
     "apps/backend/dist",
     "apps/backend/public"
   ],
@@ -19,7 +20,7 @@
     "access": "public"
   },
   "scripts": {
-    "postinstall": "npm --prefix apps/backend install && npm --prefix apps/web install",
+    "postinstall": "node scripts/postinstall.mjs",
     "dev": "node scripts/dev.mjs",
     "build": "npm --prefix apps/web run build && node scripts/copy-web.mjs && npm --prefix apps/backend run build",
     "start": "node bin/task-bridge.mjs",

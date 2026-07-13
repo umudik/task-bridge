@@ -24,32 +24,40 @@ import {
 
 type TaskLibraryLinksProps = {
   session: Session;
+  projectId: string;
   taskId: number;
   links: LibraryDocumentLink[];
   onChange: (links: LibraryDocumentLink[]) => void;
 };
 
-export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibraryLinksProps) {
+export function TaskLibraryLinks({
+  session,
+  projectId,
+  taskId,
+  links,
+  onChange,
+}: TaskLibraryLinksProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [libraries, setLibraries] = useState<LibrarySummary[]>([]);
-  const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
+  const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const [libraryDetail, setLibraryDetail] = useState<LibraryDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [linking, setLinking] = useState(false);
   const [search, setSearch] = useState("");
 
   const loadLibraries = useCallback(async () => {
+    if (projectId === "") return;
     setLoading(true);
     try {
-      const items = await fetchLibraries(session);
+      const items = await fetchLibraries(session, projectId);
       setLibraries(items);
-      if (!selectedLibraryId && items[0]) setSelectedLibraryId(items[0].id);
+      if (selectedLibraryId === "" && items[0]) setSelectedLibraryId(items[0].id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load libraries");
     } finally {
       setLoading(false);
     }
-  }, [session, selectedLibraryId]);
+  }, [session, projectId, selectedLibraryId]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -57,18 +65,18 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
   }, [pickerOpen, loadLibraries]);
 
   useEffect(() => {
-    if (!pickerOpen || !selectedLibraryId) {
+    if (!pickerOpen || selectedLibraryId === "" || projectId === "") {
       setLibraryDetail(null);
       return;
     }
     let active = true;
-    void fetchLibrary(session, selectedLibraryId).then((detail) => {
+    void fetchLibrary(session, projectId, selectedLibraryId).then((detail) => {
       if (active) setLibraryDetail(detail);
     });
     return () => {
       active = false;
     };
-  }, [pickerOpen, selectedLibraryId, session]);
+  }, [pickerOpen, selectedLibraryId, session, projectId]);
 
   const linkedIds = useMemo(() => new Set(links.map((entry) => entry.documentId)), [links]);
 
@@ -79,7 +87,8 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
     return docs.filter(
       (entry) =>
         entry.title.toLowerCase().includes(query) ||
-        entry.description.toLowerCase().includes(query),
+        entry.originalName.toLowerCase().includes(query) ||
+        entry.filename.toLowerCase().includes(query),
     );
   }, [libraryDetail, search]);
 
@@ -130,7 +139,7 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
             >
               <div className="min-w-0">
                 <Link
-                  to={`/library?doc=${entry.documentId}`}
+                  to={`/projects/${projectId}/library?doc=${entry.documentId}`}
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                 >
                   <Link2 className="h-3.5 w-3.5 shrink-0" />
@@ -160,11 +169,11 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="library-select">Library</Label>
+              <Label htmlFor="library-select">Folder</Label>
               <select
                 id="library-select"
-                value={selectedLibraryId !== null ? selectedLibraryId : ""}
-                onChange={(event) => setSelectedLibraryId(event.target.value || null)}
+                value={selectedLibraryId}
+                onChange={(event) => setSelectedLibraryId(event.target.value)}
                 className="h-10 w-full rounded-md border border-white/10 bg-[#0d0d0d] px-3 text-sm"
                 disabled={loading}
               >
@@ -176,17 +185,17 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="doc-search">Search documents</Label>
+              <Label htmlFor="doc-search">Search files</Label>
               <Input
                 id="doc-search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Filter by title"
+                placeholder="Filter by name"
               />
             </div>
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {visibleDocuments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No documents in this library.</p>
+                <p className="text-sm text-muted-foreground">No files in this folder.</p>
               ) : (
                 visibleDocuments.map((entry) => {
                   const alreadyLinked = linkedIds.has(entry.id);
@@ -200,11 +209,9 @@ export function TaskLibraryLinks({ session, taskId, links, onChange }: TaskLibra
                     >
                       <span>
                         <span className="block text-sm font-medium text-white">{entry.title}</span>
-                        {entry.description ? (
-                          <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">
-                            {entry.description}
-                          </span>
-                        ) : null}
+                        <span className="mt-0.5 block line-clamp-1 text-xs text-muted-foreground">
+                          {entry.originalName || entry.filename}
+                        </span>
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
                         {alreadyLinked ? "Linked" : "Add"}

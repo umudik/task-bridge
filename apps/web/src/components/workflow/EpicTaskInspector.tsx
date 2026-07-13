@@ -2,17 +2,14 @@ import { Link } from "react-router-dom";
 import { ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ProjectMember, TaskSubtask, WorkStatus } from "@/lib/api";
+import type { TaskSubtask, WorkStatus } from "@/lib/api";
 
 type EpicTaskInspectorProps = {
   projectId: string;
   epicId: number;
   subtasks: TaskSubtask[];
   selected: TaskSubtask | null;
-  members: ProjectMember[];
-  actAsMemberId: string;
   updatingStatus: boolean;
-  onActAsMemberChange: (memberId: string) => void;
   onClose: () => void;
   onStatusChange: (taskId: number, status: WorkStatus) => void;
 };
@@ -34,23 +31,11 @@ export function EpicTaskInspector({
   epicId,
   subtasks,
   selected,
-  members,
-  actAsMemberId,
   updatingStatus,
-  onActAsMemberChange,
   onClose,
   onStatusChange,
 }: EpicTaskInspectorProps) {
   const blockedByParent = selected ? parentBlocksAdvance(selected, epicId, subtasks) : false;
-  let actAs: ProjectMember | null = null;
-  if (actAsMemberId) {
-    for (const member of members) {
-      if (member.id === actAsMemberId) {
-        actAs = member;
-        break;
-      }
-    }
-  }
 
   return (
     <aside className="flex w-[340px] shrink-0 flex-col border-l border-white/[0.06] bg-[#0c0c0c]">
@@ -78,26 +63,6 @@ export function EpicTaskInspector({
             ) : null}
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">Act as</label>
-            <select
-              value={actAsMemberId}
-              onChange={(event) => onActAsMemberChange(event.target.value)}
-              className="h-10 w-full rounded-xl border border-white/[0.1] bg-[#111] px-3 text-sm"
-              disabled={members.length === 0}
-            >
-              {members.length === 0 ? (
-                <option value="">Add a member on Pipeline → Team</option>
-              ) : (
-                members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-
           <div className="space-y-2">
             <p className="text-xs font-medium text-foreground">Work status</p>
             {blockedByParent ? (
@@ -112,7 +77,6 @@ export function EpicTaskInspector({
                   variant={selected.workStatus === option.value ? "default" : "outline"}
                   disabled={
                     updatingStatus ||
-                    !actAs ||
                     (blockedByParent && option.value !== "todo" && selected.workStatus !== option.value)
                   }
                   className={cn(

@@ -143,4 +143,36 @@ export class TaskBridgeApi {
   put<T>(path: string, body: object) {
     return this.request<T>("PUT", path, { query: null, body, auth: true });
   }
+
+  async getBinary(path: string): Promise<{
+    base64: string;
+    contentType: string;
+    contentHash: string;
+    filename: string;
+    sizeBytes: number;
+  }> {
+    const url = `${this.baseUrl}${path}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new TaskBridgeApiError(text || response.statusText, response.status, text);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const disposition = response.headers.get("Content-Disposition") || "";
+    let filename = "download.bin";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    if (match && match[1]) filename = match[1];
+    return {
+      base64: buffer.toString("base64"),
+      contentType: response.headers.get("Content-Type") || "application/octet-stream",
+      contentHash: response.headers.get("X-Content-Hash") || "",
+      filename,
+      sizeBytes: buffer.byteLength,
+    };
+  }
 }

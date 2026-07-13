@@ -65,6 +65,6 @@ export function markCommentNotified(taskId: number) {
   writeIds(NOTIFY_KEY, readIds(NOTIFY_KEY).concat([taskId]));
 }
 
-export function unreadCommentCount(items: { taskId: number; status: string }[]) {
-  return items.filter((item) => item.status === "ready" && !isTaskRead(item.taskId)).length;
+export function unreadCommentCount(items: { taskId: number; commentCount: number }[]) {
+  return items.filter((item) => item.commentCount > 0 && !isTaskRead(item.taskId)).length;
 }

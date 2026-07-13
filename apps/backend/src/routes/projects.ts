@@ -8,7 +8,6 @@ import {
   listPublicProjects,
   refreshProjectRegistry,
   updateProject,
-  updateProjectRepoPath,
 } from "../services/project-registry.js";
 
 const projectIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -20,20 +19,14 @@ const createProjectSchema = z.object({
     .trim()
     .default("")
     .refine((value) => value === "" || projectIdPattern.test(value)),
-  repoPath: z.string().trim().min(1),
   description: z.string().trim().default(""),
   workflowTemplateId: z.string().trim().default(DEFAULT_WORKFLOW_TEMPLATE_ID),
 });
 
 const updateProjectSchema = z.object({
   name: z.string().trim().min(1),
-  repoPath: z.string().trim().min(1),
-  description: z.string().trim(),
+  description: z.string().trim().default(""),
   workflowTemplateId: z.string().trim(),
-});
-
-const updateRepoPathSchema = z.object({
-  repoPath: z.string().trim().min(1),
 });
 
 const projectIdParamsSchema = z.object({
@@ -80,7 +73,6 @@ export function projectRoutes(app: FastifyInstance) {
       return {
         id: updated.id,
         name: updated.name,
-        repoPath: updated.repoPath,
         description: updated.description,
         workflowTemplateId: updated.workflowTemplateId,
       };
@@ -91,20 +83,5 @@ export function projectRoutes(app: FastifyInstance) {
       }
       throw error;
     }
-  });
-
-  app.put("/projects/:id/repo-path", async (request, reply) => {
-    assertAuth(request);
-    const { id } = projectIdParamsSchema.parse(request.params);
-    const body = updateRepoPathSchema.parse(request.body);
-    const updated = updateProjectRepoPath(id, body.repoPath);
-    if (!updated) {
-      return reply.status(404).send({ error: "Project not found" });
-    }
-    return {
-      id: updated.id,
-      name: updated.name,
-      repoPath: updated.repoPath,
-    };
   });
 }

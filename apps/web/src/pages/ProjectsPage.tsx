@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, FolderKanban, Loader2, MoreVertical, Plus, RefreshCw } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ChevronRight, FolderKanban, MoreVertical, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { CreateProjectPanel } from "@/components/CreateProjectPanel";
 import { EditProjectModal } from "@/components/EditProjectModal";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useSession } from "@/hooks/useSession";
 import { fetchProjects, type Project } from "@/lib/api";
 import { clearSelectedProject, setSelectedProject } from "@/lib/session";
 
 export function ProjectsPage() {
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const session = useSession();
@@ -23,20 +23,28 @@ export function ProjectsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
-  const reload = useCallback(async () => {
-    if (!session) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setProjects(await fetchProjects(session));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load projects";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
+  const reload = useCallback(
+    async (silent = false) => {
+      if (!session) return;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      try {
+        setProjects(await fetchProjects(session));
+        setError(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load projects";
+        if (!silent) {
+          setError(message);
+          toast.error(message);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [session],
+  );
 
   useEffect(() => {
     if (templateIdFromUrl) {
@@ -48,9 +56,15 @@ export function ProjectsPage() {
     clearSelectedProject();
   }, []);
 
-  useEffect(() => {
-    void reload();
-  }, [reload, location.key]);
+  useAutoRefresh(
+    useCallback(
+      (silent: boolean) => {
+        void reload(silent);
+      },
+      [reload],
+    ),
+    { enabled: Boolean(session) && !createOpen },
+  );
 
   if (!session) return null;
 
@@ -64,7 +78,7 @@ export function ProjectsPage() {
 
   function handleCreated(project: Project) {
     setCreateOpen(false);
-    void reload();
+    void reload(true);
     toast.success(`Project "${project.name}" created`);
     openProject(project);
   }
@@ -106,16 +120,10 @@ export function ProjectsPage() {
                   : "Create your first workspace to get started"
             }
             actions={
-              <>
-                <Button variant="outline" size="sm" onClick={() => void reload()} disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Refresh
-                </Button>
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  New project
-                </Button>
-              </>
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" />
+                New project
+              </Button>
             }
           />
 
@@ -129,7 +137,7 @@ export function ProjectsPage() {
             ) : error ? (
               <div className="panel-card mx-auto max-w-md space-y-4 p-6 text-center">
                 <p className="text-sm text-destructive">{error}</p>
-                <Button variant="outline" size="sm" onClick={() => void reload()}>
+                <Button variant="outline" size="sm" onClick={() => void reload(false)}>
                   <RefreshCw className="h-4 w-4" />
                   Retry
                 </Button>
@@ -177,9 +185,6 @@ export function ProjectsPage() {
                         <p className="line-clamp-2 text-sm font-semibold text-white group-hover:text-primary">
                           {project.name}
                         </p>
-                        {project.repoPath ? (
-                          <p className="line-clamp-1 text-xs text-muted-foreground">{project.repoPath}</p>
-                        ) : null}
                         {project.description.trim() ? (
                           <p className="line-clamp-2 text-xs text-muted-foreground/80">
                             {project.description.trim()}

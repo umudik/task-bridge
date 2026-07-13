@@ -60,6 +60,7 @@ export function AppSidebar() {
   }
 
   const isAdmin = session !== null && session.userRole === "admin";
+  const onProfile = location.pathname === "/profile";
 
   let roleLabel = "";
   if (session !== null) {
@@ -85,7 +86,6 @@ export function AppSidebar() {
         <div className="space-y-0.5">
           <NavItem to="/projects" label="Projects" icon={FolderKanban} end />
           <NavItem to="/marketplace" label="Marketplace" icon={ShoppingBag} />
-          <NavItem to="/library" label="Library" icon={BookOpen} />
           <NavItem to="/workflow-templates" label="Workflow templates" icon={GitBranch} />
         </div>
 
@@ -96,6 +96,7 @@ export function AppSidebar() {
             </p>
             <NavItem to={`/projects/${projectId}/tasks`} label="Epics" icon={Layers} />
             <NavItem to={`/projects/${projectId}/inbox`} label="Inbox" icon={Inbox} badge={unread} />
+            <NavItem to={`/projects/${projectId}/library`} label="Library" icon={BookOpen} />
             <NavItem to={`/projects/${projectId}/mobile`} label="Mobile" icon={Smartphone} />
             <NavItem to={`/projects/${projectId}/workflow`} label="Pipeline" icon={GitBranch} />
           </div>
@@ -124,22 +125,27 @@ export function AppSidebar() {
 
       <div className="shrink-0 border-t border-white/[0.07] p-2 space-y-1">
         {session ? (
-          <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary uppercase">
+          <button
+            type="button"
+            onClick={() => navigate("/profile")}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-colors",
+              onProfile ? "bg-white/[0.09]" : "hover:bg-white/[0.05]",
+            )}
+          >
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold uppercase text-primary">
               {session.userName.charAt(0)}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-medium text-foreground leading-none">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium leading-none text-foreground">
                 {session.userName}
               </p>
-              <p className="truncate text-[11px] text-muted-foreground mt-0.5">
-                {roleLabel}
-              </p>
+              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{roleLabel}</p>
             </div>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 hidden sm:flex">
+            <Badge variant="outline" className="hidden shrink-0 px-1.5 py-0 text-[10px] sm:flex">
               {roleLabel}
             </Badge>
-          </div>
+          </button>
         ) : null}
 
         <Button

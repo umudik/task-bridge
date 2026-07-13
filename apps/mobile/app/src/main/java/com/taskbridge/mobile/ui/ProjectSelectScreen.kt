@@ -196,17 +196,6 @@ private fun ProjectCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            val repoPath = project.repoPath
-            if (!repoPath.isNullOrBlank()) {
-                Text(
-                    text = repoPath,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
         }
     }
 }

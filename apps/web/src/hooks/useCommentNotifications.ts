@@ -9,9 +9,9 @@ export function useCommentNotifications(session: Session | null, projectId: stri
   const [loading, setLoading] = useState(true);
   const initializedRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
     if (!session || !projectId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const commentItems = await fetchAllInbox(session, {
         projectId,
@@ -47,9 +47,9 @@ export function useCommentNotifications(session: Session | null, projectId: stri
   }, [session, projectId]);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 30000);
-    const onRead = () => void refresh();
+    void refresh(false);
+    const timer = window.setInterval(() => void refresh(true), 10000);
+    const onRead = () => void refresh(true);
     window.addEventListener("task-bridge:read", onRead);
     return () => {
       window.clearInterval(timer);
@@ -57,7 +57,7 @@ export function useCommentNotifications(session: Session | null, projectId: stri
     };
   }, [refresh]);
 
-  const commentItems = items.filter((item) => item.status === "ready");
+  const commentItems = items.filter((item) => item.commentCount > 0);
   const openItems = items.filter((item) => item.status === "sent");
 
   return { items, commentItems, openItems, loading, refresh };

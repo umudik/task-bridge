@@ -236,7 +236,10 @@ export function buildInboxItems(query: {
 
   let items = bridgeTasks.map((task) => {
     let activityAt: string = task.createdAt;
-    if (task.updatedAt) {
+    const lastComment = task.comments[task.comments.length - 1];
+    if (lastComment) {
+      activityAt = lastComment.at;
+    } else if (task.updatedAt) {
       activityAt = task.updatedAt;
     } else if (task.claimedAt !== null) {
       activityAt = task.claimedAt;
@@ -259,6 +262,7 @@ export function buildInboxItems(query: {
       assignee: task.assignee,
       stageId: task.stageId,
       stageTitle,
+      commentCount: task.comments.length,
     };
   });
 
@@ -266,7 +270,7 @@ export function buildInboxItems(query: {
     items = items.filter((item) => item.projectId === query.projectId);
   }
   if (query.commentsOnly) {
-    items = items.filter((item) => item.status === "ready");
+    items = items.filter((item) => item.commentCount > 0);
   }
   if (query.epicsOnly) {
     items = items.filter((item) => item.parentId === null);

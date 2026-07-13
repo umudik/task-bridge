@@ -1,6 +1,6 @@
-export const DEFAULT_WORKFLOW_TEMPLATE_ID = "lean-sdlc";
+export const DEFAULT_WORKFLOW_TEMPLATE_ID = "plan-build-deliver";
 
 export function normalizeWorkflowTemplateId(value: string): string {
-  if (value === "") return DEFAULT_WORKFLOW_TEMPLATE_ID;
+  if (value === "" || value === "empty") return DEFAULT_WORKFLOW_TEMPLATE_ID;
   return value;
 }

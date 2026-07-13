@@ -25,7 +25,6 @@ export function CreateProjectPanel({
 }: CreateProjectPanelProps) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [repoPath, setRepoPath] = useState("");
   const [description, setDescription] = useState("");
   const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([]);
   const [workflowTemplateId, setWorkflowTemplateId] = useState("");
@@ -58,15 +57,13 @@ export function CreateProjectPanel({
 
   async function handleCreate() {
     const trimmedName = name.trim();
-    const trimmedRepo = repoPath.trim();
-    if (!trimmedName || !trimmedRepo) return;
+    if (!trimmedName) return;
 
     setCreating(true);
     try {
       const created = await createProject(session, {
         name: trimmedName,
         id: "",
-        repoPath: trimmedRepo,
         description: description.trim(),
         workflowTemplateId: workflowTemplateId.trim() || DEFAULT_WORKFLOW_TEMPLATE_ID,
       });
@@ -78,7 +75,7 @@ export function CreateProjectPanel({
     }
   }
 
-  const canSubmit = Boolean(name.trim() && repoPath.trim());
+  const canSubmit = Boolean(name.trim());
   const predefinedTemplates = templates.filter((t) => PROTECTED_WORKFLOW_TEMPLATE_IDS.has(t.id));
   const ownedTemplates = templates.filter((t) => !PROTECTED_WORKFLOW_TEMPLATE_IDS.has(t.id));
 
@@ -106,9 +103,7 @@ export function CreateProjectPanel({
     <div className="mx-auto w-full max-w-lg space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">New project</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Choose a workspace path and starting workflow template.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">Pick a starting workflow template.</p>
       </div>
 
       <div className="panel-card space-y-5 p-6">
@@ -121,16 +116,6 @@ export function CreateProjectPanel({
             placeholder="My App"
             disabled={creating}
             autoFocus
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="project-repo">Repo path</Label>
-          <Input
-            id="project-repo"
-            value={repoPath}
-            onChange={(event) => setRepoPath(event.target.value)}
-            placeholder="C:\dev\my-app"
-            disabled={creating}
           />
         </div>
         <div className="space-y-2">

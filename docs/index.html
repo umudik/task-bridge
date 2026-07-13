@@ -185,7 +185,7 @@
 
       <section id="projects">
         <h2>Projects</h2>
-        <p class="section-desc">Project registry, repo path, and workflow template assignment.</p>
+        <p class="section-desc">Project registry and workflow template assignment.</p>
 
         <div class="card" data-search="get projects list">
           <div class="card-header">
@@ -210,8 +210,8 @@
               <thead><tr><th>Field</th><th>Type</th><th>Required</th></tr></thead>
               <tbody>
                 <tr><td><code>name</code></td><td>string</td><td>yes</td></tr>
-                <tr><td><code>repoPath</code></td><td>string</td><td>yes</td></tr>
                 <tr><td><code>id</code></td><td>string (kebab-case)</td><td>no</td></tr>
+                <tr><td><code>description</code></td><td>string</td><td>no</td></tr>
                 <tr><td><code>workflowTemplateId</code></td><td>string</td><td>no</td></tr>
               </tbody>
             </table>
@@ -221,32 +221,12 @@
               <pre>{
   "name": "Task Bridge",
   "id": "task-bridge",
-  "repoPath": "C:\\Users\\dev\\task-bridge",
   "workflowTemplateId": "default"
 }</pre>
             </div>
             <div class="label">Response 201</div>
             <div class="resp-type">→ <a href="#type-project" class="type-link">Project</a></div>
             <p><code>409</code> → <a href="#type-error" class="type-link">Error</a> (duplicate id)</p>
-          </div>
-        </div>
-
-        <div class="card" data-search="put projects repo-path">
-          <div class="card-header">
-            <span class="method put">PUT</span>
-            <span class="path">/projects/:id/repo-path</span>
-            <span class="card-title">Update repo path</span>
-          </div>
-          <div class="card-body">
-            <div class="label">Request body</div>
-            <table class="schema-table">
-              <thead><tr><th>Field</th><th>Type</th><th>Required</th></tr></thead>
-              <tbody>
-                <tr><td class="field">repoPath</td><td class="type"><span class="t-string">string</span></td><td>yes</td></tr>
-              </tbody>
-            </table>
-            <div class="label">Response 200</div>
-            <div class="resp-type">→ <a href="#type-project" class="type-link">Project</a></div>
           </div>
         </div>
       </section>
@@ -539,7 +519,7 @@
           <div class="card-header">
             <span class="method post">POST</span>
             <span class="path">/workflow-templates</span>
-            <span class="card-title">Create empty template</span>
+            <span class="card-title">Create template</span>
           </div>
           <div class="card-body">
             <div class="code-wrap">
@@ -677,7 +657,8 @@
           <table class="schema-table"><thead><tr><th>Field</th><th>Type</th></tr></thead><tbody>
             <tr><td class="field">id</td><td class="type"><span class="t-string">string</span></td></tr>
             <tr><td class="field">name</td><td class="type"><span class="t-string">string</span></td></tr>
-            <tr><td class="field">repoPath</td><td class="type"><span class="t-string">string</span> <span class="t-null">| null</span></td></tr>
+            <tr><td class="field">description</td><td class="type"><span class="t-string">string</span></td></tr>
+            <tr><td class="field">workflowTemplateId</td><td class="type"><span class="t-string">string</span></td></tr>
           </tbody></table>
         </div>
 
@@ -998,7 +979,6 @@
             <tr><td class="field">epicId</td><td class="type"><span class="t-number">number</span> <span class="t-null">| null</span></td></tr>
             <tr><td class="field">title</td><td class="type"><span class="t-string">string</span></td></tr>
             <tr><td class="field">description</td><td class="type"><span class="t-string">string</span></td></tr>
-            <tr><td class="field">workspacePath</td><td class="type"><span class="t-string">string</span> <span class="t-null">| null</span></td></tr>
             <tr><td class="field">stageId</td><td class="type"><span class="t-string">string</span> <span class="t-null">| null</span></td></tr>
             <tr><td class="field">workStatus</td><td class="type"><span class="t-enum">WorkStatus</span> <span class="t-null">| null</span></td></tr>
             <tr><td class="field">createdAt</td><td class="type"><span class="t-string">string</span></td></tr>

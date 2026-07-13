@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useSession } from "@/hooks/useSession";
 import {
   addTaskComment,
@@ -21,7 +22,6 @@ import {
   fetchTask,
   updateTaskDescription,
   updateTaskWorkStatus,
-  type ProjectMember,
   type TaskComment,
   type TaskDetail,
   type WorkflowStage,
@@ -53,8 +53,6 @@ export function TaskPage() {
   const session = useSession();
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [workflowStages, setWorkflowStages] = useState<WorkflowStage[]>([]);
-  const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [actAsMemberId, setActAsMemberId] = useState("");
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
@@ -69,47 +67,49 @@ export function TaskPage() {
   const [savingDescription, setSavingDescription] = useState(false);
   const [selectedSubtaskId, setSelectedSubtaskId] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!session || !Number.isFinite(taskId)) return;
-    const activeSession = session;
-    let active = true;
-
-    async function load() {
-      setLoading(true);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!session || !Number.isFinite(taskId)) return;
+      const requestTaskId = taskId;
+      if (!silent) setLoading(true);
       try {
-        const data = await fetchTask(activeSession, taskId);
-        if (!active) return;
+        const data = await fetchTask(session, requestTaskId);
+        if (data.taskId !== requestTaskId) return;
         if (data.status === "ready") {
-          markTaskRead(taskId);
+          markTaskRead(requestTaskId);
         }
         setDetail(data);
         if (data.isEpic) {
-          const workflowProjectId = (data.projectId !== null ? data.projectId : projectId);
+          const workflowProjectId = data.projectId !== null ? data.projectId : projectId;
           if (workflowProjectId) {
-            const workflow = await fetchProjectWorkflow(activeSession, workflowProjectId);
-            if (active) {
-              setWorkflowStages(workflow.stages);
-              setMembers(workflow.members);
-              setActAsMemberId((current) => {
-                if (current && workflow.members.some((member) => member.id === current)) return current;
-                const firstMember = workflow.members[0];
-                return firstMember ? firstMember.id : "";
-              });
-            }
+            const workflow = await fetchProjectWorkflow(session, workflowProjectId);
+            setWorkflowStages(workflow.stages);
           }
         }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load task");
+        if (!silent) {
+          toast.error(error instanceof Error ? error.message : "Failed to load task");
+        }
       } finally {
-        if (active) setLoading(false);
+        setLoading(false);
       }
-    }
+    },
+    [session, taskId, projectId],
+  );
 
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [session, taskId, projectId]);
+  useAutoRefresh(
+    useCallback(
+      (silent: boolean) => {
+        if (!silent) {
+          setDetail(null);
+          setSelectedSubtaskId(null);
+        }
+        void load(silent);
+      },
+      [load],
+    ),
+    { enabled: Boolean(session) && Number.isFinite(taskId) },
+  );
 
   const comments = useMemo(
     () => sortComments(detail !== null ? detail.comments : []),
@@ -141,14 +141,9 @@ export function TaskPage() {
 
   async function handleWorkStatus(workStatus: WorkStatus) {
     if (!session || !Number.isFinite(taskId)) return;
-    const actor = members.find((member) => member.id === actAsMemberId);
-    if (!actor) {
-      toast.error("Pick a project member on the epic canvas first");
-      return;
-    }
     setUpdatingStatus(true);
     try {
-      const data = await updateTaskWorkStatus(session, taskId, workStatus, actor.name);
+      const data = await updateTaskWorkStatus(session, taskId, workStatus);
       setDetail(data);
       toast.success("Status updated");
     } catch (error) {
@@ -160,11 +155,9 @@ export function TaskPage() {
 
   async function handleSubtaskStatus(subtaskId: number, workStatus: WorkStatus) {
     if (!session) return;
-    const actor = members.find((member) => member.id === actAsMemberId);
     setUpdatingSubtaskStatus(true);
     try {
-      const actorName = actor ? actor.name : "web";
-      await updateTaskWorkStatus(session, subtaskId, workStatus, actorName);
+      await updateTaskWorkStatus(session, subtaskId, workStatus);
       const data = await reloadEpic();
       if (data) {
         const refreshed = data.subtasks.find((entry) => entry.taskId === subtaskId);
@@ -309,6 +302,7 @@ export function TaskPage() {
           {session && detail.isEpic ? (
             <TaskLibraryLinks
               session={session}
+              projectId={projectId}
               taskId={taskId}
               links={(detail.libraryLinks !== null ? detail.libraryLinks : [])}
               onChange={(libraryLinks) =>
@@ -340,10 +334,7 @@ export function TaskPage() {
                 epicId={taskId}
                 subtasks={subtasks}
                 selected={selectedSubtask}
-                members={members}
-                actAsMemberId={actAsMemberId}
                 updatingStatus={updatingSubtaskStatus}
-                onActAsMemberChange={setActAsMemberId}
                 onClose={() => setSelectedSubtaskId(null)}
                 onStatusChange={(subtaskId, status) => void handleSubtaskStatus(subtaskId, status)}
               />

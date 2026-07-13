@@ -2,8 +2,7 @@
   "projects": [
     {
       "id": "task-bridge",
-      "name": "Task Bridge",
-      "repoPath": "C:\\Users\\seyit\\OneDrive\\Documents\\GitHub\\task-bridge"
+      "name": "Task Bridge"
     }
   ]
 }

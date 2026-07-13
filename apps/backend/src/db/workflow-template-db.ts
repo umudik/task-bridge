@@ -46,6 +46,7 @@ type TemplateSeed = {
 };
 
 const DEPRECATED_TEMPLATE_IDS = [
+  "empty",
   "ai-sdlc",
   "go",
   "nodejs",
@@ -81,24 +82,62 @@ function task(
 
 const DEFAULT_TEMPLATE_SEEDS: TemplateSeed[] = [
   {
-    id: "empty",
-    title: "Empty workflow",
-    description: "Minimal pipeline with one step. Customize stages on the Pipeline tab.",
+    id: DEFAULT_WORKFLOW_TEMPLATE_ID,
+    title: "Plan · Build · Deliver",
+    description: "Simple three-stage pipeline. Plan the work, build it, then deliver.",
     stages: [
       {
-        id: "backlog",
-        title: "Backlog",
-        description: "",
-        purpose: "",
-        rules: [],
+        id: "plan",
+        title: "Plan",
+        description: "Define what to build and how to approach it.",
+        purpose: "Scope",
+        rules: ["Scope clear", "Approach agreed"],
         position: 0,
         autoAssign: false,
-        taskTemplates: [],
+        taskTemplates: [
+          task(
+            "pl-scope",
+            "Define scope and approach",
+            "**Output:** what to build and how.",
+          ),
+        ],
+      },
+      {
+        id: "build",
+        title: "Build",
+        description: "Implement the change.",
+        purpose: "Implementation",
+        rules: ["Change implemented"],
+        position: 1,
+        autoAssign: false,
+        taskTemplates: [
+          task(
+            "bd-implement",
+            "Implement the change",
+            "**Output:** working change ready for review.",
+          ),
+        ],
+      },
+      {
+        id: "deliver",
+        title: "Deliver",
+        description: "Ship and verify the outcome.",
+        purpose: "Release",
+        rules: ["Change verified", "Outcome delivered"],
+        position: 2,
+        autoAssign: false,
+        taskTemplates: [
+          task(
+            "dl-ship",
+            "Ship and verify",
+            "**Output:** change deployed and verified.",
+          ),
+        ],
       },
     ],
   },
   {
-    id: DEFAULT_WORKFLOW_TEMPLATE_ID,
+    id: "lean-sdlc",
     title: "Lean SDLC",
     description: `Lean, classic software delivery pipeline.
 
@@ -382,6 +421,9 @@ Change is integrated and noted.`,
 function removeDeprecatedTemplates() {
   migrateWorkflowTemplateTables();
   const db = getProjectsDb();
+  db.prepare(
+    "UPDATE projects SET workflow_template_id = ? WHERE workflow_template_id = 'empty'",
+  ).run(DEFAULT_WORKFLOW_TEMPLATE_ID);
   for (const id of DEPRECATED_TEMPLATE_IDS) {
     deleteWorkflowTemplateStages(id);
     db.prepare("DELETE FROM workflow_templates WHERE id = ?").run(id);
