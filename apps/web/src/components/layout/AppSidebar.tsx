@@ -71,7 +71,7 @@ export function AppSidebar() {
 
   return (
     <aside className="app-sidebar">
-      <div className="flex h-14 shrink-0 items-center border-b border-white/[0.07] px-4">
+      <div className="flex h-14 shrink-0 items-center border-b border-border/60 px-4">
         <BrandMark compact />
       </div>
 
@@ -117,13 +117,13 @@ export function AppSidebar() {
       </nav>
 
       {session ? (
-        <div className="shrink-0 border-t border-white/[0.07] p-2 space-y-1">
+        <div className="shrink-0 border-t border-border/60 p-2 space-y-1">
           <button
             type="button"
             onClick={() => navigate("/profile")}
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-colors",
-              onProfile ? "bg-white/[0.09]" : "hover:bg-white/[0.05]",
+              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
+              onProfile ? "bg-secondary text-foreground" : "hover:bg-secondary/60",
             )}
           >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold uppercase text-primary">
@@ -144,7 +144,7 @@ export function AppSidebar() {
           </div>
         </div>
       ) : (
-        <div className="shrink-0 border-t border-white/[0.07] px-4 py-3">
+        <div className="shrink-0 border-t border-border/60 px-4 py-3">
           <FookieCloudMark size="sm" />
         </div>
       )}
@@ -177,10 +177,10 @@ function NavItem(rawProps: Partial<NavItemProps> & Pick<NavItemProps, "to" | "la
       end={end}
       className={({ isActive }) =>
         cn(
-          "flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm transition-colors",
+          "flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors",
           isActive
-            ? "bg-white/[0.09] font-medium text-white"
-            : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
+            ? "bg-secondary text-foreground"
+            : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
         )
       }
     >
