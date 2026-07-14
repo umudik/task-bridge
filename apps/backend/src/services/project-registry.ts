@@ -3,6 +3,7 @@ import {
   insertProjectRow,
   listProjectRows,
   listProjectRowsById,
+  listProjectRowsForOwner,
   updateProjectRow,
 } from "../db/projects-db.js";
 import { migrateEpicWorkflowTables } from "../db/epic-workflow-db.js";
@@ -19,6 +20,7 @@ export type BridgeProject = {
   name: string;
   description: string;
   workflowTemplateId: string;
+  ownerUserId: string | null;
 };
 
 export type BridgeProjectPublic = {
@@ -46,12 +48,14 @@ function rowToProject(row: {
   name: string;
   description: string;
   workflow_template_id: string;
+  owner_user_id?: string | null;
 }): BridgeProject {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     workflowTemplateId: normalizeWorkflowTemplateId(row.workflow_template_id),
+    ownerUserId: row.owner_user_id ?? null,
   };
 }
 
@@ -79,12 +83,25 @@ export function refreshProjectRegistry(): BridgeProject[] {
   return listProjectRows().map(rowToProject);
 }
 
-export function listPublicProjects(): BridgeProjectPublic[] {
-  return listProjectRows().map((row) => rowToProject(row));
+export function listPublicProjects(ownerUserId?: string): BridgeProjectPublic[] {
+  const rows =
+    ownerUserId !== undefined && ownerUserId !== ""
+      ? listProjectRowsForOwner(ownerUserId)
+      : listProjectRows();
+  return rows.map((row) => {
+    const project = rowToProject(row);
+    return {
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      workflowTemplateId: project.workflowTemplateId,
+    };
+  });
 }
 
 export function createProject(
   input: CreateProjectInput,
+  ownerUserId?: string,
 ): BridgeProject | "duplicate" | null {
   const name = input.name.trim();
   if (!name) return null;
@@ -94,7 +111,8 @@ export function createProject(
   if (listProjectRowsById(id).length > 0) return "duplicate";
   const templateId = normalizeWorkflowTemplateId(input.workflowTemplateId);
   const description = input.description;
-  if (!insertProjectRow(id, name, description, templateId)) {
+  const owner = ownerUserId ?? null;
+  if (!insertProjectRow(id, name, description, templateId, owner)) {
     return "duplicate";
   }
   copyTemplateStagesToProject(id, templateId);
@@ -109,8 +127,9 @@ export function createProject(
 export function updateProject(
   projectId: string,
   input: UpdateProjectInput,
+  ownerUserId?: string,
 ): BridgeProject | null {
-  const existing = getProjectById(projectId);
+  const existing = getProjectById(projectId, ownerUserId);
   if (!existing) return null;
 
   const name = input.name.trim();
@@ -134,18 +153,32 @@ export function updateProject(
     return null;
   }
 
-  return getProjectById(projectId);
+  return getProjectById(projectId, ownerUserId);
 }
 
-export function getProjectById(projectId: string): BridgeProject | null {
+export function getProjectById(
+  projectId: string,
+  ownerUserId?: string,
+): BridgeProject | null {
   const id = projectId;
   if (!id) return null;
   const rows = listProjectRowsById(id);
   const row = rows[0];
-  if (row) {
-    return rowToProject(row);
+  if (!row) return null;
+  const project = rowToProject(row);
+  if (
+    ownerUserId !== undefined &&
+    ownerUserId !== "" &&
+    project.ownerUserId !== null &&
+    project.ownerUserId !== ownerUserId
+  ) {
+    return null;
   }
-  return null;
+  return project;
+}
+
+export function userCanAccessProject(projectId: string, ownerUserId: string): boolean {
+  return getProjectById(projectId, ownerUserId) !== null;
 }
 
 export function resetProjectRegistryCache(): void {}

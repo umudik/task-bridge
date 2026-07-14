@@ -1,72 +1,73 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, LogIn, Mail, KeyRound } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { checkAuthStatus, loginUser } from "@/lib/api";
+import { clearFookieTokens, getAccessToken, signInUrl } from "@/lib/auth";
+import { fetchAuthMe } from "@/lib/api";
 import { loadSession, saveSession, type UserRole } from "@/lib/session";
+
+const FOOKIE_CLOUD = "https://fookiecloud.com";
+
+async function hydrateSessionFromToken(token: string): Promise<void> {
+  const user = await fetchAuthMe(token);
+  saveSession({
+    token,
+    userId: user.id,
+    userName: user.name,
+    userEmail: user.email,
+    userRole: user.role as UserRole,
+    isSystemAdmin: user.isSystemAdmin,
+    mustChangePassword: false,
+    projectId: null,
+    projectName: null,
+  });
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const session = loadSession();
     if (session) {
-      if (session.mustChangePassword) {
-        navigate("/change-password", { replace: true });
-        return;
-      }
       navigate(session.projectId ? `/projects/${session.projectId}/tasks` : "/projects", {
         replace: true,
       });
       return;
     }
-    checkAuthStatus()
-      .then(({ hasUsers }) => {
-        if (!hasUsers) navigate("/setup", { replace: true });
-      })
-      .catch(() => {})
-      .finally(() => setChecking(false));
+
+    const token = getAccessToken();
+    if (token) {
+      void hydrateSessionFromToken(token)
+        .then(() => {
+          navigate("/projects", { replace: true });
+        })
+        .catch(() => {
+          clearFookieTokens();
+          setLoading(false);
+        });
+      return;
+    }
+
+    setLoading(false);
   }, [navigate]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSignIn() {
     setError("");
     setLoading(true);
     try {
-      const result = await loginUser({ email, password });
-      saveSession({
-        token: result.token,
-        userId: result.user.id,
-        userName: result.user.name,
-        userEmail: result.user.email,
-        userRole: result.user.role as UserRole,
-        isSystemAdmin: result.user.isSystemAdmin,
-        mustChangePassword: result.user.mustChangePassword,
-        projectId: null,
-        projectName: null,
-      });
-      if (result.user.mustChangePassword) {
-        navigate("/change-password", { replace: true });
-        return;
-      }
-      navigate("/projects", { replace: true });
+      const href = await signInUrl();
+      window.location.href = href;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
+      setError(err instanceof Error ? err.message : "Sign in failed");
       setLoading(false);
     }
   }
 
-  if (checking) {
+  if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -79,71 +80,24 @@ export function LoginPage() {
       <Card className="w-full max-w-md border-white/[0.08] bg-card shadow-2xl">
         <CardHeader className="space-y-6 text-center">
           <div className="flex justify-center">
-            <BrandMark />
+            <BrandMark className="h-12 w-12" />
           </div>
-          <div>
-            <CardTitle className="text-2xl">Sign in</CardTitle>
-            <CardDescription className="mt-2">Enter your email and password to continue</CardDescription>
+          <div className="space-y-2">
+            <CardTitle className="text-2xl">Task Bridge</CardTitle>
+            <CardDescription>Sign in with your Fookie Cloud account</CardDescription>
           </div>
         </CardHeader>
-        <CardContent className="space-y-5">
-          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  className="pl-10"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  className="pl-10"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  disabled={loading}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const form = e.currentTarget.form;
-                      if (form) form.requestSubmit();
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" className="h-11 w-full" disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <LogIn className="h-4 w-4" />
-              )}
-              Sign in
-            </Button>
-          </form>
+        <CardContent className="space-y-4">
+          {error ? <p className="text-sm text-destructive text-center">{error}</p> : null}
+          <Button className="w-full" onClick={() => void handleSignIn()}>
+            Continue with Fookie
+          </Button>
+          <a
+            href={FOOKIE_CLOUD}
+            className="block text-center text-xs text-muted-foreground hover:text-foreground"
+          >
+            ← Fookie Cloud
+          </a>
         </CardContent>
       </Card>
     </div>

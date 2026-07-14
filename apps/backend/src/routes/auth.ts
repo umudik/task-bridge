@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AppError } from "../errors/app-error.js";
+import { config } from "../config.js";
 import {
   hasAnyUser,
   createUser,
@@ -47,10 +48,16 @@ function mapAuthUser(userRow: {
 
 export function authRoutes(app: FastifyInstance) {
   app.get("/auth/status", () => {
-    return { hasUsers: hasAnyUser() };
+    if (config.fookieMode) {
+      return { mode: "fookie", hasUsers: true };
+    }
+    return { mode: "local", hasUsers: hasAnyUser() };
   });
 
   app.post("/auth/setup", async (request, reply) => {
+    if (config.fookieMode) {
+      throw new AppError("Local setup disabled", 410);
+    }
     if (hasAnyUser()) {
       throw new AppError("Setup already completed", 409);
     }
@@ -67,6 +74,9 @@ export function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/auth/login", async (request, reply) => {
+    if (config.fookieMode) {
+      throw new AppError("Local login disabled", 410);
+    }
     const body = loginSchema.parse(request.body);
     const userRows = listUserRows({ id: "", email: body.email, token: "" });
     const firstRow = userRows[0];
@@ -82,13 +92,16 @@ export function authRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/auth/me", (request) => {
-    const userRow = resolveAuthUser(request);
+  app.get("/auth/me", async (request) => {
+    const userRow = await resolveAuthUser(request);
     return mapAuthUser(userRow);
   });
 
-  app.post("/auth/change-password", (request) => {
-    const userRow = resolveAuthUser(request);
+  app.post("/auth/change-password", async (request) => {
+    if (config.fookieMode) {
+      throw new AppError("Password change disabled", 410);
+    }
+    const userRow = await resolveAuthUser(request);
     const body = changePasswordSchema.parse(request.body);
     if (!verifyPassword(userRow, body.currentPassword)) {
       throw new AppError("Invalid current password", 401);

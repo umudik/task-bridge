@@ -1,3 +1,5 @@
+import { clearFookieTokens } from "./auth";
+
 export type UserRole = "admin" | "read-write" | "read";
 
 export type Session = {
@@ -37,6 +39,7 @@ export function saveSession(session: Session) {
 
 export function clearSession() {
   localStorage.removeItem(KEY);
+  clearFookieTokens();
 }
 
 export function setSelectedProject(projectId: string, projectName: string) {

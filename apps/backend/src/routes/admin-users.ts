@@ -24,8 +24,8 @@ const updateUserSchema = z.object({
   role: z.enum(["admin", "read-write", "read"]),
 });
 
-function requireAdmin(request: Parameters<typeof assertAuth>[0]): UserRow {
-  const user = assertAuth(request);
+async function requireAdmin(request: Parameters<typeof assertAuth>[0]): Promise<UserRow> {
+  const user = await assertAuth(request);
   if (user.role !== "admin") {
     throw new AppError("Admin access required", 403);
   }
@@ -33,13 +33,13 @@ function requireAdmin(request: Parameters<typeof assertAuth>[0]): UserRow {
 }
 
 export function adminUserRoutes(app: FastifyInstance) {
-  app.get("/admin/users", (request) => {
-    requireAdmin(request);
+  app.get("/admin/users", async (request) => {
+    await requireAdmin(request);
     return { users: listPublicUsers() };
   });
 
   app.post("/admin/users", async (request, reply) => {
-    requireAdmin(request);
+    await requireAdmin(request);
     const body = createUserSchema.parse(request.body);
     const user = createUser({
       name: body.name,
@@ -52,8 +52,8 @@ export function adminUserRoutes(app: FastifyInstance) {
     return reply.status(201).send({ user });
   });
 
-  app.patch("/admin/users/:userId", (request) => {
-    requireAdmin(request);
+  app.patch("/admin/users/:userId", async (request) => {
+    await requireAdmin(request);
     const { userId } = request.params as { userId: string };
     const existingRows = listUserRows({ id: userId, email: "", token: "" });
     if (existingRows.length === 0) throw new AppError("User not found", 404);
@@ -69,7 +69,7 @@ export function adminUserRoutes(app: FastifyInstance) {
   });
 
   app.delete("/admin/users/:userId", async (request, reply) => {
-    requireAdmin(request);
+    await requireAdmin(request);
     const { userId } = request.params as { userId: string };
     const result = deleteUser(userId);
     if (!result.deleted) {
@@ -82,8 +82,8 @@ export function adminUserRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  app.get("/admin/users/:userId/token", (request) => {
-    requireAdmin(request);
+  app.get("/admin/users/:userId/token", async (request) => {
+    await requireAdmin(request);
     const { userId } = request.params as { userId: string };
     const token = readUserToken(userId);
     if (token === "") throw new AppError("User not found", 404);

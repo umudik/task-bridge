@@ -65,8 +65,8 @@ const updateMemberSchema = z.object({
   role: z.string().trim().optional(),
 });
 
-function assertProject(projectId: string) {
-  const project = getProjectById(projectId);
+function assertProject(projectId: string, ownerUserId: string) {
+  const project = getProjectById(projectId, ownerUserId);
   if (!project) {
     throw new AppError("Project not found", 404);
   }
@@ -75,24 +75,24 @@ function assertProject(projectId: string) {
 }
 
 export function workflowRoutes(app: FastifyInstance) {
-  app.get("/projects/:projectId/workflow", (request) => {
-    assertAuth(request);
+  app.get("/projects/:projectId/workflow", async (request) => {
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     return getProjectWorkflow(projectId);
   });
 
-  app.get("/projects/:projectId/workflow/export", (request) => {
-    assertAuth(request);
+  app.get("/projects/:projectId/workflow/export", async (request) => {
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     return exportWorkflowReadable(projectId);
   });
 
   app.post("/projects/:projectId/workflow/apply-template", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     let applyTemplateBody = request.body;
     if (applyTemplateBody === null) { applyTemplateBody = {}; }
     const body = applyTemplateSchema.parse(applyTemplateBody);
@@ -101,9 +101,9 @@ export function workflowRoutes(app: FastifyInstance) {
   });
 
   app.put("/projects/:projectId/workflow", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     let replaceWorkflowBody = request.body;
     if (replaceWorkflowBody === null) { replaceWorkflowBody = {}; }
     const body = replaceWorkflowSchema.parse(replaceWorkflowBody);
@@ -129,18 +129,18 @@ export function workflowRoutes(app: FastifyInstance) {
     return reply.status(200).send(workflow);
   });
 
-  app.get("/projects/:projectId/members", (request) => {
-    assertAuth(request);
+  app.get("/projects/:projectId/members", async (request) => {
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     const workflow = getProjectWorkflow(projectId);
     return { items: workflow.members };
   });
 
   app.post("/projects/:projectId/members", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     let createMemberBody = request.body;
     if (createMemberBody === null) { createMemberBody = {}; }
     const body = createMemberSchema.parse(createMemberBody);
@@ -153,9 +153,9 @@ export function workflowRoutes(app: FastifyInstance) {
   });
 
   app.patch("/projects/:projectId/members/:memberId", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId, memberId } = memberIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     let updateMemberBody = request.body;
     if (updateMemberBody === null) { updateMemberBody = {}; }
     const body = updateMemberSchema.parse(updateMemberBody);
@@ -178,9 +178,9 @@ export function workflowRoutes(app: FastifyInstance) {
   });
 
   app.delete("/projects/:projectId/members/:memberId", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId, memberId } = memberIdParamsSchema.parse(request.params);
-    assertProject(projectId);
+    assertProject(projectId, user.id);
     const removed = removeProjectMember(memberId);
     if (!removed) {
       return reply.status(404).send({ error: "Member not found" });

@@ -34,20 +34,20 @@ const projectIdParamsSchema = z.object({
 });
 
 export function projectRoutes(app: FastifyInstance) {
-  app.get("/projects", (request) => {
-    assertAuth(request);
+  app.get("/projects", async (request) => {
+    const user = await assertAuth(request);
     refreshProjectRegistry();
-    return { projects: listPublicProjects() };
+    return { projects: listPublicProjects(user.id) };
   });
 
   app.post("/projects", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     let postBody = request.body;
     if (postBody === null) {
       postBody = {};
     }
     const body = createProjectSchema.parse(postBody);
-    const created = createProject(body);
+    const created = createProject(body, user.id);
     if (created === "duplicate") {
       return reply.status(409).send({ error: "Project id already exists" });
     }
@@ -58,7 +58,7 @@ export function projectRoutes(app: FastifyInstance) {
   });
 
   app.patch("/projects/:id", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     const { id } = projectIdParamsSchema.parse(request.params);
     let patchBody = request.body;
     if (patchBody === null) {
@@ -66,7 +66,7 @@ export function projectRoutes(app: FastifyInstance) {
     }
     const body = updateProjectSchema.parse(patchBody);
     try {
-      const updated = updateProject(id, body);
+      const updated = updateProject(id, body, user.id);
       if (!updated) {
         return reply.status(404).send({ error: "Project not found" });
       }

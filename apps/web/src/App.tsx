@@ -2,9 +2,8 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProjectLayout } from "@/components/layout/ProjectLayout";
 import { InboxPage } from "@/pages/InboxPage";
-import { ChangePasswordPage } from "@/pages/ChangePasswordPage";
 import { LoginPage } from "@/pages/LoginPage";
-import { AdminSetupPage } from "@/pages/AdminSetupPage";
+import { CallbackPage } from "@/pages/CallbackPage";
 import { AdminUsersPage } from "@/pages/AdminUsersPage";
 import { MobilePage } from "@/pages/MobilePage";
 import { ProjectsPage } from "@/pages/ProjectsPage";
@@ -20,14 +19,6 @@ import { loadSession } from "@/lib/session";
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const session = loadSession();
   if (!session) return <Navigate to="/login" replace />;
-  if (session.mustChangePassword) return <Navigate to="/change-password" replace />;
-  return <>{children}</>;
-}
-
-function RequirePasswordChange({ children }: { children: React.ReactNode }) {
-  const session = loadSession();
-  if (!session) return <Navigate to="/login" replace />;
-  if (!session.mustChangePassword) return <Navigate to="/projects" replace />;
   return <>{children}</>;
 }
 
@@ -43,15 +34,7 @@ export function App() {
     <div className="h-full">
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/setup" element={<AdminSetupPage />} />
-        <Route
-          path="/change-password"
-          element={
-            <RequirePasswordChange>
-              <ChangePasswordPage />
-            </RequirePasswordChange>
-          }
-        />
+        <Route path="/callback" element={<CallbackPage />} />
         <Route
           element={
             <RequireAuth>
@@ -92,7 +75,6 @@ export function App() {
 function RootRedirect() {
   const session = loadSession();
   if (!session) return <Navigate to="/login" replace />;
-  if (session.mustChangePassword) return <Navigate to="/change-password" replace />;
   if (session.projectId) {
     return <Navigate to={`/projects/${session.projectId}/tasks`} replace />;
   }

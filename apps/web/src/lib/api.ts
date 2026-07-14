@@ -316,10 +316,32 @@ async function request<T>(
   return JSON.parse(text) as T;
 }
 
-export async function checkAuthStatus(): Promise<{ hasUsers: boolean }> {
+export async function checkAuthStatus(): Promise<{ hasUsers: boolean; mode?: string }> {
   const response = await fetch("/api/auth/status");
   if (!response.ok) throw new ApiError("Failed to check status", response.status);
-  return response.json() as Promise<{ hasUsers: boolean }>;
+  return response.json() as Promise<{ hasUsers: boolean; mode?: string }>;
+}
+
+export async function fetchAuthMe(token: string): Promise<{
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isSystemAdmin: boolean;
+  mustChangePassword: boolean;
+}> {
+  const response = await fetch("/api/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new ApiError("Failed to load user", response.status);
+  return response.json() as Promise<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    isSystemAdmin: boolean;
+    mustChangePassword: boolean;
+  }>;
 }
 
 export async function setupAdmin(params: { name: string; email: string; password: string }) {

@@ -18,13 +18,13 @@ const keyIdParamsSchema = z.object({
 });
 
 export function apiKeyRoutes(app: FastifyInstance) {
-  app.get("/me/api-keys", (request) => {
-    const user = assertAuth(request);
+  app.get("/me/api-keys", async (request) => {
+    const user = await assertAuth(request);
     return { items: listApiKeyRows(user.id).map(rowToSummary) };
   });
 
-  app.post("/me/api-keys", (request, reply) => {
-    const user = assertAuth(request);
+  app.post("/me/api-keys", async (request, reply) => {
+    const user = await assertAuth(request);
     const body = createSchema.parse(request.body ?? {});
     const created = createApiKey(user.id, body.name);
     return reply.status(201).send({
@@ -33,8 +33,8 @@ export function apiKeyRoutes(app: FastifyInstance) {
     });
   });
 
-  app.delete("/me/api-keys/:keyId", (request, reply) => {
-    const user = assertAuth(request);
+  app.delete("/me/api-keys/:keyId", async (request, reply) => {
+    const user = await assertAuth(request);
     const params = keyIdParamsSchema.parse(request.params);
     const ok = revokeApiKey(user.id, params.keyId);
     if (!ok) throw new AppError("API key not found", 404);

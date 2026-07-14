@@ -11,6 +11,7 @@ export type ProjectRow = {
   repo_path: string;
   description: string;
   workflow_template_id: string;
+  owner_user_id: string | null;
 };
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,9 @@ function migrate(database: Database.Database) {
       "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0",
     );
   }
+  if (!columnExists(database, "projects", "owner_user_id")) {
+    database.exec("ALTER TABLE projects ADD COLUMN owner_user_id TEXT");
+  }
   database
     .prepare(
       `UPDATE projects SET workflow_template_id = ? WHERE trim(workflow_template_id) = ''`,
@@ -93,15 +97,28 @@ export function countProjects(): number {
 
 export function listProjectRows(): ProjectRow[] {
   return getProjectsDb()
-    .prepare("SELECT id, name, repo_path, description, workflow_template_id FROM projects ORDER BY name COLLATE NOCASE")
+    .prepare(
+      "SELECT id, name, repo_path, description, workflow_template_id, owner_user_id FROM projects ORDER BY name COLLATE NOCASE",
+    )
     .all() as ProjectRow[];
+}
+
+export function listProjectRowsForOwner(ownerUserId: string): ProjectRow[] {
+  return getProjectsDb()
+    .prepare(
+      `SELECT id, name, repo_path, description, workflow_template_id, owner_user_id
+       FROM projects
+       WHERE owner_user_id = ?
+       ORDER BY name COLLATE NOCASE`,
+    )
+    .all(ownerUserId) as ProjectRow[];
 }
 
 export function listProjectRowsById(id: string): ProjectRow[] {
   if (id === "") return [];
   return getProjectsDb()
     .prepare(
-      "SELECT id, name, repo_path, description, workflow_template_id FROM projects WHERE id = ?",
+      "SELECT id, name, repo_path, description, workflow_template_id, owner_user_id FROM projects WHERE id = ?",
     )
     .all(id) as ProjectRow[];
 }
@@ -111,14 +128,15 @@ export function insertProjectRow(
   name: string,
   description = "",
   workflowTemplateId = DEFAULT_WORKFLOW_TEMPLATE_ID,
+  ownerUserId: string | null = null,
 ): boolean {
   try {
     getProjectsDb()
       .prepare(
-        `INSERT INTO projects (id, name, repo_path, description, workflow_template_id, updated_at)
-         VALUES (?, ?, '', ?, ?, datetime('now'))`,
+        `INSERT INTO projects (id, name, repo_path, description, workflow_template_id, owner_user_id, updated_at)
+         VALUES (?, ?, '', ?, ?, ?, datetime('now'))`,
       )
-      .run(id, name || id, description, workflowTemplateId);
+      .run(id, name || id, description, workflowTemplateId, ownerUserId);
     return true;
   } catch {
     return false;

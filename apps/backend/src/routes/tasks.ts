@@ -194,11 +194,11 @@ const inboxQuerySchema = z.object({
 
 export function taskRoutes(app: FastifyInstance) {
   app.post("/epics", async (request, reply) => {
-    const user = assertAuth(request);
+    const user = await assertAuth(request);
     const body = createEpicBodySchema.parse(request.body);
     refreshProjectRegistry();
 
-    const project = getProjectById(body.projectId);
+    const project = getProjectById(body.projectId, user.id);
     if (!project) {
       return reply.status(400).send({ error: "Unknown project" });
     }
@@ -255,7 +255,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks", async (request, reply) => {
-    assertAuth(request);
+    const user = await assertAuth(request);
     const body = createTaskBodySchema.parse(request.body);
     refreshProjectRegistry();
 
@@ -275,7 +275,7 @@ export function taskRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Unknown epic" });
     }
 
-    const project = getProjectById(epic.projectId);
+    const project = getProjectById(epic.projectId, user.id);
     if (!project) {
       return reply.status(400).send({ error: "Unknown project" });
     }
@@ -325,8 +325,8 @@ export function taskRoutes(app: FastifyInstance) {
     return reply.status(201).send(createdItemResponse(task));
   });
 
-  app.get("/tasks", (request) => {
-    assertAuth(request);
+  app.get("/tasks", async (request) => {
+    await assertAuth(request);
     const bridgeTasks = listBridgeTasks();
     return {
       items: bridgeTasks.map((task) => ({
@@ -347,7 +347,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks/:id/claim", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const claimBody = request.body || {};
     const body = claimTaskBodySchema.parse(claimBody);
@@ -376,7 +376,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks/:id/unclaim", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const task = releaseBridgeTask(id);
     if (!task) {
@@ -386,7 +386,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/worker/claim-next", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const claimNextBody = request.body || {};
     const body = claimNextBodySchema.parse(claimNextBody);
     if (!body.projectId) {
@@ -410,7 +410,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.patch("/tasks/:id/work-status", async (request, reply) => {
-    const user = assertAuth(request);
+    const user = await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const workStatusBody = request.body || {};
     const body = workStatusBodySchema.parse(workStatusBody);
@@ -443,7 +443,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/projects/:projectId/epics/:epicId/tasks", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const params = z
       .object({
         projectId: z.string().trim().min(1),
@@ -503,7 +503,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/tasks/:id", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const task = getBridgeTask(id);
     if (!task) {
@@ -513,7 +513,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.patch("/tasks/:id", async (request, reply) => {
-    const user = assertAuth(request);
+    const user = await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const patchBody = request.body || {};
     const body = patchTaskBodySchema.parse(patchBody);
@@ -557,7 +557,7 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/worker/pending", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const query = z
       .object({
         projectId: z.string().trim().min(1).optional(),
@@ -578,8 +578,8 @@ export function taskRoutes(app: FastifyInstance) {
     return { items };
   });
 
-  app.get("/inbox", (request) => {
-    assertAuth(request);
+  app.get("/inbox", async (request) => {
+    await assertAuth(request);
     const query = inboxQuerySchema.parse(request.query);
     return buildInboxItems({
       projectId: query.projectId,

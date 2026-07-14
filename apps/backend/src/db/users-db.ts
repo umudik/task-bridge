@@ -41,6 +41,43 @@ function generateToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+export function upsertUserFromFookie(params: {
+  sub: string;
+  email: string | null;
+  name: string | null;
+}): UserRow {
+  const db = getProjectsDb();
+  const existing = listUserRows({ id: params.sub, email: "", token: "" });
+  const now = new Date().toISOString();
+  const email =
+    params.email && params.email.trim() !== ""
+      ? params.email.trim().toLowerCase()
+      : `${params.sub}@fookie.users`;
+  const name =
+    params.name && params.name.trim() !== "" ? params.name.trim() : email.split("@")[0] || "User";
+
+  if (existing.length > 0) {
+    db.prepare(
+      `UPDATE users SET name = ?, email = ?, must_change_password = 0, updated_at = ? WHERE id = ?`,
+    ).run(name, email, now, params.sub);
+    const rows = listUserRows({ id: params.sub, email: "", token: "" });
+    const row = rows[0];
+    if (!row) throw new Error("Failed to load Fookie user");
+    return row;
+  }
+
+  const token = generateToken();
+  db.prepare(`
+    INSERT INTO users (id, name, email, password_hash, role, is_system_admin, token, must_change_password, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'read-write', 0, ?, 0, ?, ?)
+  `).run(params.sub, name, email, "", token, now, now);
+
+  const rows = listUserRows({ id: params.sub, email: "", token: "" });
+  const row = rows[0];
+  if (!row) throw new Error("Failed to create Fookie user");
+  return row;
+}
+
 export function listUserRows(filter: {
   id: string;
   email: string;

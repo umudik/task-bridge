@@ -56,14 +56,14 @@ const importSchema = z.object({
 }).passthrough();
 
 export function workflowTemplateRoutes(app: FastifyInstance) {
-  app.get("/workflow-templates", (request) => {
-    assertAuth(request);
+  app.get("/workflow-templates", async (request) => {
+    await assertAuth(request);
     return { items: listWorkflowTemplates() };
   });
 
   // POST /api/workflow-templates/import — must be before /:templateId routes
   app.post("/workflow-templates/import", async (request, reply) => {
-    const user = assertAuth(request);
+    const user = await assertAuth(request);
     let importBody = request.body;
     if (importBody === null) { importBody = {}; }
     const body = importSchema.parse(importBody);
@@ -92,7 +92,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.post("/workflow-templates", async (request, reply) => {
-    const user = assertAuth(request);
+    const user = await assertAuth(request);
     let createTemplateBody = request.body;
     if (createTemplateBody === null) { createTemplateBody = {}; }
     const body = createTemplateSchema.parse(createTemplateBody);
@@ -106,7 +106,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.get("/workflow-templates/:templateId", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
     const template = getWorkflowTemplate(templateId);
     if (!template) {
@@ -117,7 +117,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
 
   // GET /api/workflow-templates/:templateId/export — download as JSON file
   app.get("/workflow-templates/:templateId/export", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
     const template = getWorkflowTemplate(templateId);
     if (!template) {
@@ -139,7 +139,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.put("/workflow-templates/:templateId", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
     let replaceTemplateBody = request.body;
     if (replaceTemplateBody === null) { replaceTemplateBody = {}; }
@@ -166,7 +166,7 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.delete("/workflow-templates/:templateId", async (request, reply) => {
-    assertAuth(request);
+    await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
     deleteWorkflowTemplate(templateId);
     return reply.status(204).send();

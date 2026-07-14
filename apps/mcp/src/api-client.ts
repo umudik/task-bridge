@@ -22,10 +22,14 @@ export function resolveBaseUrl() {
   if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
     return trimTrailingSlash(fromEnv.trim());
   }
-  return "http://localhost:3000";
+  return "https://task-bridge.fookiecloud.com";
 }
 
 export function resolveToken() {
+  const fookieKey = process.env.FOOKIE_API_KEY;
+  if (typeof fookieKey === "string" && fookieKey.trim().length > 0) {
+    return fookieKey.trim();
+  }
   const fromEnv = process.env.TASK_BRIDGE_TOKEN;
   if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
     return fromEnv.trim();
@@ -61,7 +65,7 @@ export class TaskBridgeApi {
   static fromEnv() {
     const token = resolveToken();
     if (token.length === 0) {
-      throw new Error("TASK_BRIDGE_TOKEN is required");
+      throw new Error("FOOKIE_API_KEY or TASK_BRIDGE_TOKEN is required");
     }
     return new TaskBridgeApi(resolveBaseUrl(), token);
   }

@@ -66,8 +66,13 @@ export async function webRoutes(app: FastifyInstance) {
     reply.sendFile("index.html", root);
 
   app.get("/", async (_request, reply) => reply.redirect("/app/login"));
+  app.get("/callback", async (request, reply) => {
+    const qs = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    return reply.redirect(`/app/callback${qs}`);
+  });
   app.get("/app", async (_request, reply) => reply.redirect("/app/login"));
   app.get("/app/login", spa);
+  app.get("/app/callback", spa);
   app.get("/app/projects", spa);
   app.get("/app/projects/:projectId/tasks", spa);
   app.get("/app/projects/:projectId/inbox", spa);
@@ -75,7 +80,6 @@ export async function webRoutes(app: FastifyInstance) {
   app.get("/app/projects/:projectId/mobile", spa);
   app.get("/app/projects/:projectId/workflow", spa);
   app.get("/app/workflow-templates", spa);
-  app.get("/app/setup", spa);
   app.get("/app/admin/users", spa);
   app.get("/app/*", async (request, reply) => {
     const questionIndex = request.url.indexOf("?");

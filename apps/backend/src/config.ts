@@ -22,7 +22,14 @@ if ("PORT" in process.env) {
   }
 }
 
+const fookieAuthIssuer = getEnv("FOOKIE_AUTH_ISSUER") || "https://auth.fookiecloud.com";
+const taskBridgeClientId = getEnv("TASK_BRIDGE_CLIENT_ID") || "task-bridge";
+const fookieMode = getEnv("FOOKIE_MODE") !== "0";
+
 export const config = {
   port: configPort,
   databasePath: getEnv("DATABASE_PATH") || getEnv("BRIDGE_DB_PATH") || "",
+  fookieAuthIssuer,
+  taskBridgeClientId,
+  fookieMode,
 };
