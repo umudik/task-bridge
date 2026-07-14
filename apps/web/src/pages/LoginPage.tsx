@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { BrandMark } from "@/components/BrandMark";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { clearFookieTokens, getAccessToken, signInUrl } from "@/lib/auth";
 import { fetchAuthMe } from "@/lib/api";
 import { loadSession, saveSession, type UserRole } from "@/lib/session";
-
-const FOOKIE_CLOUD = "https://fookiecloud.com";
 
 async function hydrateSessionFromToken(token: string): Promise<void> {
   const user = await fetchAuthMe(token);
@@ -28,7 +23,6 @@ async function hydrateSessionFromToken(token: string): Promise<void> {
 export function LoginPage() {
   const navigate = useNavigate();
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const session = loadSession();
@@ -47,59 +41,57 @@ export function LoginPage() {
         })
         .catch(() => {
           clearFookieTokens();
-          setLoading(false);
+          void signInUrl()
+            .then((href) => {
+              window.location.href = href;
+            })
+            .catch((err: unknown) => {
+              setError(err instanceof Error ? err.message : "Sign in failed");
+            });
         });
       return;
     }
 
-    setLoading(false);
+    void signInUrl()
+      .then((href) => {
+        window.location.href = href;
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Sign in failed");
+      });
   }, [navigate]);
 
-  async function handleSignIn() {
-    setError("");
-    setLoading(true);
-    try {
-      const href = await signInUrl();
-      window.location.href = href;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
-      setLoading(false);
-    }
-  }
-
-  if (loading) {
+  if (error) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-sm">
+        <p className="text-destructive">{error}</p>
+        <button
+          type="button"
+          className="text-primary underline"
+          onClick={() => {
+            setError("");
+            void signInUrl()
+              .then((href) => {
+                window.location.href = href;
+              })
+              .catch((err: unknown) => {
+                setError(err instanceof Error ? err.message : "Sign in failed");
+              });
+          }}
+        >
+          Try again
+        </button>
+        <a href="https://fookiecloud.com" className="text-xs text-muted-foreground hover:underline">
+          ← Fookie Cloud
+        </a>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-white/[0.08] bg-card shadow-2xl">
-        <CardHeader className="space-y-6 text-center">
-          <div className="flex justify-center">
-            <BrandMark className="h-12 w-12" />
-          </div>
-          <div className="space-y-2">
-            <CardTitle className="text-2xl">Task Bridge</CardTitle>
-            <CardDescription>Sign in with your Fookie Cloud account</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error ? <p className="text-sm text-destructive text-center">{error}</p> : null}
-          <Button className="w-full" onClick={() => void handleSignIn()}>
-            Continue with Fookie
-          </Button>
-          <a
-            href={FOOKIE_CLOUD}
-            className="block text-center text-xs text-muted-foreground hover:text-foreground"
-          >
-            ← Fookie Cloud
-          </a>
-        </CardContent>
-      </Card>
+    <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-5 w-5 animate-spin" />
+      Redirecting to Fookie…
     </div>
   );
 }
