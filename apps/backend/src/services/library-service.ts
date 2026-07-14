@@ -122,8 +122,8 @@ function getLibraryRow(libraryId: string): LibraryRow | null {
   return rows[0] ?? null;
 }
 
-function assertProject(projectId: string) {
-  if (!getProjectById(projectId)) {
+function assertProject(projectId: string, ownerUserId?: string) {
+  if (!getProjectById(projectId, ownerUserId)) {
     throw new AppError("Project not found", 404);
   }
 }
@@ -212,8 +212,8 @@ function assertAllowedFilename(filename: string) {
   }
 }
 
-export function listLibraries(projectId: string): LibrarySummary[] {
-  assertProject(projectId);
+export function listLibraries(projectId: string, ownerUserId: string): LibrarySummary[] {
+  assertProject(projectId, ownerUserId);
   return listLibraryRows({ id: "", projectId }).map((row) => ({
     id: row.id,
     projectId: row.project_id,
@@ -223,8 +223,12 @@ export function listLibraries(projectId: string): LibrarySummary[] {
   }));
 }
 
-export function getLibrary(projectId: string, libraryId: string): LibraryDetail | null {
-  assertProject(projectId);
+export function getLibrary(
+  projectId: string,
+  libraryId: string,
+  ownerUserId: string,
+): LibraryDetail | null {
+  assertProject(projectId, ownerUserId);
   const row = getLibraryRow(libraryId);
   if (!row || row.project_id !== projectId) return null;
   return mapLibraryDetail(row);
@@ -233,8 +237,9 @@ export function getLibrary(projectId: string, libraryId: string): LibraryDetail 
 export function createLibrary(
   projectId: string,
   input: { id: string; title: string; description: string },
+  ownerUserId: string,
 ) {
-  assertProject(projectId);
+  assertProject(projectId, ownerUserId);
   const title = input.title;
   if (title === "") throw new AppError("Title is required", 400);
   const id = resolveLibraryId(input.id, title);
@@ -242,7 +247,7 @@ export function createLibrary(
     throw new AppError("Library already exists", 409);
   }
   insertLibraryRow({ id, projectId, title, description: input.description });
-  const created = getLibrary(projectId, id);
+  const created = getLibrary(projectId, id, ownerUserId);
   if (created === null) throw new AppError("Library creation failed", 500);
   return created;
 }
@@ -251,17 +256,20 @@ export function updateLibrary(
   projectId: string,
   libraryId: string,
   input: { title: string; description: string },
+  ownerUserId: string,
 ) {
+  assertProject(projectId, ownerUserId);
   assertLibraryInProject(libraryId, projectId);
   const title = input.title;
   if (title === "") throw new AppError("Title is required", 400);
   updateLibraryRow(libraryId, { title, description: input.description });
-  const updated = getLibrary(projectId, libraryId);
+  const updated = getLibrary(projectId, libraryId, ownerUserId);
   if (updated === null) throw new AppError("Library not found after update", 500);
   return updated;
 }
 
-export function removeLibrary(projectId: string, libraryId: string) {
+export function removeLibrary(projectId: string, libraryId: string, ownerUserId: string) {
+  assertProject(projectId, ownerUserId);
   assertLibraryInProject(libraryId, projectId);
   deleteLibraryRow(libraryId);
 }
@@ -282,7 +290,9 @@ export function uploadLibraryDocument(
     buffer: Buffer;
     title: string;
   },
+  ownerUserId: string,
 ) {
+  assertProject(projectId, ownerUserId);
   assertLibraryInProject(libraryId, projectId);
   if (input.buffer.byteLength === 0) throw new AppError("Empty file", 400);
   if (input.buffer.byteLength > MAX_UPLOAD_BYTES) {
@@ -316,7 +326,9 @@ export function replaceLibraryDocumentFile(
   libraryId: string,
   documentId: string,
   input: { filename: string; mimeType: string; buffer: Buffer },
+  ownerUserId: string,
 ) {
+  assertProject(projectId, ownerUserId);
   assertLibraryInProject(libraryId, projectId);
   const rows = listLibraryDocumentRows({ libraryId: "", documentId });
   const row = rows[0];
@@ -349,7 +361,9 @@ export function renameLibraryDocument(
   libraryId: string,
   documentId: string,
   title: string,
+  ownerUserId: string,
 ) {
+  assertProject(projectId, ownerUserId);
   assertLibraryInProject(libraryId, projectId);
   const trimmed = title.trim();
   if (trimmed === "") throw new AppError("Title is required", 400);
@@ -362,7 +376,13 @@ export function renameLibraryDocument(
   return updated;
 }
 
-export function removeLibraryDocument(projectId: string, libraryId: string, documentId: string) {
+export function removeLibraryDocument(
+  projectId: string,
+  libraryId: string,
+  documentId: string,
+  ownerUserId: string,
+) {
+  assertProject(projectId, ownerUserId);
   assertLibraryInProject(libraryId, projectId);
   const rows = listLibraryDocumentRows({ libraryId: "", documentId });
   const row = rows[0];
@@ -384,8 +404,12 @@ export function readLibraryDocumentContent(documentId: string): {
   return { document, buffer };
 }
 
-export function listLibrarySyncManifest(projectId: string, libraryId: string): LibrarySyncItem[] {
-  assertProject(projectId);
+export function listLibrarySyncManifest(
+  projectId: string,
+  libraryId: string,
+  ownerUserId: string,
+): LibrarySyncItem[] {
+  assertProject(projectId, ownerUserId);
   let docs: LibraryDocumentRow[];
   if (libraryId !== "") {
     assertLibraryInProject(libraryId, projectId);
@@ -424,12 +448,13 @@ export function listLibrarySyncManifest(projectId: string, libraryId: string): L
     });
 }
 
-export function linkDocumentToTask(documentId: string, taskId: number) {
+export function linkDocumentToTask(documentId: string, taskId: number, ownerUserId: string) {
   const docs = listLibraryDocumentRows({ libraryId: "", documentId });
   const document = docs[0];
   if (!document) throw new AppError("Document not found", 404);
   const library = getLibraryRow(document.library_id);
   if (!library) throw new AppError("Library not found", 404);
+  assertProject(library.project_id, ownerUserId);
   const tasks = listTaskRows({ id: taskId });
   if (tasks.length === 0) throw new AppError("Task not found", 404);
   const task = tasks[0];
@@ -441,18 +466,27 @@ export function linkDocumentToTask(documentId: string, taskId: number) {
     throw new AppError("Document library belongs to a different project", 400);
   }
   insertLibraryDocumentLink(documentId, taskId);
-  return listTaskLibraryLinks(taskId);
+  return listTaskLibraryLinks(taskId, ownerUserId);
 }
 
-export function unlinkDocumentFromTask(documentId: string, taskId: number) {
-  if (listLibraryDocumentRows({ libraryId: "", documentId }).length === 0) {
-    throw new AppError("Document not found", 404);
-  }
+export function unlinkDocumentFromTask(documentId: string, taskId: number, ownerUserId: string) {
+  const docs = listLibraryDocumentRows({ libraryId: "", documentId });
+  const document = docs[0];
+  if (!document) throw new AppError("Document not found", 404);
+  const library = getLibraryRow(document.library_id);
+  if (!library) throw new AppError("Library not found", 404);
+  assertProject(library.project_id, ownerUserId);
   deleteLibraryDocumentLink(documentId, taskId);
 }
 
-export function listTaskLibraryLinks(taskId: number): LibraryDocumentLink[] {
-  if (listTaskRows({ id: taskId }).length === 0) return [];
+export function listTaskLibraryLinks(taskId: number, ownerUserId?: string): LibraryDocumentLink[] {
+  const tasks = listTaskRows({ id: taskId });
+  if (tasks.length === 0) return [];
+  const task = tasks[0];
+  if (!task) return [];
+  if (ownerUserId !== undefined && ownerUserId !== "") {
+    assertProject(task.projectId, ownerUserId);
+  }
   return listLibraryDocumentLinkRowsForTask(taskId).flatMap((link) => {
     const docs = listLibraryDocumentRows({ libraryId: "", documentId: link.document_id });
     const document = docs[0];

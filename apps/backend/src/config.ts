@@ -25,6 +25,12 @@ if ("PORT" in process.env) {
 const fookieAuthIssuer = getEnv("FOOKIE_AUTH_ISSUER") || "https://auth.fookiecloud.com";
 const taskBridgeClientId = getEnv("TASK_BRIDGE_CLIENT_ID") || "task-bridge";
 const fookieMode = getEnv("FOOKIE_MODE") !== "0";
+const fookieIntrospectSecret = getEnv("FOOKIE_INTROSPECT_SECRET") || "";
+const metricsToken = getEnv("METRICS_TOKEN") || "";
+const allowedOrigins = (getEnv("ALLOWED_ORIGINS") || "https://task-bridge.fookiecloud.com")
+  .split(",")
+  .map((o) => o.trim())
+  .filter((o) => o.length > 0);
 
 export const config = {
   port: configPort,
@@ -32,4 +38,7 @@ export const config = {
   fookieAuthIssuer,
   taskBridgeClientId,
   fookieMode,
+  fookieIntrospectSecret,
+  metricsToken,
+  allowedOrigins,
 };

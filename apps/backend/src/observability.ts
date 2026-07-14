@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { config } from "./config.js";
 
 const SERVICE = "task-bridge";
 
@@ -142,7 +143,15 @@ function renderMetrics(): string {
 }
 
 export function registerObservability(app: FastifyInstance): void {
-  app.get("/metrics", (_req, reply) => {
+  app.get("/metrics", (req, reply) => {
+    const expected = config.metricsToken;
+    if (expected === "") {
+      return reply.code(404).send();
+    }
+    const auth = req.headers.authorization;
+    if (typeof auth !== "string" || auth !== `Bearer ${expected}`) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
     reply.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     return renderMetrics();
   });

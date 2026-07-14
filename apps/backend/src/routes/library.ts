@@ -3,6 +3,7 @@ import multipart from "@fastify/multipart";
 import { z } from "zod";
 import { AppError } from "../errors/app-error.js";
 import { assertAuth } from "../middleware/auth.js";
+import { getProjectById } from "../services/project-registry.js";
 import {
   createLibrary,
   getLibrary,
@@ -109,81 +110,92 @@ export async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.get("/projects/:projectId/libraries", async (request) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
-    return { items: listLibraries(projectId) };
+    return { items: listLibraries(projectId, user.id) };
   });
 
   app.get("/projects/:projectId/library/sync", async (request) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     const query = syncQuerySchema.parse(request.query || {});
-    return { items: listLibrarySyncManifest(projectId, query.libraryId) };
+    return { items: listLibrarySyncManifest(projectId, query.libraryId, user.id) };
   });
 
   app.post("/projects/:projectId/libraries", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId } = projectIdParamsSchema.parse(request.params);
     let rawBody = request.body;
     if (rawBody === null) {
       rawBody = {};
     }
     const body = createLibrarySchema.parse(rawBody);
-    const library = createLibrary(projectId, body);
+    const library = createLibrary(projectId, body, user.id);
     return reply.status(201).send(library);
   });
 
   app.get("/projects/:projectId/libraries/:libraryId", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
-    const library = getLibrary(projectId, libraryId);
+    const library = getLibrary(projectId, libraryId, user.id);
     if (!library) return reply.status(404).send({ error: "Library not found" });
     return library;
   });
 
   app.put("/projects/:projectId/libraries/:libraryId", async (request) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
     let rawBody = request.body;
     if (rawBody === null) {
       rawBody = {};
     }
     const body = updateLibrarySchema.parse(rawBody);
-    return updateLibrary(projectId, libraryId, body);
+    return updateLibrary(projectId, libraryId, body, user.id);
   });
 
   app.delete("/projects/:projectId/libraries/:libraryId", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
-    removeLibrary(projectId, libraryId);
+    removeLibrary(projectId, libraryId, user.id);
     return reply.status(204).send();
   });
 
   app.post("/projects/:projectId/libraries/:libraryId/documents/upload", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { projectId, libraryId } = projectLibraryParamsSchema.parse(request.params);
     const upload = await readMultipartFile(request);
-    const document = uploadLibraryDocument(projectId, libraryId, {
-      filename: upload.filename,
-      mimeType: upload.mimeType,
-      buffer: upload.buffer,
-      title: upload.title,
-    });
+    const document = uploadLibraryDocument(
+      projectId,
+      libraryId,
+      {
+        filename: upload.filename,
+        mimeType: upload.mimeType,
+        buffer: upload.buffer,
+        title: upload.title,
+      },
+      user.id,
+    );
     return reply.status(201).send(document);
   });
 
   app.get("/library-documents/:documentId", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
     const document = getLibraryDocument(documentId);
     if (!document) return reply.status(404).send({ error: "Document not found" });
+    if (!getProjectById(document.projectId, user.id)) {
+      return reply.status(404).send({ error: "Document not found" });
+    }
     return document;
   });
 
   app.get("/library-documents/:documentId/content", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
     const { document, buffer } = readLibraryDocumentContent(documentId);
+    if (!getProjectById(document.projectId, user.id)) {
+      return reply.status(404).send({ error: "Document not found" });
+    }
     const downloadName = document.originalName || document.filename || document.title;
     reply.header("Content-Type", document.mimeType || "application/octet-stream");
     reply.header("Content-Length", buffer.byteLength);
@@ -195,7 +207,7 @@ export async function libraryRoutes(app: FastifyInstance) {
   app.put(
     "/projects/:projectId/libraries/:libraryId/documents/:documentId",
     async (request) => {
-      await assertAuth(request);
+      const user = await assertAuth(request);
       const { projectId, libraryId, documentId } = projectLibraryDocumentParamsSchema.parse(
         request.params,
       );
@@ -204,57 +216,57 @@ export async function libraryRoutes(app: FastifyInstance) {
         rawBody = {};
       }
       const body = renameDocumentSchema.parse(rawBody);
-      return renameLibraryDocument(projectId, libraryId, documentId, body.title);
+      return renameLibraryDocument(projectId, libraryId, documentId, body.title, user.id);
     },
   );
 
   app.post(
     "/projects/:projectId/libraries/:libraryId/documents/:documentId/upload",
     async (request) => {
-      await assertAuth(request);
+      const user = await assertAuth(request);
       const { projectId, libraryId, documentId } = projectLibraryDocumentParamsSchema.parse(
         request.params,
       );
       const upload = await readMultipartFile(request);
-      return replaceLibraryDocumentFile(projectId, libraryId, documentId, upload);
+      return replaceLibraryDocumentFile(projectId, libraryId, documentId, upload, user.id);
     },
   );
 
   app.delete(
     "/projects/:projectId/libraries/:libraryId/documents/:documentId",
     async (request, reply) => {
-      await assertAuth(request);
+      const user = await assertAuth(request);
       const { projectId, libraryId, documentId } = projectLibraryDocumentParamsSchema.parse(
         request.params,
       );
-      removeLibraryDocument(projectId, libraryId, documentId);
+      removeLibraryDocument(projectId, libraryId, documentId, user.id);
       return reply.status(204).send();
     },
   );
 
   app.post("/library-documents/:documentId/links", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
     let rawBody = request.body;
     if (rawBody === null) {
       rawBody = {};
     }
     const body = linkDocumentSchema.parse(rawBody);
-    const links = linkDocumentToTask(documentId, body.taskId);
+    const links = linkDocumentToTask(documentId, body.taskId, user.id);
     return reply.status(201).send({ items: links });
   });
 
   app.delete("/library-documents/:documentId/links/:taskId", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { documentId } = documentIdParamsSchema.parse(request.params);
     const { taskId } = taskIdParamsSchema.parse(request.params);
-    unlinkDocumentFromTask(documentId, taskId);
+    unlinkDocumentFromTask(documentId, taskId, user.id);
     return reply.status(204).send();
   });
 
   app.get("/tasks/:taskId/library-links", async (request) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { taskId } = taskIdParamsSchema.parse(request.params);
-    return { items: listTaskLibraryLinks(taskId) };
+    return { items: listTaskLibraryLinks(taskId, user.id) };
   });
 }

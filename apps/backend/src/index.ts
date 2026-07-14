@@ -27,7 +27,15 @@ const logger = createLogger("backend");
 async function main() {
   const app = Fastify({ logger: false, trustProxy: true });
   registerObservability(app);
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin || config.allowedOrigins.includes(origin)) {
+        cb(null, true);
+        return;
+      }
+      cb(null, false);
+    },
+  });
 
   initProjectRegistry();
   refreshProjectRegistry();

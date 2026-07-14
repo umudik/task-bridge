@@ -166,13 +166,10 @@ export function getProjectById(
   const row = rows[0];
   if (!row) return null;
   const project = rowToProject(row);
-  if (
-    ownerUserId !== undefined &&
-    ownerUserId !== "" &&
-    project.ownerUserId !== null &&
-    project.ownerUserId !== ownerUserId
-  ) {
-    return null;
+  if (ownerUserId !== undefined && ownerUserId !== "") {
+    if (project.ownerUserId === null || project.ownerUserId !== ownerUserId) {
+      return null;
+    }
   }
   return project;
 }

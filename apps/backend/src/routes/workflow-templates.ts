@@ -7,8 +7,10 @@ import {
   deleteWorkflowTemplate,
   getWorkflowTemplate,
   importWorkflowTemplate,
-  listWorkflowTemplates,
+  listAccessibleWorkflowTemplates,
   replaceWorkflowTemplate,
+  userCanMutateWorkflowTemplate,
+  userCanReadWorkflowTemplate,
 } from "../services/workflow-template-service.js";
 
 const templateIdParamsSchema = z.object({
@@ -57,11 +59,10 @@ const importSchema = z.object({
 
 export function workflowTemplateRoutes(app: FastifyInstance) {
   app.get("/workflow-templates", async (request) => {
-    await assertAuth(request);
-    return { items: listWorkflowTemplates() };
+    const user = await assertAuth(request);
+    return { items: listAccessibleWorkflowTemplates(user.id) };
   });
 
-  // POST /api/workflow-templates/import — must be before /:templateId routes
   app.post("/workflow-templates/import", async (request, reply) => {
     const user = await assertAuth(request);
     let importBody = request.body;
@@ -106,8 +107,11 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.get("/workflow-templates/:templateId", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
+    if (!userCanReadWorkflowTemplate(templateId, user.id)) {
+      return reply.status(404).send({ error: "Workflow template not found" });
+    }
     const template = getWorkflowTemplate(templateId);
     if (!template) {
       return reply.status(404).send({ error: "Workflow template not found" });
@@ -115,10 +119,12 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
     return template;
   });
 
-  // GET /api/workflow-templates/:templateId/export — download as JSON file
   app.get("/workflow-templates/:templateId/export", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
+    if (!userCanReadWorkflowTemplate(templateId, user.id)) {
+      throw new AppError("Workflow template not found", 404);
+    }
     const template = getWorkflowTemplate(templateId);
     if (!template) {
       throw new AppError("Workflow template not found", 404);
@@ -139,8 +145,11 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.put("/workflow-templates/:templateId", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
+    if (!userCanMutateWorkflowTemplate(templateId, user.id)) {
+      return reply.status(404).send({ error: "Workflow template not found" });
+    }
     let replaceTemplateBody = request.body;
     if (replaceTemplateBody === null) { replaceTemplateBody = {}; }
     const body = replaceTemplateSchema.parse(replaceTemplateBody);
@@ -166,8 +175,11 @@ export function workflowTemplateRoutes(app: FastifyInstance) {
   });
 
   app.delete("/workflow-templates/:templateId", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { templateId } = templateIdParamsSchema.parse(request.params);
+    if (!userCanMutateWorkflowTemplate(templateId, user.id)) {
+      return reply.status(404).send({ error: "Workflow template not found" });
+    }
     deleteWorkflowTemplate(templateId);
     return reply.status(204).send();
   });

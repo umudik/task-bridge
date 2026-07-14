@@ -6,7 +6,7 @@ import {
   mapComments,
   mapTaskDetail,
 } from "../mappers/task-response.js";
-import { getProjectById, refreshProjectRegistry } from "../services/project-registry.js";
+import { getProjectById, refreshProjectRegistry, userCanAccessProject } from "../services/project-registry.js";
 import {
   addBridgeTaskUserComment,
   allocateTaskId,
@@ -129,16 +129,23 @@ function createdItemResponse(task: {
   };
 }
 
+function assertOwnedTaskProject(
+  projectId: string,
+  ownerUserId: string,
+): boolean {
+  return userCanAccessProject(projectId, ownerUserId);
+}
+
 const taskIdParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
 const claimTaskBodySchema = z.object({
-  claimedBy: z.string().trim().min(1),
+  claimedBy: z.string().trim().min(1).optional(),
 });
 
 const claimNextBodySchema = z.object({
-  claimedBy: z.string().trim().min(1),
+  claimedBy: z.string().trim().min(1).optional(),
   projectId: z.string().trim().min(1).optional(),
 });
 
@@ -326,8 +333,10 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/tasks", async (request) => {
-    await assertAuth(request);
-    const bridgeTasks = listBridgeTasks();
+    const user = await assertAuth(request);
+    const bridgeTasks = listBridgeTasks().filter((task) =>
+      assertOwnedTaskProject(task.projectId, user.id),
+    );
     return {
       items: bridgeTasks.map((task) => ({
         id: task.id,
@@ -347,15 +356,18 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks/:id/claim", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const claimBody = request.body || {};
     const body = claimTaskBodySchema.parse(claimBody);
     const existing = getBridgeTask(id);
-    if (!existing) {
+    if (!existing || !assertOwnedTaskProject(existing.projectId, user.id)) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    const claimedBy = body.claimedBy;
+    const claimedBy = user.name;
+    if (body.claimedBy && body.claimedBy !== claimedBy) {
+      return reply.status(403).send({ error: "claimedBy must match the authenticated user" });
+    }
     const actor = resolveClaimActor(existing.projectId, claimedBy);
     if (!actor) {
       return reply.status(404).send({ error: "Project member not found" });
@@ -368,7 +380,7 @@ export function taskRoutes(app: FastifyInstance) {
       }
       return reply.status(409).send({ error: blockReason });
     }
-    const task = claimBridgeTask(id, body.claimedBy);
+    const task = claimBridgeTask(id, claimedBy);
     if (!task) {
       return reply.status(409).send({ error: "Task is not available to claim" });
     }
@@ -376,8 +388,12 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/tasks/:id/unclaim", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
+    const existing = getBridgeTask(id);
+    if (!existing || !assertOwnedTaskProject(existing.projectId, user.id)) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
     const task = releaseBridgeTask(id);
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
@@ -386,13 +402,20 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.post("/worker/claim-next", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const claimNextBody = request.body || {};
     const body = claimNextBodySchema.parse(claimNextBody);
     if (!body.projectId) {
       return reply.status(400).send({ error: "projectId is required" });
     }
-    const actor = resolveClaimActor(body.projectId, body.claimedBy);
+    if (!assertOwnedTaskProject(body.projectId, user.id)) {
+      return reply.status(404).send({ error: "Project not found" });
+    }
+    const claimedBy = user.name;
+    if (body.claimedBy && body.claimedBy !== claimedBy) {
+      return reply.status(403).send({ error: "claimedBy must match the authenticated user" });
+    }
+    const actor = resolveClaimActor(body.projectId, claimedBy);
     if (!actor) {
       return reply.status(404).send({ error: "Project member not found" });
     }
@@ -418,12 +441,12 @@ export function taskRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Invalid work status" });
     }
     const existing = getBridgeTask(id);
-    if (!existing) {
+    if (!existing || !assertOwnedTaskProject(existing.projectId, user.id)) {
       return reply.status(404).send({ error: "Task not found" });
     }
-    let by = user.name;
-    if (body.claimedBy !== "") {
-      by = body.claimedBy;
+    const by = user.name;
+    if (body.claimedBy !== "" && body.claimedBy !== by) {
+      return reply.status(403).send({ error: "claimedBy must match the authenticated user" });
     }
     try {
       const updated = updateTaskWorkStatus(id, body.workStatus, by);
@@ -443,13 +466,16 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/projects/:projectId/epics/:epicId/tasks", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const params = z
       .object({
         projectId: z.string().trim().min(1),
         epicId: z.coerce.number().int().positive(),
       })
       .parse(request.params);
+    if (!assertOwnedTaskProject(params.projectId, user.id)) {
+      return reply.status(404).send({ error: "Epic not found" });
+    }
     const epic = getBridgeTask(params.epicId);
     if (!epic || epic.projectId !== params.projectId || epic.parentId !== null) {
       return reply.status(404).send({ error: "Epic not found" });
@@ -503,10 +529,10 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/tasks/:id", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
     const task = getBridgeTask(id);
-    if (!task) {
+    if (!task || !assertOwnedTaskProject(task.projectId, user.id)) {
       return reply.status(404).send({ error: "Task not found" });
     }
     return mapTaskDetail(task);
@@ -518,7 +544,7 @@ export function taskRoutes(app: FastifyInstance) {
     const patchBody = request.body || {};
     const body = patchTaskBodySchema.parse(patchBody);
     const existing = getBridgeTask(id);
-    if (!existing) {
+    if (!existing || !assertOwnedTaskProject(existing.projectId, user.id)) {
       return reply.status(404).send({ error: "Task not found" });
     }
     if (existing.parentId === null) {
@@ -557,36 +583,55 @@ export function taskRoutes(app: FastifyInstance) {
   });
 
   app.get("/worker/pending", async (request, reply) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const query = z
       .object({
         projectId: z.string().trim().min(1).optional(),
         claimedBy: z.string().trim().min(1).optional(),
       })
       .parse(request.query);
+    if (query.projectId && !assertOwnedTaskProject(query.projectId, user.id)) {
+      return reply.status(404).send({ error: "Project not found" });
+    }
     let actor: ClaimActor | null = null;
     if (query.claimedBy) {
       if (!query.projectId) {
         return reply.status(400).send({ error: "projectId is required when filtering by claimedBy" });
       }
-      actor = resolveClaimActor(query.projectId, query.claimedBy);
+      if (query.claimedBy !== user.name) {
+        return reply.status(403).send({ error: "claimedBy must match the authenticated user" });
+      }
+      actor = resolveClaimActor(query.projectId, user.name);
       if (!actor) {
         return reply.status(404).send({ error: "Project member not found" });
       }
     }
-    const items = listPendingTasks(query.projectId, actor);
+    let items = listPendingTasks(query.projectId, actor);
+    if (!query.projectId) {
+      items = items.filter((item) => {
+        const task = getBridgeTask(item.taskId);
+        return task !== null && assertOwnedTaskProject(task.projectId, user.id);
+      });
+    }
     return { items };
   });
 
   app.get("/inbox", async (request) => {
-    await assertAuth(request);
+    const user = await assertAuth(request);
     const query = inboxQuerySchema.parse(request.query);
+    if (query.projectId && !assertOwnedTaskProject(query.projectId, user.id)) {
+      return {
+        items: [],
+        nextCursor: null,
+      };
+    }
     return buildInboxItems({
       projectId: query.projectId,
       commentsOnly: query.commentsOnly,
       epicsOnly: query.epicsOnly,
       cursor: query.cursor,
       limit: query.limit,
+      ownerUserId: user.id,
     });
   });
 

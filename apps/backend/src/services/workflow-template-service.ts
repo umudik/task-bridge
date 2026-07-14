@@ -145,6 +145,39 @@ export function listOwnedWorkflowTemplates(ownerUserId: string): WorkflowTemplat
   }));
 }
 
+export function listAccessibleWorkflowTemplates(ownerUserId: string): WorkflowTemplateSummary[] {
+  ensureDefaultWorkflowTemplates();
+  const byId = new Map<string, WorkflowTemplateSummary>();
+  for (const row of listWorkflowTemplateRows({ id: "" })) {
+    if (row.owner_user_id !== null && row.owner_user_id !== ownerUserId) continue;
+    byId.set(row.id, {
+      id: row.id,
+      title: row.title,
+      description: row.description,
+    });
+  }
+  return Array.from(byId.values()).sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+  );
+}
+
+export function userCanReadWorkflowTemplate(templateId: string, ownerUserId: string): boolean {
+  ensureDefaultWorkflowTemplates();
+  const rows = listWorkflowTemplateRows({ id: templateId });
+  const row = rows[0];
+  if (!row) return false;
+  return row.owner_user_id === null || row.owner_user_id === ownerUserId;
+}
+
+export function userCanMutateWorkflowTemplate(templateId: string, ownerUserId: string): boolean {
+  ensureDefaultWorkflowTemplates();
+  if (PROTECTED_WORKFLOW_TEMPLATE_IDS.has(templateId)) return false;
+  const rows = listWorkflowTemplateRows({ id: templateId });
+  const row = rows[0];
+  if (!row) return false;
+  return row.owner_user_id === ownerUserId;
+}
+
 export { setWorkflowTemplateOwner };
 
 export function getWorkflowTemplate(templateId: string): WorkflowTemplate | null {

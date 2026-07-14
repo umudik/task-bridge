@@ -20,6 +20,7 @@ import {
 } from "../lib/inbox-cursor.js";
 import { listBridgeTasks } from "../services/task-service.js";
 import { listWorkflowStateSummaries } from "../services/workflow-state-service.js";
+import { getProjectById } from "../services/project-registry.js";
 
 function latestCommentByRole(
   comments: TaskComment[],
@@ -222,8 +223,14 @@ export function buildInboxItems(query: {
   epicsOnly: boolean | null;
   cursor: string | null;
   limit: number;
+  ownerUserId?: string | null;
 }) {
-  const bridgeTasks = listBridgeTasks();
+  let bridgeTasks = listBridgeTasks();
+  if (query.ownerUserId) {
+    bridgeTasks = bridgeTasks.filter(
+      (task) => getProjectById(task.projectId, query.ownerUserId as string) !== null,
+    );
+  }
   const stageTitles = new Map<string, string>();
   for (const task of bridgeTasks) {
     if (stageTitles.has(task.projectId)) continue;
