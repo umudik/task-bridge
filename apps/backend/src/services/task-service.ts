@@ -301,6 +301,18 @@ export function addBridgeTaskAgentComment(
   });
 }
 
+export function clearBridgeTaskComments(
+  id: number,
+  by: string,
+): BridgeTask | null {
+  return mutateTaskRow(id, (task) => {
+    task.comments = [];
+    const at = new Date().toISOString();
+    task.events.push({ type: "spec_updated", at, by, note: "comments_cleared" });
+    touchTask(task);
+  });
+}
+
 export function updateBridgeTaskBrief(
   id: number,
   input: {

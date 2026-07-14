@@ -15,6 +15,7 @@ import {
   getBridgeTask,
   listBridgeTasks,
   releaseBridgeTask,
+  clearBridgeTaskComments,
   updateBridgeTaskBrief,
   updateBridgeTaskSpec,
   upsertBridgeTask,
@@ -579,6 +580,23 @@ export function taskRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Task not found" });
     }
     return buildTaskContext(updated);
+  });
+
+  app.delete("/tasks/:id/comments", async (request, reply) => {
+    const user = await assertAuth(request);
+    const { id } = taskIdParamsSchema.parse(request.params);
+    const existing = getBridgeTask(id);
+    if (!existing || !assertOwnedTaskProject(existing.projectId, user.id)) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    const updated = clearBridgeTaskComments(id, user.name);
+    if (!updated) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    return {
+      taskId: updated.id,
+      comments: mapComments(updated),
+    };
   });
 
   app.post("/tasks/:id/complete", async (request, reply) => {

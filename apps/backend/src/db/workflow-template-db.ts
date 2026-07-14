@@ -137,6 +137,117 @@ const DEFAULT_TEMPLATE_SEEDS: TemplateSeed[] = [
     ],
   },
   {
+    id: "general-work",
+    title: "General Work",
+    description: `Coarse loop for any kind of work (not code-only).
+
+Research -> Debate -> Check -> Critique -> Deliver.
+
+One task per stage. Deliverables follow the epic text (PR, Library, docs, etc.). No calendar estimates.`,
+    stages: [
+      {
+        id: "research",
+        title: "Research",
+        description: `## Objective
+Internet and prior-art research for the epic.
+
+## Exit
+You understand how others solved this and what matters for this epic.`,
+        purpose: "Internet research",
+        rules: ["Sources gathered", "Approaches compared", "No calendar estimates"],
+        position: 0,
+        autoAssign: false,
+        taskTemplates: [
+          task(
+            "gw-research",
+            "Internet research",
+            "**Output:** research notes in the task brief.\n\n- Search the web, docs, repos, and forums\n- Capture useful approaches and trade-offs\n- Match the language of the epic\n- Do not invent day/week timelines",
+          ),
+        ],
+      },
+      {
+        id: "debate",
+        title: "Debate",
+        description: `## Objective
+Argue the options against each other before committing.
+
+## Exit
+A clear recommendation with risks.`,
+        purpose: "Internal debate",
+        rules: ["Options weighed", "Risks named", "Recommendation made"],
+        position: 1,
+        autoAssign: false,
+        taskTemplates: [
+          task(
+            "gw-debate",
+            "Internal debate",
+            "**Output:** debate notes in the task brief.\n\n- Compare options using prior research\n- Call out risks and unknowns\n- Recommend a path (code change not required unless the epic needs it)",
+          ),
+        ],
+      },
+      {
+        id: "check",
+        title: "Check",
+        description: `## Objective
+Verify the work-in-progress against the epic goal.
+
+## Exit
+Gaps and pass/fail notes are written.`,
+        purpose: "Work check",
+        rules: ["Evidence checked", "Gaps listed"],
+        position: 2,
+        autoAssign: false,
+        taskTemplates: [
+          task(
+            "gw-check",
+            "Work check",
+            "**Output:** verification notes in the task brief.\n\n- Check claims against the repo and sources\n- List what holds and what is missing",
+          ),
+        ],
+      },
+      {
+        id: "critique",
+        title: "Critique",
+        description: `## Objective
+Critically review quality, simplicity, and failure points.
+
+## Exit
+Actionable critique is written.`,
+        purpose: "Critique",
+        rules: ["Weak points named", "Improvements proposed"],
+        position: 3,
+        autoAssign: false,
+        taskTemplates: [
+          task(
+            "gw-critique",
+            "Critique",
+            "**Output:** critique in the task brief.\n\n- What is wrong, fragile, or overbuilt\n- What to simplify or fix next",
+          ),
+        ],
+      },
+      {
+        id: "deliver",
+        title: "Deliver",
+        description: `## Objective
+Ship the epic outcome only as requested (PR and/or Library and/or notes).
+
+## Exit
+Requested delivery is done; brief holds the summary.`,
+        purpose: "Delivery",
+        rules: ["Follow epic delivery asks", "Brief updated"],
+        position: 4,
+        autoAssign: false,
+        taskTemplates: [
+          task(
+            "gw-deliver",
+            "Deliver outcome",
+            "**Output:** final delivery summary in the task brief.\n\n- If the epic asks for a PR, open a PR\n- If the epic asks for Library, add Library docs\n- Otherwise write the final notes only\n- Match the epic language; no calendar estimates",
+          ),
+        ],
+      },
+    ],
+  },
+  {
     id: "lean-sdlc",
     title: "Lean SDLC",
     description: `Lean, classic software delivery pipeline.
