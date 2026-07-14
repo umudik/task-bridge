@@ -9,6 +9,7 @@ import {
   resolveEpicId,
   touchTask,
   type AssigneeKind,
+  type AgentMetadata,
   type BridgeTask,
 } from "../domain/task.js";
 import { isWorkDone, type WorkStatus } from "../domain/work-status.js";
@@ -138,6 +139,8 @@ export function upsertBridgeTask(input: {
     answer: null,
     stageId: input.stageId,
     workStatus,
+    brief: "",
+    agentMetadata: {},
     assignee: resolvedAssignee.assignee,
     assigneeRole: resolvedAssignee.assigneeRole,
     assigneeKind: input.assigneeKind,
@@ -234,30 +237,101 @@ export function updateBridgeTaskSpec(
   });
 }
 
-export function addBridgeTaskUserComment(
+export function addBridgeTaskComment(
   id: number,
-  by: string,
-  text: string,
+  input: {
+    by: string;
+    text: string;
+    role: "user" | "system";
+    tags: string[];
+    releaseClaim: boolean;
+  },
 ): BridgeTask | null {
-  const body = emptyToNull(text);
+  const body = emptyToNull(input.text);
   if (!body) return null;
 
   const updated = mutateTaskRow(id, (task) => {
     const at = new Date().toISOString();
     task.comments.push({
-      id: `user-${id}-${Date.now()}`,
-      role: "user",
-      authorId: by,
-      tags: [],
+      id: `${input.role}-${id}-${Date.now()}`,
+      role: input.role,
+      authorId: input.by,
+      tags: input.tags,
       body,
       at,
       metadata: null,
     });
-    task.claimedBy = null;
-    task.claimedAt = null;
-    task.events.push({ type: "commented", at, by, note: body.slice(0, 200) });
+    if (input.releaseClaim) {
+      task.claimedBy = null;
+      task.claimedAt = null;
+    }
+    task.events.push({ type: "commented", at, by: input.by, note: body.slice(0, 200) });
     touchTask(task);
   });
   if (updated) syncTaskIntoWorkflowState(updated);
   return updated;
+}
+
+export function addBridgeTaskUserComment(
+  id: number,
+  by: string,
+  text: string,
+): BridgeTask | null {
+  return addBridgeTaskComment(id, {
+    by,
+    text,
+    role: "user",
+    tags: [],
+    releaseClaim: true,
+  });
+}
+
+export function addBridgeTaskAgentComment(
+  id: number,
+  by: string,
+  text: string,
+  tags: string[] = [],
+): BridgeTask | null {
+  return addBridgeTaskComment(id, {
+    by,
+    text,
+    role: "system",
+    tags,
+    releaseClaim: false,
+  });
+}
+
+export function updateBridgeTaskBrief(
+  id: number,
+  input: {
+    brief: string | null;
+    append: string | null;
+    by: string;
+  },
+): BridgeTask | null {
+  return mutateTaskRow(id, (task) => {
+    if (input.brief !== null) {
+      task.brief = input.brief;
+    } else if (input.append !== null && input.append.trim().length > 0) {
+      const chunk = input.append.trim();
+      if (task.brief.length > 0) {
+        task.brief = `${task.brief}\n\n${chunk}`;
+      } else {
+        task.brief = chunk;
+      }
+    }
+    const at = new Date().toISOString();
+    task.events.push({ type: "spec_updated", at, by: input.by, note: "brief" });
+    touchTask(task);
+  });
+}
+
+export function updateBridgeTaskAgentMetadata(
+  id: number,
+  patch: Partial<AgentMetadata>,
+): BridgeTask | null {
+  return mutateTaskRow(id, (task) => {
+    task.agentMetadata = Object.assign({}, task.agentMetadata, patch);
+    touchTask(task);
+  });
 }

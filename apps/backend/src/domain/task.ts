@@ -23,6 +23,11 @@ export type AssigneeKind = "ai" | "";
 
 export type CommentMetadata = Record<string, string | number | boolean | null>;
 
+export type AgentMetadata = {
+  lotaruRefs?: string[];
+  prUrl?: string | null;
+};
+
 export type TaskComment = {
   id: string;
   role: "user" | "system";
@@ -58,6 +63,8 @@ export type BridgeTask = {
   answer: string | null;
   stageId: string | null;
   workStatus: WorkStatus | null;
+  brief: string;
+  agentMetadata: AgentMetadata;
   comments: TaskComment[];
   events: TaskEvent[];
 };

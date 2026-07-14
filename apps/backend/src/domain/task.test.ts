@@ -42,6 +42,8 @@ function makeTask(overrides: Partial<BridgeTask> & Pick<BridgeTask, "id" | "titl
     answer: null,
     stageId: overrides.stageId ?? "backlog",
     workStatus: overrides.workStatus ?? null,
+    brief: "",
+    agentMetadata: {},
     comments: [],
     events: [],
     ...rest,

@@ -11,6 +11,7 @@ import {
   userAwaitingReply,
   workflowClaimBlockReason,
 } from "./task-claim-policy.js";
+import { buildTaskContext, type TaskContextPayload } from "./task-context-service.js";
 import { claimBridgeTask, listBridgeTasks } from "./task-service.js";
 
 export { userAwaitingReply } from "./task-claim-policy.js";
@@ -42,6 +43,9 @@ export type TaskClaimPayload = {
   workStatus: WorkStatus | null;
   createdAt: string;
   comments: TaskComment[];
+  brief: string;
+  agentMetadata: BridgeTask["agentMetadata"];
+  context: TaskContextPayload;
 };
 
 function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
@@ -64,6 +68,9 @@ function buildClaimPayload(task: BridgeTask, turnId: string): TaskClaimPayload {
     workStatus,
     createdAt: task.createdAt,
     comments: task.comments,
+    brief: task.brief,
+    agentMetadata: task.agentMetadata,
+    context: buildTaskContext(task),
   };
 }
 

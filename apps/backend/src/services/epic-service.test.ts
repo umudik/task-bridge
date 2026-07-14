@@ -49,6 +49,8 @@ function makeSubtask(overrides: Partial<BridgeTask> & { id: number }): BridgeTas
     answeredAt: null,
     answer: null,
     stageId: overrides.stageId ?? null,
+    brief: "",
+    agentMetadata: {},
     comments: [],
     events: [],
     workStatus: overrides.workStatus ?? "todo",

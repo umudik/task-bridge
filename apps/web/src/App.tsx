@@ -15,6 +15,7 @@ import { WorkflowPage } from "@/pages/WorkflowPage";
 import { WorkflowTemplatesPage } from "@/pages/WorkflowTemplatesPage";
 import { LibraryPage } from "@/pages/LibraryPage";
 import { MarketplacePage } from "@/pages/MarketplacePage";
+import { McpPage } from "@/pages/McpPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { loadSession } from "@/lib/session";
 
@@ -47,6 +48,7 @@ export function App() {
           }
         >
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/mcp" element={<McpPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/workflow-templates" element={<WorkflowTemplatesPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />

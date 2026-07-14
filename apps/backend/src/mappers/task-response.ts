@@ -186,6 +186,8 @@ export function mapTaskDetail(task: BridgeTask) {
     events: task.events,
     comments: mapComments(task),
     libraryLinks: listTaskLibraryLinks(task.id),
+    brief: task.brief,
+    agentMetadata: task.agentMetadata,
     workflowState,
   };
 }

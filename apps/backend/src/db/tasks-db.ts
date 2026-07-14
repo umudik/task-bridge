@@ -55,6 +55,18 @@ function migrate(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_tasks_stage_id ON tasks(stage_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_epic_id ON tasks(epic_id);
   `);
+  const columns = database
+    .prepare("PRAGMA table_info(tasks)")
+    .all() as { name: string }[];
+  const names = new Set(columns.map((col) => col.name));
+  if (!names.has("brief")) {
+    database.exec("ALTER TABLE tasks ADD COLUMN brief TEXT NOT NULL DEFAULT ''");
+  }
+  if (!names.has("agent_metadata_json")) {
+    database.exec(
+      "ALTER TABLE tasks ADD COLUMN agent_metadata_json TEXT NOT NULL DEFAULT '{}'",
+    );
+  }
 }
 
 function rowToTask(row: TaskSqliteRow): BridgeTask {
@@ -139,6 +151,21 @@ function rowToTask(row: TaskSqliteRow): BridgeTask {
     workStatus = row.work_status as WorkStatus;
   }
 
+  let brief = "";
+  if (row.brief !== null && row.brief !== undefined) {
+    brief = String(row.brief);
+  }
+
+  let agentMetadata: BridgeTask["agentMetadata"] = {};
+  const rawMeta = row.agent_metadata_json;
+  if (rawMeta !== null && rawMeta !== undefined) {
+    try {
+      agentMetadata = JSON.parse(String(rawMeta)) as BridgeTask["agentMetadata"];
+    } catch {
+      agentMetadata = {};
+    }
+  }
+
   return {
     id: Number(row.id),
     projectId: String(row.project_id),
@@ -164,6 +191,8 @@ function rowToTask(row: TaskSqliteRow): BridgeTask {
     answer,
     stageId,
     workStatus,
+    brief,
+    agentMetadata,
     comments: JSON.parse(String(row.comments_json)) as BridgeTask["comments"],
     events: JSON.parse(String(row.events_json)) as BridgeTask["events"],
   };
@@ -193,6 +222,8 @@ function taskToRow(task: BridgeTask): TaskSqliteRow {
     answer: task.answer,
     stage_id: task.stageId,
     work_status: task.workStatus,
+    brief: task.brief,
+    agent_metadata_json: JSON.stringify(task.agentMetadata),
     comments_json: JSON.stringify(task.comments),
     events_json: JSON.stringify(task.events),
   };
@@ -273,11 +304,11 @@ export function upsertTaskRow(task: BridgeTask): void {
       INSERT INTO tasks (
         id, project_id, project_name, parent_id, epic_id, template_id, title, description, priority, labels_json,
         assignee, assignee_role, created_by, created_at, updated_at, claimed_by,
-        claimed_at, answered_by, answered_at, answer, stage_id, work_status, comments_json, events_json
+        claimed_at, answered_by, answered_at, answer, stage_id, work_status, brief, agent_metadata_json, comments_json, events_json
       ) VALUES (
         @id, @project_id, @project_name, @parent_id, @epic_id, @template_id, @title, @description, @priority, @labels_json,
         @assignee, @assignee_role, @created_by, @created_at, @updated_at, @claimed_by,
-        @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @comments_json, @events_json
+        @claimed_at, @answered_by, @answered_at, @answer, @stage_id, @work_status, @brief, @agent_metadata_json, @comments_json, @events_json
       )
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
@@ -301,6 +332,8 @@ export function upsertTaskRow(task: BridgeTask): void {
         answer = excluded.answer,
         stage_id = excluded.stage_id,
         work_status = excluded.work_status,
+        brief = excluded.brief,
+        agent_metadata_json = excluded.agent_metadata_json,
         comments_json = excluded.comments_json,
         events_json = excluded.events_json
     `,

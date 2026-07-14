@@ -166,22 +166,81 @@ export function registerTools(server: McpServer, api: TaskBridgeApi) {
   );
 
   server.tool(
+    "get_task_context",
+    "Get packed agent context: description, brief, comments, epic/parent summary, workflow state.",
+    {
+      taskId: z.number().int().positive(),
+    },
+    async (input) => runTool(() => api.get(`/api/tasks/${input.taskId}/context`)),
+  );
+
+  server.tool(
+    "update_task_brief",
+    "Set or append the living brief for a task (agent decisions summary).",
+    {
+      taskId: z.number().int().positive(),
+      brief: z.string().nullable(),
+      append: z.string().nullable(),
+    },
+    async (input) =>
+      runTool(() => {
+        const body: Record<string, string> = {};
+        if (input.brief !== null) {
+          body.brief = input.brief;
+        }
+        if (input.append !== null) {
+          body.append = input.append;
+        }
+        return api.patch(`/api/tasks/${input.taskId}/brief`, body);
+      }),
+  );
+
+  server.tool(
+    "complete_task",
+    "Mark a subtask done, append summary/PR to brief, unclaim, return epic stage and next claimable task.",
+    {
+      taskId: z.number().int().positive(),
+      summary: z.string().nullable(),
+      prUrl: z.string().nullable(),
+    },
+    async (input) =>
+      runTool(() => {
+        const body: Record<string, string> = {};
+        if (input.summary !== null && input.summary.trim().length > 0) {
+          body.summary = input.summary.trim();
+        }
+        if (input.prUrl !== null && input.prUrl.trim().length > 0) {
+          body.prUrl = input.prUrl.trim();
+        }
+        return api.post(`/api/tasks/${input.taskId}/complete`, body);
+      }),
+  );
+
+  server.tool(
     "add_comment",
-    "Add a comment to a task.",
+    "Add a comment to a task. Use role=system for agent notes (does not release claim).",
     {
       taskId: z.number().int().positive(),
       text: z.string().min(1),
       by: z.string().nullable(),
+      role: z.enum(["user", "system"]).nullable(),
+      tags: z.array(z.string()).nullable(),
     },
     async (input) =>
       runTool(() => {
-        const comment: Record<string, string> = {
+        const comment: Record<string, string | string[]> = {
           text: input.text,
         };
         if (input.by !== null) {
           comment.by = input.by;
         } else {
           comment.by = "mcp";
+        }
+        if (input.role !== null) {
+          comment.role = input.role;
+        }
+        if (input.tags !== null) {
+          comment.tags = input.tags;
         }
         return api.patch(`/api/tasks/${input.taskId}`, { comment });
       }),

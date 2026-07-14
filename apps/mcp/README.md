@@ -1,78 +1,71 @@
-# Task Bridge MCP
+# @umudik/task-bridge-mcp
 
-MCP server that exposes the Task Bridge REST API as tools for AI agents (Cursor, Claude Desktop, custom clients).
+MCP server for [Task Bridge](https://task-bridge.fookiecloud.com) — claim tasks, read agent context, complete work from Cursor.
 
-## Setup
+## Cursor config
 
-1. Start Task Bridge (`npm run dev` from repo root).
-2. Log in via web UI and copy your bearer token (browser devtools → localStorage session, or admin user token endpoint).
-3. Set env:
-
-```powershell
-$env:TASK_BRIDGE_URL = "http://localhost:3000"
-$env:TASK_BRIDGE_TOKEN = "your-bearer-token"
-```
-
-## Cursor
-
-Copy `.cursor/mcp.json` and replace `TASK_BRIDGE_TOKEN`. Restart Cursor or reload MCP.
-
-Production build:
+Cloud with a Fookie API key (from [fookiecloud.com/profile](https://fookiecloud.com/profile)):
 
 ```json
 {
   "mcpServers": {
     "task-bridge": {
-      "command": "node",
-      "args": ["apps/mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "@umudik/task-bridge-mcp"],
       "env": {
-        "TASK_BRIDGE_URL": "http://localhost:3000",
-        "TASK_BRIDGE_TOKEN": "your-bearer-token"
+        "TASK_BRIDGE_URL": "https://task-bridge.fookiecloud.com",
+        "FOOKIE_API_KEY": "<paste-key>"
       }
     }
   }
 }
 ```
 
-Run `npm --prefix apps/mcp run build` first.
+Local dev (`npm run dev` in task-bridge repo):
 
-## Tools
+```json
+{
+  "mcpServers": {
+    "task-bridge": {
+      "command": "npx",
+      "args": ["-y", "@umudik/task-bridge-mcp"],
+      "env": {
+        "TASK_BRIDGE_URL": "http://localhost:3000",
+        "TASK_BRIDGE_TOKEN": "<bearer-token>"
+      }
+    }
+  }
+}
+```
+
+Also accepted: `FOOKIE_API_KEY` with cloud URL.
+
+## Orchestration loop (with Lotaru)
+
+1. `claim_next_task` — take the next workflow task
+2. `get_task_context` — description, brief, full comments, epic stage
+3. Implement in Cursor; run shell on your machine via `@umudik/lotaru-mcp` (`task-create` + `task-run`, e.g. `gh pr create`)
+4. `complete_task` — mark done, append summary + PR URL, unclaim, get next claimable task
+
+Pair with Lotaru MCP in the same `.cursor/mcp.json` for local execution and PR creation.
+
+## Key tools
 
 | Tool | Purpose |
 |------|---------|
-| `get_me` | Current user |
-| `list_projects` / `create_project` | Projects |
-| `get_workflow` / `export_workflow` / `list_project_members` | Workflow |
-| `create_epic` / `create_task` / `list_tasks` / `get_task` | Tasks |
-| `add_comment` / `update_task_description` / `update_work_status` | Task updates |
-| `claim_task` / `unclaim_task` / `list_worker_pending` / `claim_next_task` | Worker queue |
-| `list_inbox` | Inbox feed |
-| `list_workflow_templates` / `get_workflow_template` | Templates |
-
-## Resources
-
-| URI | Content |
-|-----|---------|
-| `task-bridge://openapi` | OpenAPI 3.1 JSON |
-| `task-bridge://health` | Server health |
+| `claim_next_task` | Atomically claim next available task |
+| `get_task_context` | Packed agent context (brief + comments + epic) |
+| `update_task_brief` | Living summary / pinned decisions |
+| `add_comment` | `role: system` for agent notes (keeps claim) |
+| `complete_task` | Done + brief + PR + epic stage result |
+| `list_worker_pending` | Queue preview |
 
 ## Dev
 
 ```powershell
 npm --prefix apps/mcp install
+npm --prefix apps/mcp run build
 npm --prefix apps/mcp run dev
 ```
 
-Server speaks MCP over stdio (no HTTP port).
-
-## Test client
-
-```powershell
-npm --prefix apps/mcp run client -- list-tools
-npm --prefix apps/mcp run client -- call list_projects {}
-npm --prefix apps/mcp run client -- read-resource task-bridge://openapi
-```
-
-## Raw API
-
-Same backend as HTTP: `GET /api/docs` for OpenAPI without MCP.
+Server speaks MCP over stdio.

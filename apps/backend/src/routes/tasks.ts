@@ -9,14 +9,17 @@ import {
 import { getProjectById, refreshProjectRegistry, userCanAccessProject } from "../services/project-registry.js";
 import {
   addBridgeTaskUserComment,
+  addBridgeTaskAgentComment,
   allocateTaskId,
   claimBridgeTask,
   getBridgeTask,
   listBridgeTasks,
   releaseBridgeTask,
+  updateBridgeTaskBrief,
   updateBridgeTaskSpec,
   upsertBridgeTask,
 } from "../services/task-service.js";
+import { buildTaskContext, completeBridgeTask } from "../services/task-context-service.js";
 import {
   applyTodoCascadeFromTask,
   listEpicSubtasks,
@@ -155,6 +158,8 @@ const patchTaskBodySchema = z
       .object({
         text: z.string().trim().min(1),
         by: z.string().trim().min(1).default("web"),
+        role: z.enum(["user", "system"]).optional().default("user"),
+        tags: z.array(z.string()).optional().default([]),
       })
       .optional(),
     description: z.string().trim().optional(),
@@ -167,6 +172,25 @@ const patchTaskBodySchema = z
       });
     }
   });
+
+const briefBodySchema = z
+  .object({
+    brief: z.string().optional(),
+    append: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.brief === undefined && data.append === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "brief or append is required",
+      });
+    }
+  });
+
+const completeTaskBodySchema = z.object({
+  summary: z.string().trim().optional(),
+  prUrl: z.string().trim().optional(),
+});
 
 const workStatusBodySchema = z.object({
   workStatus: z.enum(["todo", "in_progress", "done"]),
@@ -528,6 +552,77 @@ export function taskRoutes(app: FastifyInstance) {
     };
   });
 
+  app.get("/tasks/:id/context", async (request, reply) => {
+    const user = await assertAuth(request);
+    const { id } = taskIdParamsSchema.parse(request.params);
+    const task = getBridgeTask(id);
+    if (!task || !assertOwnedTaskProject(task.projectId, user.id)) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    return buildTaskContext(task);
+  });
+
+  app.patch("/tasks/:id/brief", async (request, reply) => {
+    const user = await assertAuth(request);
+    const { id } = taskIdParamsSchema.parse(request.params);
+    const body = briefBodySchema.parse(request.body ?? {});
+    const existing = getBridgeTask(id);
+    if (!existing || !assertOwnedTaskProject(existing.projectId, user.id)) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    const updated = updateBridgeTaskBrief(id, {
+      brief: body.brief ?? null,
+      append: body.append ?? null,
+      by: user.name,
+    });
+    if (!updated) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    return buildTaskContext(updated);
+  });
+
+  app.post("/tasks/:id/complete", async (request, reply) => {
+    const user = await assertAuth(request);
+    const { id } = taskIdParamsSchema.parse(request.params);
+    const body = completeTaskBodySchema.parse(request.body ?? {});
+    const existing = getBridgeTask(id);
+    if (!existing || !assertOwnedTaskProject(existing.projectId, user.id)) {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+    if (existing.parentId === null) {
+      return reply.status(400).send({ error: "Only subtasks can be completed" });
+    }
+    let summary: string | null = null;
+    if (body.summary) {
+      summary = body.summary;
+    }
+    let prUrl: string | null = null;
+    if (body.prUrl) {
+      prUrl = body.prUrl;
+    }
+    try {
+      const result = completeBridgeTask(id, {
+        by: user.name,
+        summary,
+        prUrl,
+      });
+      if (!result) {
+        return reply.status(404).send({ error: "Task not found" });
+      }
+      const pending = listPendingTasks(existing.projectId, null);
+      const nextPending = pending.length > 0 ? (pending[0] ?? null) : null;
+      return Object.assign({}, result, {
+        hasClaimable: pending.length > 0,
+        nextPending,
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        return reply.status(error.statusCode).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
   app.get("/tasks/:id", async (request, reply) => {
     const user = await assertAuth(request);
     const { id } = taskIdParamsSchema.parse(request.params);
@@ -564,7 +659,17 @@ export function taskRoutes(app: FastifyInstance) {
         task = updated;
       }
       if (body.comment) {
-        const updated = addBridgeTaskUserComment(id, user.name, body.comment.text);
+        let updated;
+        if (body.comment.role === "system") {
+          updated = addBridgeTaskAgentComment(
+            id,
+            body.comment.by || user.name,
+            body.comment.text,
+            body.comment.tags,
+          );
+        } else {
+          updated = addBridgeTaskUserComment(id, user.name, body.comment.text);
+        }
         if (!updated) {
           return reply.status(404).send({ error: "Task not found" });
         }
@@ -575,7 +680,17 @@ export function taskRoutes(app: FastifyInstance) {
     if (!body.comment) {
       return reply.status(400).send({ error: "comment is required" });
     }
-    const task = addBridgeTaskUserComment(id, user.name, body.comment.text);
+    let task;
+    if (body.comment.role === "system") {
+      task = addBridgeTaskAgentComment(
+        id,
+        body.comment.by || user.name,
+        body.comment.text,
+        body.comment.tags,
+      );
+    } else {
+      task = addBridgeTaskUserComment(id, user.name, body.comment.text);
+    }
     if (!task) {
       return reply.status(404).send({ error: "Task not found" });
     }

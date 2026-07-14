@@ -54,6 +54,8 @@ function makeTask(overrides: Partial<BridgeTask> & { id: number }): BridgeTask {
     answer: null,
     stageId: "stage-1",
     workStatus: "todo",
+    brief: "",
+    agentMetadata: {},
     comments: [],
     events: [],
     ...rest,
