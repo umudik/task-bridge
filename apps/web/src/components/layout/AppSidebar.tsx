@@ -97,11 +97,8 @@ export function AppSidebar() {
         <div className="shrink-0 border-t border-border/60 p-2 space-y-1">
           <a
             href="https://fookiecloud.com/profile"
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
+            className="flex w-full items-center rounded-md px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
           >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold uppercase text-primary">
-              {session.userName.charAt(0)}
-            </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium leading-none text-foreground">
                 {session.userName}
