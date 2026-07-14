@@ -10,6 +10,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { BrandMark } from "@/components/BrandMark";
 import { FookieCloudMark } from "@/components/FookieCloudMark";
 import { cn } from "@/lib/utils";
 import { useCommentNotifications } from "@/hooks/useCommentNotifications";
@@ -48,7 +49,7 @@ export function AppSidebar() {
   return (
     <aside className="app-sidebar">
       <div className="flex h-14 shrink-0 items-center border-b border-border/60 px-4">
-        <FookieCloudMark />
+        <BrandMark compact />
       </div>
 
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
@@ -93,7 +94,10 @@ export function AppSidebar() {
       </nav>
 
       {session ? (
-        <div className="shrink-0 border-t border-border/60 p-2">
+        <div className="shrink-0 border-t border-border/60 p-2 space-y-1">
+          <div className="px-2.5 py-2">
+            <FookieCloudMark size="sm" />
+          </div>
           <a
             href="https://fookiecloud.com/profile"
             className="flex w-full items-center rounded-md px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
@@ -106,7 +110,11 @@ export function AppSidebar() {
             </div>
           </a>
         </div>
-      ) : null}
+      ) : (
+        <div className="shrink-0 border-t border-border/60 px-4 py-3">
+          <FookieCloudMark size="sm" />
+        </div>
+      )}
     </aside>
   );
 }
