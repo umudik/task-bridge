@@ -94,12 +94,7 @@ function migrateLibraryTables() {
     .prepare(`SELECT COUNT(*) AS count FROM libraries WHERE trim(project_id) = ''`)
     .get() as { count: number };
   if (orphaned.count > 0) {
-    const firstProject = db
-      .prepare(`SELECT id FROM projects ORDER BY created_at ASC LIMIT 1`)
-      .get() as { id: string } | undefined;
-    if (firstProject) {
-      db.prepare(`UPDATE libraries SET project_id = ? WHERE trim(project_id) = ''`).run(firstProject.id);
-    }
+    db.prepare(`DELETE FROM libraries WHERE trim(project_id) = ''`).run();
   }
 }
 

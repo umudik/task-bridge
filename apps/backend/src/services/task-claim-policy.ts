@@ -55,8 +55,11 @@ export function userAwaitingReply(task: BridgeTask): boolean {
   return humanAt > systemAt;
 }
 
-export function rolesMatch(_actorRole: string, _requiredRole: string | null): boolean {
-  return true;
+export function rolesMatch(actorRole: string, requiredRole: string | null): boolean {
+  if (requiredRole === null || requiredRole.length === 0) {
+    return true;
+  }
+  return actorRole.trim().toLowerCase() === requiredRole.trim().toLowerCase();
 }
 
 export function resolveTaskClaimRole(task: BridgeTask): string | null {
@@ -152,7 +155,7 @@ export function passesWorkflowClaimGate(task: BridgeTask, index: EpicClaimIndex)
 export function canActorClaimTask(
   task: BridgeTask,
   index: EpicClaimIndex,
-  _actor: ClaimActor,
+  actor: ClaimActor,
 ): boolean {
   if (task.parentId === null || isWorkDone(task)) return false;
 
@@ -161,7 +164,9 @@ export function canActorClaimTask(
   }
 
   if (task.claimedBy) return false;
-  return passesWorkflowClaimGate(task, index);
+  if (!passesWorkflowClaimGate(task, index)) return false;
+  const requiredRole = resolveTaskClaimRole(task);
+  return rolesMatch(actor.role, requiredRole);
 }
 
 export function canActorUpdateWorkStatus(
@@ -319,6 +324,10 @@ export function workflowClaimBlockReason(
         }
         if (!activeStageId) return "Epic has no active pipeline step";
         return `Task is on a later pipeline step; epic is at "${activeStageId}"`;
+      }
+      const requiredRole = resolveTaskClaimRole(task);
+      if (!rolesMatch(actor.role, requiredRole)) {
+        return "Role does not match task assignment";
       }
     }
     return null;

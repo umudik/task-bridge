@@ -9,6 +9,9 @@ const REFRESH_KEY = "task_bridge_refresh_token";
 const PKCE_VERIFIER_KEY = "task_bridge_pkce_verifier";
 const OAUTH_STATE_KEY = "task_bridge_oauth_state";
 
+let exchangeInFlight: Promise<string> | null = null;
+let exchangeInFlightCode: string | null = null;
+
 function base64url(bytes: Uint8Array): string {
   let s = "";
   for (const b of bytes) {
@@ -48,7 +51,7 @@ export function clearFookieTokens(): void {
   localStorage.removeItem(REFRESH_KEY);
 }
 
-export async function exchangeCode(code: string, state: string): Promise<string> {
+async function doExchange(code: string, state: string): Promise<string> {
   const expected = sessionStorage.getItem(OAUTH_STATE_KEY);
   const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
   if (expected === null || state !== expected || verifier === null) {
@@ -77,6 +80,22 @@ export async function exchangeCode(code: string, state: string): Promise<string>
   sessionStorage.removeItem(PKCE_VERIFIER_KEY);
   sessionStorage.removeItem(OAUTH_STATE_KEY);
   return data.access_token;
+}
+
+export async function exchangeCode(code: string, state: string): Promise<string> {
+  if (exchangeInFlight !== null && exchangeInFlightCode === code) {
+    return exchangeInFlight;
+  }
+  const existing = getAccessToken();
+  if (existing !== null && sessionStorage.getItem(OAUTH_STATE_KEY) === null) {
+    return existing;
+  }
+  exchangeInFlightCode = code;
+  exchangeInFlight = doExchange(code, state).finally(() => {
+    exchangeInFlight = null;
+    exchangeInFlightCode = null;
+  });
+  return exchangeInFlight;
 }
 
 export { AUTH, CLIENT_ID, REDIRECT_URI };

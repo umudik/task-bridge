@@ -49,7 +49,9 @@ async function main() {
       docsRoutes(apiApp);
       authRoutes(apiApp);
       apiKeyRoutes(apiApp);
-      adminUserRoutes(apiApp);
+      if (!config.fookieMode) {
+        adminUserRoutes(apiApp);
+      }
       projectRoutes(apiApp);
       taskRoutes(apiApp);
       workflowRoutes(apiApp);

@@ -56,6 +56,52 @@ function normalizeRoute(url: string): string {
   return out.join("/");
 }
 
+const sensitiveQueryKeys = new Set([
+  "token",
+  "access_token",
+  "refresh_token",
+  "code",
+  "key",
+  "secret",
+  "password",
+  "authorization",
+  "api_key",
+  "client_secret",
+]);
+
+function sanitizeQuery(url: string): string {
+  const q = url.indexOf("?");
+  if (q < 0) {
+    return "";
+  }
+  const raw = url.slice(q + 1);
+  if (raw.length === 0) {
+    return "";
+  }
+  const params = new URLSearchParams(raw);
+  const out = new URLSearchParams();
+  for (const key of params.keys()) {
+    const value = params.get(key);
+    if (value === null) {
+      continue;
+    }
+    if (sensitiveQueryKeys.has(key.toLowerCase())) {
+      out.set(key, "[redacted]");
+      continue;
+    }
+    if (value.length > 120) {
+      out.set(key, `${value.slice(0, 40)}…`);
+      continue;
+    }
+    out.set(key, value);
+  }
+  const text = out.toString();
+  if (text.length > 500) {
+    return `${text.slice(0, 500)}…`;
+  }
+  return text;
+}
+
 function firstForwarded(raw: string): string | null {
   const chunks = raw.split(",");
   if (chunks.length === 0) {
@@ -203,6 +249,8 @@ export function registerObservability(app: FastifyInstance): void {
       client_ip: clientIp(req),
       method: req.method,
       path,
+      route,
+      query: sanitizeQuery(req.url),
       status: reply.statusCode,
       duration_ms: Math.round(durMs * 100) / 100,
       request_id: req.id,

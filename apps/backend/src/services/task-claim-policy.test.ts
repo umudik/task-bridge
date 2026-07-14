@@ -100,7 +100,7 @@ describe("task claim policy", () => {
 
   it("matches roles case-insensitively", () => {
     assert.equal(rolesMatch("Developer", "developer"), true);
-    assert.equal(rolesMatch("product", "developer"), true);
+    assert.equal(rolesMatch("product", "developer"), false);
     assert.equal(rolesMatch("developer", null), true);
   });
 
@@ -140,7 +140,7 @@ describe("task claim policy", () => {
     );
   });
 
-  it("lets any member claim workflow tasks", () => {
+  it("blocks claim when actor role does not match assignment", () => {
     const task = makeTask({
       id: 10,
       parentId: 1,
@@ -153,7 +153,7 @@ describe("task claim policy", () => {
     );
     assert.equal(
       canActorClaimTask(task, index, { claimedBy: "PM", role: "product" }),
-      true,
+      false,
     );
   });
 });

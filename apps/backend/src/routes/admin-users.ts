@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { config } from "../config.js";
 import { AppError } from "../errors/app-error.js";
 import { assertAuth } from "../middleware/auth.js";
 import {
@@ -83,6 +84,9 @@ export function adminUserRoutes(app: FastifyInstance) {
   });
 
   app.get("/admin/users/:userId/token", async (request) => {
+    if (config.fookieMode) {
+      throw new AppError("Endpoint disabled in Fookie mode", 410);
+    }
     await requireAdmin(request);
     const { userId } = request.params as { userId: string };
     const token = readUserToken(userId);
