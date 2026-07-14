@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -147,6 +147,26 @@
       transform: translateX(0);
     }
   }
+}
+
+.fookie-cloud-mark {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.fookie-cloud-mark:hover {
+  opacity: 0.9;
+}
+
+.fookie-cloud-mark--sm {
+  font-size: 0.95rem;
 }
 
 .fookie-cloud-word {
