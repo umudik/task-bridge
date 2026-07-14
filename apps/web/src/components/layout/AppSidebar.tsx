@@ -5,20 +5,17 @@ import {
   GitBranch,
   Inbox,
   Layers,
-  LogOut,
   ShoppingBag,
   Smartphone,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useCommentNotifications } from "@/hooks/useCommentNotifications";
 import { useSession } from "@/hooks/useSession";
 import { unreadCommentCount } from "@/lib/read-tasks";
-import { clearSession } from "@/lib/session";
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
@@ -53,11 +50,6 @@ export function AppSidebar() {
 
   const { commentItems } = useCommentNotifications(session, projectId);
   const unread = unreadCommentCount(commentItems);
-
-  function signOut() {
-    clearSession();
-    navigate("/login", { replace: true });
-  }
 
   const isAdmin = session !== null && session.userRole === "admin";
   const onProfile = location.pathname === "/profile";
@@ -123,8 +115,8 @@ export function AppSidebar() {
         ) : null}
       </nav>
 
-      <div className="shrink-0 border-t border-white/[0.07] p-2 space-y-1">
-        {session ? (
+      {session ? (
+        <div className="shrink-0 border-t border-white/[0.07] p-2">
           <button
             type="button"
             onClick={() => navigate("/profile")}
@@ -146,18 +138,8 @@ export function AppSidebar() {
               {roleLabel}
             </Badge>
           </button>
-        ) : null}
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-9 w-full justify-start rounded-lg text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
-          onClick={signOut}
-        >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </Button>
-      </div>
+        </div>
+      ) : null}
     </aside>
   );
 }
