@@ -1,4 +1,4 @@
-import { NavLink, matchPath, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, matchPath, useLocation } from "react-router-dom";
 import {
   BookOpen,
   FolderKanban,
@@ -12,24 +12,16 @@ import {
 } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { FookieCloudMark } from "@/components/FookieCloudMark";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useCommentNotifications } from "@/hooks/useCommentNotifications";
 import { useSession } from "@/hooks/useSession";
 import { unreadCommentCount } from "@/lib/read-tasks";
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin",
-  "read-write": "Read & Write",
-  read: "Read only",
-};
-
 export function AppSidebar() {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const session = useSession();
 
-  const projectMatch = matchPath("/projects/:projectId/*", location.pathname);
+  const projectMatch = matchPath("/projects/:projectId/*", pathname);
   let activeProjectId: string | null = null;
   if (projectMatch !== null) {
     const paramId = projectMatch.params.projectId;
@@ -53,21 +45,6 @@ export function AppSidebar() {
   const unread = unreadCommentCount(commentItems);
 
   const isAdmin = session !== null && session.userRole === "admin";
-  const onProfile = location.pathname === "/profile";
-
-  let roleLabel = "";
-  if (session !== null) {
-    const roleKey = session.userRole;
-    if (roleKey in ROLE_LABELS) {
-      const label = ROLE_LABELS[roleKey];
-      if (typeof label === "string") {
-        roleLabel = label;
-      }
-    }
-    if (roleLabel === "") {
-      roleLabel = roleKey;
-    }
-  }
 
   return (
     <aside className="app-sidebar">
@@ -118,13 +95,9 @@ export function AppSidebar() {
 
       {session ? (
         <div className="shrink-0 border-t border-border/60 p-2 space-y-1">
-          <button
-            type="button"
-            onClick={() => navigate("/profile")}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
-              onProfile ? "bg-secondary text-foreground" : "hover:bg-secondary/60",
-            )}
+          <a
+            href="https://fookiecloud.com/profile"
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
           >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold uppercase text-primary">
               {session.userName.charAt(0)}
@@ -133,12 +106,9 @@ export function AppSidebar() {
               <p className="truncate text-sm font-medium leading-none text-foreground">
                 {session.userName}
               </p>
-              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{roleLabel}</p>
+              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{session.userEmail}</p>
             </div>
-            <Badge variant="outline" className="hidden shrink-0 px-1.5 py-0 text-[10px] sm:flex">
-              {roleLabel}
-            </Badge>
-          </button>
+          </a>
           <div className="px-3 py-2">
             <FookieCloudMark size="sm" />
           </div>
