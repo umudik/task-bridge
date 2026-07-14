@@ -7,13 +7,13 @@ export function FookieCloudMark(props: {
 }) {
   const href = props.href ?? FOOKIE_CLOUD;
   const size = props.size ?? "sm";
-  const text = size === "md" ? "text-base" : "text-xs";
+  const text = size === "md" ? "text-[1.05rem]" : "text-[0.95rem]";
   return (
     <a
       href={href}
       className={
         props.className ??
-        `inline-flex items-baseline gap-0 ${text} font-semibold tracking-tight hover:opacity-90 transition-opacity`
+        `inline-flex items-baseline gap-0 ${text} font-bold tracking-[-0.02em] hover:opacity-90 transition-opacity`
       }
     >
       <span className="text-foreground">Fookie</span>

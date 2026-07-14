@@ -111,14 +111,6 @@ export function MobilePage() {
 
             <div className="space-y-3">
               <SensitiveField
-                label="Your token"
-                value={(function () {
-                  if (session !== null) return session.token;
-                  return "-";
-                })()}
-                onCopy={session ? () => void copy(session.token) : null}
-              />
-              <SensitiveField
                 label="Deep link"
                 value={mobileUri !== null ? mobileUri : "-"}
                 onCopy={mobileUri ? () => void copy(mobileUri) : null}

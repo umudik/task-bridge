@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProjectLayout } from "@/components/layout/ProjectLayout";
+import { BrandSplash } from "@/components/BrandSplash";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { CallbackPage } from "@/pages/CallbackPage";
@@ -15,6 +17,8 @@ import { LibraryPage } from "@/pages/LibraryPage";
 import { MarketplacePage } from "@/pages/MarketplacePage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { loadSession } from "@/lib/session";
+
+const MIN_SPLASH_MS = 2000;
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const session = loadSession();
@@ -74,6 +78,17 @@ export function App() {
 
 function RootRedirect() {
   const session = loadSession();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setReady(true), MIN_SPLASH_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  if (!ready) {
+    return <BrandSplash title="Task Bridge" subtitle="Loading…" />;
+  }
+
   if (!session) return <Navigate to="/login" replace />;
   if (session.projectId) {
     return <Navigate to={`/projects/${session.projectId}/tasks`} replace />;

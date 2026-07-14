@@ -181,7 +181,6 @@ export function ProfilePage() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-white">{key.name}</p>
-                      <p className="mt-0.5 font-mono text-xs text-muted-foreground">{key.keyPrefix}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         Created {formatWhen(key.createdAt)} · Last used {formatWhen(key.lastUsedAt)}
                       </p>

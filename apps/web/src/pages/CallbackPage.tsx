@@ -3,33 +3,16 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { clearFookieTokens, exchangeCode } from "@/lib/auth";
 import { fetchAuthMe } from "@/lib/api";
 import { saveSession, type UserRole } from "@/lib/session";
-import { FookieCloudMark } from "@/components/FookieCloudMark";
+import { BrandSplash } from "@/components/BrandSplash";
 
-function Splash(props: { subtitle: string; error?: string; onRetry?: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground animate-pulse">
-        T
-      </div>
-      <div className="space-y-1.5">
-        <div className="text-lg font-semibold tracking-tight">Task Bridge</div>
-        <div className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
-          <span>by</span>
-          <FookieCloudMark size="md" className="inline-flex items-baseline gap-0 text-sm font-semibold tracking-tight" />
-        </div>
-        {props.error ? (
-          <p className="pt-2 text-sm text-destructive">{props.error}</p>
-        ) : (
-          <p className="pt-2 text-xs text-muted-foreground">{props.subtitle}</p>
-        )}
-      </div>
-      {props.onRetry ? (
-        <button type="button" className="text-sm text-primary underline" onClick={props.onRetry}>
-          Try again
-        </button>
-      ) : null}
-    </div>
-  );
+const MIN_SPLASH_MS = 2000;
+
+function waitAtLeast(startedAt: number): Promise<void> {
+  const left = MIN_SPLASH_MS - (Date.now() - startedAt);
+  if (left <= 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, left);
+  });
 }
 
 export function CallbackPage() {
@@ -38,14 +21,18 @@ export function CallbackPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+    const startedAt = Date.now();
     const code = params.get("code");
     const state = params.get("state");
-    if (code === null || state === null) {
-      setError("Missing OAuth code");
-      return;
-    }
-    void exchangeCode(code, state)
-      .then(async (token) => {
+
+    async function run() {
+      if (code === null || state === null) {
+        setError("Missing OAuth code");
+        return;
+      }
+      try {
+        const token = await exchangeCode(code, state);
         const user = await fetchAuthMe(token);
         saveSession({
           token,
@@ -58,23 +45,32 @@ export function CallbackPage() {
           projectId: null,
           projectName: null,
         });
+        await waitAtLeast(startedAt);
+        if (cancelled) return;
         navigate("/projects", { replace: true });
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         clearFookieTokens();
-        setError(err instanceof Error ? err.message : "Auth failed");
-      });
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Auth failed");
+        }
+      }
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [navigate, params]);
 
   if (error) {
     return (
-      <Splash
-        subtitle=""
+      <BrandSplash
+        title="Task Bridge"
         error={error}
         onRetry={() => navigate("/login", { replace: true })}
       />
     );
   }
 
-  return <Splash subtitle="Signing in…" />;
+  return <BrandSplash title="Task Bridge" subtitle="Signing in…" />;
 }
