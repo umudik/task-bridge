@@ -20,11 +20,13 @@ import { apiKeyRoutes } from "./routes/api-keys.js";
 import { refreshProjectRegistry, initProjectRegistry } from "./services/project-registry.js";
 import { ensureMarketplaceReady } from "./services/marketplace-service.js";
 import { migrateApiKeysTables } from "./db/api-keys-db.js";
+import { registerObservability } from "./observability.js";
 
 const logger = createLogger("backend");
 
 async function main() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, trustProxy: true });
+  await registerObservability(app);
   await app.register(cors, { origin: true });
 
   initProjectRegistry();
