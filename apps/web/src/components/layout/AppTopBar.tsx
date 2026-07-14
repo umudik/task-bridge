@@ -1,4 +1,3 @@
-import { FookieCloudMark } from "@/components/FookieCloudMark";
 import { useSession } from "@/hooks/useSession";
 
 const FOOKIE_CLOUD = "https://fookiecloud.com";

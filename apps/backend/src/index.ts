@@ -26,7 +26,7 @@ const logger = createLogger("backend");
 
 async function main() {
   const app = Fastify({ logger: false, trustProxy: true });
-  await registerObservability(app);
+  registerObservability(app);
   await app.register(cors, { origin: true });
 
   initProjectRegistry();
