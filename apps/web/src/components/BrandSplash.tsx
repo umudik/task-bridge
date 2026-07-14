@@ -7,8 +7,7 @@ export function BrandSplash(props: {
   onRetry?: () => void;
 }) {
   return (
-    <div className="flex h-full min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
-      <FookieCloudMark size="md" />
+    <div className="flex h-full min-h-screen flex-col items-center justify-center gap-6 px-6 text-center">
       <div className="space-y-1.5">
         <div className="text-lg font-semibold tracking-tight">{props.title}</div>
         {props.error ? (
@@ -22,6 +21,7 @@ export function BrandSplash(props: {
           Try again
         </button>
       ) : null}
+      <FookieCloudMark size="sm" />
     </div>
   );
 }

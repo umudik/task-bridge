@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
+import { FookieCloudMark } from "@/components/FookieCloudMark";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useCommentNotifications } from "@/hooks/useCommentNotifications";
@@ -116,7 +117,7 @@ export function AppSidebar() {
       </nav>
 
       {session ? (
-        <div className="shrink-0 border-t border-white/[0.07] p-2">
+        <div className="shrink-0 border-t border-white/[0.07] p-2 space-y-1">
           <button
             type="button"
             onClick={() => navigate("/profile")}
@@ -138,8 +139,15 @@ export function AppSidebar() {
               {roleLabel}
             </Badge>
           </button>
+          <div className="px-3 py-2">
+            <FookieCloudMark size="sm" />
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="shrink-0 border-t border-white/[0.07] px-4 py-3">
+          <FookieCloudMark size="sm" />
+        </div>
+      )}
     </aside>
   );
 }
