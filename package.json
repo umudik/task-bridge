@@ -1,6 +1,6 @@
 {
   "name": "@umudik/task-bridge",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "Task Bridge — Fookie Cloud epic / task board (opens https://task-bridge.fookiecloud.com).",
   "type": "module",
   "license": "MIT",
