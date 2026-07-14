@@ -1,38 +1,22 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import {
-  Registry,
-  Counter,
-  Histogram,
-  Gauge,
-  collectDefaultMetrics,
-} from "prom-client";
 
 const SERVICE = "task-bridge";
 
-const register = new Registry();
-collectDefaultMetrics({ register, prefix: "task_bridge_" });
+type Labels = {
+  service: string;
+  method: string;
+  route: string;
+  status_class: string;
+};
 
-const httpRequests = new Counter({
-  name: "http_requests_total",
-  help: "Total HTTP requests",
-  labelNames: ["service", "method", "route", "status_class"] as const,
-  registers: [register],
-});
+const requestCounts = new Map<string, number>();
+const durationSums = new Map<string, number>();
+const durationCounts = new Map<string, number>();
+let inFlight = 0;
 
-const httpDuration = new Histogram({
-  name: "http_request_duration_seconds",
-  help: "HTTP request duration",
-  labelNames: ["service", "method", "route", "status_class"] as const,
-  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
-  registers: [register],
-});
-
-const httpInFlight = new Gauge({
-  name: "http_requests_in_flight",
-  help: "In-flight HTTP requests",
-  labelNames: ["service"] as const,
-  registers: [register],
-});
+function keyOf(l: Labels): string {
+  return `${l.service}|${l.method}|${l.route}|${l.status_class}`;
+}
 
 function statusClass(code: number): string {
   if (code >= 500) return "5xx";
@@ -65,17 +49,51 @@ function clientIp(req: FastifyRequest): string {
   return req.ip;
 }
 
+function escapeLabel(v: string): string {
+  return v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+}
+
+function renderMetrics(): string {
+  const lines: string[] = [
+    "# HELP http_requests_total Total HTTP requests",
+    "# TYPE http_requests_total counter",
+  ];
+  for (const [k, n] of requestCounts) {
+    const [service, method, route, status_class] = k.split("|");
+    lines.push(
+      `http_requests_total{service="${escapeLabel(service ?? "")}",method="${escapeLabel(method ?? "")}",route="${escapeLabel(route ?? "")}",status_class="${escapeLabel(status_class ?? "")}"} ${n}`,
+    );
+  }
+  lines.push(
+    "# HELP http_request_duration_seconds HTTP request duration",
+    "# TYPE http_request_duration_seconds summary",
+  );
+  for (const [k, sum] of durationSums) {
+    const count = durationCounts.get(k) ?? 0;
+    const [service, method, route, status_class] = k.split("|");
+    const labels = `service="${escapeLabel(service ?? "")}",method="${escapeLabel(method ?? "")}",route="${escapeLabel(route ?? "")}",status_class="${escapeLabel(status_class ?? "")}"`;
+    lines.push(`http_request_duration_seconds_sum{${labels}} ${sum}`);
+    lines.push(`http_request_duration_seconds_count{${labels}} ${count}`);
+  }
+  lines.push(
+    "# HELP http_requests_in_flight In-flight HTTP requests",
+    "# TYPE http_requests_in_flight gauge",
+    `http_requests_in_flight{service="${SERVICE}"} ${inFlight}`,
+  );
+  return `${lines.join("\n")}\n`;
+}
+
 export async function registerObservability(app: FastifyInstance): Promise<void> {
   app.get("/metrics", async (_req, reply) => {
-    reply.header("Content-Type", register.contentType);
-    return register.metrics();
+    reply.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    return renderMetrics();
   });
 
   app.addHook("onRequest", async (req) => {
     if (req.url.startsWith("/metrics") || req.url.startsWith("/health")) {
       return;
     }
-    httpInFlight.inc({ service: SERVICE });
+    inFlight += 1;
     (req as FastifyRequest & { __obsStart?: bigint }).__obsStart = process.hrtime.bigint();
   });
 
@@ -83,17 +101,22 @@ export async function registerObservability(app: FastifyInstance): Promise<void>
     if (req.url.startsWith("/metrics") || req.url.startsWith("/health")) {
       return;
     }
-    httpInFlight.dec({ service: SERVICE });
+    inFlight = Math.max(0, inFlight - 1);
     const start = (req as FastifyRequest & { __obsStart?: bigint }).__obsStart;
     const durMs =
       start === undefined ? 0 : Number(process.hrtime.bigint() - start) / 1e6;
     const route = normalizeRoute(req.url);
     const sc = statusClass(reply.statusCode);
-    httpRequests.inc({ service: SERVICE, method: req.method, route, status_class: sc });
-    httpDuration.observe(
-      { service: SERVICE, method: req.method, route, status_class: sc },
-      durMs / 1000,
-    );
+    const labels: Labels = {
+      service: SERVICE,
+      method: req.method,
+      route,
+      status_class: sc,
+    };
+    const k = keyOf(labels);
+    requestCounts.set(k, (requestCounts.get(k) ?? 0) + 1);
+    durationSums.set(k, (durationSums.get(k) ?? 0) + durMs / 1000);
+    durationCounts.set(k, (durationCounts.get(k) ?? 0) + 1);
     const line = {
       msg: "http_access",
       service: SERVICE,
